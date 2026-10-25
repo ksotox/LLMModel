@@ -1,0 +1,292 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import multer from 'multer';
+import { openDb, PACK_KINDS, VARIANTS } from './db.js';
+import { SET_CODES } from './setCodes.js';
+import { TcgClient } from './tcg.js';
+
+const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
+  const dirs = {
+    cards: path.join(dataDir, 'uploads', 'cards'),
+    packs: path.join(dataDir, 'uploads', 'packs'),
+    official: path.join(dataDir, 'official'),
+  };
+  for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true });
+  const store = openDb(path.join(dataDir, 'collection.db'));
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_FILE_BYTES, files: 200 },
+    fileFilter: (_req, file, cb) => cb(null, file.mimetype in IMAGE_EXT),
+  });
+
+  // ---- file helpers ----
+
+  const saveUpload = (file, kind) => {
+    const name = `${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}${IMAGE_EXT[file.mimetype]}`;
+    fs.writeFileSync(path.join(dirs[kind], name), file.buffer);
+    return `uploads/${kind}/${name}`;
+  };
+
+  const removeFile = (rel) => {
+    if (!rel) return;
+    const abs = path.join(dataDir, rel);
+    if (abs.startsWith(dataDir)) fs.rmSync(abs, { force: true });
+  };
+
+  /** Download the official PNG once and keep a local copy, so it survives the API being offline. */
+  const cacheOfficialImage = async (tcgId, url) => {
+    if (!url) return null;
+    const rel = `official/${tcgId.replace(/[^\w.-]/g, '_')}${path.extname(new URL(url).pathname) || '.png'}`;
+    const abs = path.join(dataDir, rel);
+    if (fs.existsSync(abs)) return rel;
+    try {
+      const img = await tcg.download(url);
+      if (!img) return null;
+      fs.writeFileSync(abs, img.buffer);
+      return rel;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Fill a card with its official details and image when it is linked to an online card.
+   * Never throws: if the online database is unreachable the card keeps what the client sent.
+   */
+  const withOfficial = async (card) => {
+    if (!card.tcg_id) return card;
+    let details = null;
+    try {
+      details = await tcg.details(card.tcg_id);
+    } catch {
+      // offline: fall through with the client-provided brief
+    }
+    const merged = { ...card };
+    if (details) {
+      for (const [k, v] of Object.entries(details)) if (v != null) merged[k] = v;
+    }
+    merged.official_image_path = await cacheOfficialImage(card.tcg_id, merged.official_image_url);
+    return merged;
+  };
+
+  const toJson = (card) => card && {
+    ...card,
+    photo_url: card.photo_path ? `/media/${card.photo_path}` : null,
+    official_url: card.official_image_path ? `/media/${card.official_image_path}` : card.official_image_url,
+  };
+  const packJson = (pack) => pack && { ...pack, photo_url: pack.photo_path ? `/media/${pack.photo_path}` : null };
+
+  const parseList = (raw, field) => {
+    let list;
+    try {
+      list = JSON.parse(raw ?? '[]');
+    } catch {
+      throw new HttpError(400, `"${field}" must be a JSON array`);
+    }
+    if (!Array.isArray(list) || !list.length) throw new HttpError(400, `"${field}" must be a non-empty JSON array`);
+    return list;
+  };
+
+  const cleanCard = (c) => {
+    const name = String(c.name ?? '').trim();
+    if (!name && !c.tcg_id) throw new HttpError(400, 'Every card needs a name (or a matched online card)');
+    const card = { ...c, name };
+    if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
+    if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
+    if (card.pack_id != null && card.pack_id !== '') {
+      if (!store.getPack(Number(card.pack_id))) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
+      card.pack_id = Number(card.pack_id);
+    } else {
+      card.pack_id = null;
+    }
+    return card;
+  };
+
+  const cleanPack = (p) => {
+    const name = String(p.name ?? '').trim();
+    if (!name) throw new HttpError(400, 'Every pack needs a name');
+    return { ...p, name, kind: PACK_KINDS.includes(p.kind) ? p.kind : 'other' };
+  };
+
+  const filesByField = (req) => new Map((req.files ?? []).map((f) => [f.fieldname, f]));
+
+  /** Save each item's photo (referenced by `photoField`) and insert all rows with one shared date added. */
+  const insertWithPhotos = (items, files, kind, insert) => {
+    const createdAt = new Date().toISOString();
+    const photos = items.map((item) => {
+      const file = item.photoField && files.get(item.photoField);
+      return file ? saveUpload(file, kind) : null;
+    });
+    try {
+      return store.transaction(() => items.map((item, i) => insert({ ...item, photo_path: photos[i], created_at: createdAt })));
+    } catch (err) {
+      photos.forEach(removeFile);
+      throw err;
+    }
+  };
+  const findCard = (id) => {
+    const card = store.getCard(Number(id));
+    if (!card) throw new HttpError(404, 'Card not found');
+    return card;
+  };
+  const findPack = (id) => {
+    const pack = store.getPack(Number(id));
+    if (!pack) throw new HttpError(404, 'Pack not found');
+    return pack;
+  };
+
+  // ---- routes ----
+
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '1mb' }));
+  app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
+  app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
+  app.use(express.static(PUBLIC_DIR));
+
+  app.get('/api/meta', (_req, res) => {
+    res.json({
+      packKinds: PACK_KINDS,
+      variants: VARIANTS,
+      setCodes: SET_CODES,
+      collectionSets: store.setCodes(),
+      stats: store.stats(),
+    });
+  });
+
+  app.get('/api/lookup', async (req, res) => {
+    const { name, setCode, number } = req.query;
+    if (!name && !setCode && !number) throw new HttpError(400, 'Give a name, set code or number to look up');
+    try {
+      res.json({ results: await tcg.search({ name, setCode, number }) });
+    } catch (err) {
+      res.status(502).json({ error: 'The online card database could not be reached. You can still save the card and look it up later.', detail: err.message });
+    }
+  });
+
+  // Cards
+
+  app.get('/api/cards', (req, res) => {
+    res.json({ cards: store.listCards(req.query).map(toJson) });
+  });
+
+  app.get('/api/cards/:id', (req, res) => {
+    res.json(toJson(findCard(req.params.id)));
+  });
+
+  // Batch create: multipart with `cards` (JSON array) and one image per card, referenced by `photoField`.
+  app.post('/api/cards', upload.any(), async (req, res) => {
+    const files = filesByField(req);
+    const input = parseList(req.body.cards, 'cards').map(cleanCard);
+    const prepared = [];
+    for (const card of input) prepared.push(await withOfficial(card));
+    const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
+    res.status(201).json({ cards: ids.map((id) => toJson(store.getCard(id))) });
+  });
+
+  app.patch('/api/cards/:id', async (req, res) => {
+    const existing = findCard(req.params.id);
+    let card = cleanCard({ ...existing, ...req.body });
+    const relink = req.body.tcg_id !== undefined && req.body.tcg_id !== existing.tcg_id;
+    if (relink) {
+      card = card.tcg_id ? await withOfficial(card) : { ...card, official_image_url: null, official_image_path: null };
+    }
+    store.updateCard(existing.id, card);
+    res.json(toJson(store.getCard(existing.id)));
+  });
+
+  // Re-fetch the official details/image for a card that is already linked (e.g. it was added offline).
+  app.post('/api/cards/:id/refresh-official', async (req, res) => {
+    const existing = findCard(req.params.id);
+    if (!existing.tcg_id) throw new HttpError(400, 'This card is not linked to an online card yet');
+    const card = await withOfficial({ ...existing });
+    store.updateCard(existing.id, card);
+    res.json(toJson(store.getCard(existing.id)));
+  });
+
+  app.post('/api/cards/:id/photo', upload.single('photo'), (req, res) => {
+    const existing = findCard(req.params.id);
+    if (!req.file) throw new HttpError(400, 'Attach an image as "photo"');
+    const photo_path = saveUpload(req.file, 'cards');
+    store.updateCard(existing.id, { photo_path });
+    removeFile(existing.photo_path);
+    res.json(toJson(store.getCard(existing.id)));
+  });
+
+  app.delete('/api/cards/:id', (req, res) => {
+    const existing = findCard(req.params.id);
+    store.deleteCard(existing.id);
+    removeFile(existing.photo_path);
+    res.status(204).end();
+  });
+
+  // Packs / tins / kits / bundles
+
+  app.get('/api/packs', (req, res) => {
+    res.json({ packs: store.listPacks(req.query).map(packJson) });
+  });
+
+  app.get('/api/packs/:id', (req, res) => {
+    res.json(packJson(findPack(req.params.id)));
+  });
+
+  app.post('/api/packs', upload.any(), (req, res) => {
+    const files = filesByField(req);
+    const input = parseList(req.body.packs, 'packs').map(cleanPack);
+    const ids = insertWithPhotos(input, files, 'packs', (pack) => store.insertPack(pack));
+    res.status(201).json({ packs: ids.map((id) => packJson(store.getPack(id))) });
+  });
+
+  app.patch('/api/packs/:id', (req, res) => {
+    const existing = findPack(req.params.id);
+    store.updatePack(existing.id, cleanPack({ ...existing, ...req.body }));
+    res.json(packJson(store.getPack(existing.id)));
+  });
+
+  app.post('/api/packs/:id/photo', upload.single('photo'), (req, res) => {
+    const existing = findPack(req.params.id);
+    if (!req.file) throw new HttpError(400, 'Attach an image as "photo"');
+    store.updatePack(existing.id, { photo_path: saveUpload(req.file, 'packs') });
+    removeFile(existing.photo_path);
+    res.json(packJson(store.getPack(existing.id)));
+  });
+
+  // Deleting a pack keeps its cards (they become "no pack") unless ?withCards=1.
+  app.delete('/api/packs/:id', (req, res) => {
+    const existing = findPack(req.params.id);
+    const cards = req.query.withCards === '1' ? store.listCards({ packId: existing.id }) : [];
+    store.transaction(() => {
+      for (const c of cards) store.deleteCard(c.id);
+      store.deletePack(existing.id);
+    });
+    for (const c of cards) removeFile(c.photo_path);
+    removeFile(existing.photo_path);
+    res.status(204).end();
+  });
+
+  app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')));
+
+  app.use((err, _req, res, _next) => {
+    const status = err.status ?? (err instanceof multer.MulterError ? 400 : 500);
+    if (status >= 500) console.error(err);
+    res.status(status).json({ error: status >= 500 ? 'Something went wrong on the server' : err.message });
+  });
+
+  app.locals.store = store;
+  return app;
+}
