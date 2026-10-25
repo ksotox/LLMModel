@@ -1,0 +1,23 @@
+[package]
+name = "sideward-gui"
+description = "Sideward desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sideward-gui"
+path = "src/main.rs"
+
+[dependencies]
+sideward-core.workspace = true
+isideload.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono = "0.4"
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }

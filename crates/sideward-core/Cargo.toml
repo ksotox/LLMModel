@@ -1,0 +1,41 @@
+[package]
+name = "sideward-core"
+description = "Core library for Sideward: Apple ID signing plus USB and Wi-Fi installs, built on isideload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["keyring"]
+# Store Apple ID passwords in the OS keychain so `refresh`/`daemon` can run unattended
+keyring = ["dep:keyring"]
+
+[dependencies]
+isideload.workspace = true
+idevice.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+plist.workspace = true
+tracing.workspace = true
+rustls.workspace = true
+rootcause = "0.12"
+zip = { version = "8.3", default-features = false, features = ["deflate"] }
+mdns-sd = "0.21"
+directories = "6"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+ar = "0.9"
+tar = "0.4"
+flate2 = "1"
+lzma-rs = "0.3"
+zstd = "0.13"
+walkdir = "2"
+keyring = { version = "3.6", optional = true, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust", "vendored"] }
+
+[dev-dependencies]
+tempfile = "3"
+base64 = "0.22"
