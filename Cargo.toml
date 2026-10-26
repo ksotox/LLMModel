@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/sideward-core", "apps/sideward-cli", "apps/sideward-gui"]
+default-members = ["apps/sideward-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/ksotox/LLMModel"
+
+[workspace.dependencies]
+sideward-core = { path = "crates/sideward-core" }
+# isideload carries the current Apple ID login fixes (Mac anisette + server-provided client info)
+isideload = { version = "=0.5.0", default-features = false, features = ["install", "fs-storage", "tokio-mt"] }
+idevice = { version = "0.1.68", default-features = false, features = ["ring", "usbmuxd", "tcp", "afc", "installation_proxy", "house_arrest", "pair", "mdns"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "time", "net", "sync", "fs", "signal"] }
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+plist = "1.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
