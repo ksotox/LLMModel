@@ -1,0 +1,21 @@
+{
+  "name": "pokedex-collection",
+  "version": "1.0.0",
+  "description": "A personal Pokédex: catalog your Pokémon cards and the packs, tins, kits and bundles they came from.",
+  "private": true,
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js",
+    "test:e2e": "node --disable-warning=ExperimentalWarning tests/e2e/run.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  }
+}
