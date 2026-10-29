@@ -1,0 +1,56 @@
+[
+ {
+  "id": "swsh3",
+  "name": "Darkness Ablaze",
+  "series": "Sword & Shield",
+  "printedTotal": 189,
+  "total": 201,
+  "ptcgoCode": "DAA",
+  "releaseDate": "2020/08/14"
+ },
+ {
+  "id": "sv1",
+  "name": "Scarlet & Violet",
+  "series": "Scarlet & Violet",
+  "printedTotal": 198,
+  "total": 258,
+  "ptcgoCode": "SVI",
+  "releaseDate": "2023/03/31"
+ },
+ {
+  "id": "sv2",
+  "name": "Paldea Evolved",
+  "series": "Scarlet & Violet",
+  "printedTotal": 193,
+  "total": 279,
+  "ptcgoCode": "PAL",
+  "releaseDate": "2023/06/09"
+ },
+ {
+  "id": "sv3",
+  "name": "Obsidian Flames",
+  "series": "Scarlet & Violet",
+  "printedTotal": 197,
+  "total": 230,
+  "ptcgoCode": "OBF",
+  "releaseDate": "2023/08/11"
+ },
+ {
+  "id": "sv5",
+  "name": "Temporal Forces",
+  "series": "Scarlet & Violet",
+  "printedTotal": 162,
+  "total": 218,
+  "ptcgoCode": "TEF",
+  "releaseDate": "2024/03/22"
+ },
+ {
+  "id": "me2",
+  "name": "Phantasmal Flames",
+  "series": "Mega Evolution",
+  "printedTotal": 94,
+  "total": 130,
+  "ptcgoCode": "PFL",
+  "releaseDate": "2025/11/14"
+ }
+]

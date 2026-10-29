@@ -3,7 +3,11 @@
 import { api } from './api.js';
 import { cropToBlob, loadImage } from './images.js';
 import { lookupPanel } from './lookup.js';
-import { cardNumber, clear, confirmDialog, debounce, formatDate, h, KIND_LABELS, modal, toast, VARIANT_LABELS } from './ui.js';
+import {
+  cardNumber, clear, confirmDialog, debounce, formatChance, formatDate, formatPrice, h, KIND_LABELS, modal, oneIn, rarityBadge, toast, VARIANT_LABELS,
+} from './ui.js';
+
+const DAY = 24 * 60 * 60 * 1000;
 
 const MODE_KEY = 'pokedex.imageMode';
 
@@ -54,6 +58,10 @@ function cardTile(card, mode, onOpen) {
     h('div.card-info',
       h('strong.card-name', card.name),
       h('span.card-set', [card.set_code, cardNumber(card)].filter(Boolean).join(' · ') || card.set_name || '—'),
+      (card.rarity || card.market_price != null) && h('div.card-market',
+        rarityBadge(card.rarity),
+        card.market_price != null && h('span.price', { title: card.market_source ?? 'Estimated market price' }, formatPrice(card.market_price, card.market_currency))),
+      card.pull_chance != null && h('span.card-pull', { title: card.pull_source ?? '' }, `${formatChance(card.pull_chance)} per pack · 1 in ${oneIn(card.pull_chance).toLocaleString()}`),
       h('span.card-date', `Added ${formatDate(card.created_at)}`),
       card.pack_name && h('span.chip', `📦 ${card.pack_name}`)));
 }
@@ -95,7 +103,9 @@ export async function renderCollection(root, meta, navigate, params) {
     h('option', { value: '' }, 'Newest first'),
     h('option', { value: 'oldest' }, 'Oldest first'),
     h('option', { value: 'name' }, 'Name A–Z'),
-    h('option', { value: 'set' }, 'Set & number'));
+    h('option', { value: 'set' }, 'Set & number'),
+    h('option', { value: 'value' }, 'Highest value'),
+    h('option', { value: 'rarity' }, 'Hardest to pull'));
   sortSel.value = state.sort;
 
   const toggleHost = h('div');
@@ -131,14 +141,33 @@ export async function renderCollection(root, meta, navigate, params) {
   for (const el of [packSel, setSel, sortSel]) el.addEventListener('change', update);
 
   const s = meta.stats;
+  const refreshAll = h('button.btn', {
+    type: 'button',
+    title: 'Look up current prices and pull chances for every card',
+    onclick: async () => {
+      refreshAll.disabled = true;
+      refreshAll.textContent = 'Updating prices…';
+      try {
+        const { updated } = await api.refreshAllMarket();
+        toast(`Updated ${updated} card${updated === 1 ? '' : 's'}`, 'success');
+        navigate(location.hash || '#/');
+      } catch (err) {
+        toast(err.message, 'error');
+        refreshAll.disabled = false;
+        refreshAll.textContent = 'Update prices';
+      }
+    },
+  }, 'Update prices');
+  const value = [s.value_usd > 0 && formatPrice(s.value_usd, 'USD'), s.value_eur > 0 && formatPrice(s.value_eur, 'EUR')].filter(Boolean).join(' + ');
   clear(root,
     h('div.page-head.row',
       h('div', h('h1', 'My collection'),
         h('div.stats',
           h('span', h('strong', s.cards), ' cards'),
           h('span', h('strong', s.unique_cards), ' unique'),
-          h('span', h('strong', s.packs), ' packs & bundles'))),
-      h('a.btn.primary', { href: '#/add' }, '+ Add cards')),
+          h('span', h('strong', s.packs), ' packs & bundles'),
+          value && h('span', { title: `Estimated market value of the ${s.priced} priced cards` }, 'Est. value ', h('strong', value)))),
+      h('div.actions', s.cards > 0 && refreshAll, h('a.btn.primary', { href: '#/add' }, '+ Add cards'))),
     h('div.toolbar', search, packSel, setSel, sortSel, toggleHost),
     count,
     results);
@@ -286,6 +315,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
     src ? h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: `${label}: ${card.name}` })) : h('div.detail-noimg', empty),
     h('figcaption', label));
 
+  let currentView = 'info';
   const refresh = async (next) => {
     card = next ?? await api.card(id);
     changed = true;
@@ -347,7 +377,43 @@ export async function openCard(id, { onChange = () => {} } = {}) {
     return form;
   };
 
+  const refreshMarket = async (quiet = false) => {
+    try {
+      card = await api.refreshMarket(card.id);
+      changed = true;
+      // A background refresh must not wipe what the user is typing in the edit form.
+      if (currentView !== 'edit') render(currentView);
+      if (!quiet) toast(card.market_price != null ? 'Price updated' : 'No price found for this card right now', card.market_price != null ? 'success' : 'info');
+    } catch (err) {
+      if (!quiet) toast(err.message, 'error');
+    }
+  };
+
+  function marketSection() {
+    const updated = card.market_updated ? formatDate(card.market_updated) : null;
+    return h('div.market',
+      h('div.market-row',
+        h('span.market-label', 'Rarity'),
+        card.rarity ? rarityBadge(card.rarity) : h('span.muted', 'Unknown — link the official card to see it')),
+      h('div.market-row',
+        h('span.market-label', 'Pull chance'),
+        card.pull_chance != null
+          ? h('span', h('strong', formatChance(card.pull_chance)), ` per booster pack (about 1 in ${oneIn(card.pull_chance).toLocaleString()} packs)`,
+            h('small.muted.block', `Estimate from ${card.pull_source}. Real odds vary by set and product.`))
+          : h('span.muted', 'Not available for this set or rarity')),
+      h('div.market-row',
+        h('span.market-label', 'Market price'),
+        card.market_price != null
+          ? h('span', h('strong.price-big', formatPrice(card.market_price, card.market_currency)),
+            card.market_low != null && h('span.muted', ` · low ${formatPrice(card.market_low, card.market_currency)}`),
+            card.market_high != null && h('span.muted', ` · high ${formatPrice(card.market_high, card.market_currency)}`),
+            h('small.muted.block', [card.market_source, updated && `updated ${updated}`].filter(Boolean).join(', ')))
+          : h('span.muted', 'No price found yet')),
+      h('button.btn.small', { type: 'button', onclick: () => refreshMarket() }, 'Refresh price'));
+  }
+
   function render(view = 'info') {
+    currentView = view;
     const extra = h('div.detail-extra');
     const row = (label, value) => value ? [h('dt', label), h('dd', value)] : null;
     const info = view === 'edit' ? editForm() : h('div',
@@ -355,7 +421,6 @@ export async function openCard(id, { onChange = () => {} } = {}) {
         row('Set', [card.set_name, card.set_code && `(${card.set_code})`].filter(Boolean).join(' ')),
         row('Number', cardNumber(card)),
         row('Variant', VARIANT_LABELS[card.variant] ?? card.variant),
-        row('Rarity', card.rarity),
         row('Category', card.category),
         row('HP', card.hp),
         row('Type', card.types),
@@ -404,10 +469,16 @@ export async function openCard(id, { onChange = () => {} } = {}) {
       h('div.detail-info',
         h('h2', card.name),
         h('p.muted', [card.set_code, cardNumber(card)].filter(Boolean).join(' · ')),
+        view === 'edit' ? null : marketSection(),
         info,
         extra));
   }
 
   render();
+  // Prices move: refresh in the background when the stored one is missing or more than a day old.
+  if (card.tcg_id || (card.set_code && card.number)) {
+    const age = card.market_updated ? Date.now() - Date.parse(card.market_updated) : Infinity;
+    if (age > DAY) refreshMarket(true);
+  }
   const { dialog } = modal(body, { wide: true, onClose: () => changed && onChange() });
 }

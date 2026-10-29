@@ -21,7 +21,7 @@ function field(label, control, extra) {
   return h('label.field', h('span', label), control, extra);
 }
 
-function setCodeList(meta) {
+export function setCodeList(meta) {
   const id = 'set-code-options';
   if (!document.getElementById(id)) {
     document.body.append(h('datalist', { id },

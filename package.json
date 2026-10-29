@@ -12,7 +12,8 @@
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js",
-    "test:e2e": "node --disable-warning=ExperimentalWarning tests/e2e/run.js"
+    "test:e2e": "node --disable-warning=ExperimentalWarning tests/e2e/run.js",
+    "check:live": "node --disable-warning=ExperimentalWarning scripts/check-live.js"
   },
   "dependencies": {
     "express": "^5.1.0",

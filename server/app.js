@@ -4,9 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
+import { CardCatalog } from './catalog.js';
 import { openDb, PACK_KINDS, VARIANTS } from './db.js';
 import { SET_CODES } from './setCodes.js';
-import { TcgClient } from './tcg.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
@@ -19,7 +19,7 @@ class HttpError extends Error {
   }
 }
 
-export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
+export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
     packs: path.join(dataDir, 'uploads', 'packs'),
@@ -48,20 +48,53 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
     if (abs.startsWith(dataDir)) fs.rmSync(abs, { force: true });
   };
 
-  /** Download the official PNG once and keep a local copy, so it survives the API being offline. */
-  const cacheOfficialImage = async (tcgId, url) => {
-    if (!url) return null;
-    const rel = `official/${tcgId.replace(/[^\w.-]/g, '_')}${path.extname(new URL(url).pathname) || '.png'}`;
-    const abs = path.join(dataDir, rel);
-    if (fs.existsSync(abs)) return rel;
-    try {
-      const img = await tcg.download(url);
-      if (!img) return null;
-      fs.writeFileSync(abs, img.buffer);
-      return rel;
-    } catch {
-      return null;
+  /**
+   * Download the official image once and keep a local copy, so it survives the sources being offline.
+   * If the main image can't be downloaded, the same card's picture from the second source is tried.
+   */
+  const cacheOfficialImage = async (card) => {
+    const base = `official/${card.tcg_id.replace(/[^\w.-]/g, '_')}`;
+    const existing = ['.png', '.jpg', '.webp'].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
+    if (existing) return existing;
+    const urls = [card.official_image_url, await catalog.fallbackImage(card).catch(() => null)].filter(Boolean);
+    for (const url of [...new Set(urls)]) {
+      try {
+        const img = await catalog.download(url);
+        if (!img) continue;
+        const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
+        fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
+        return base + ext;
+      } catch {
+        // try the next source
+      }
     }
+    return null;
+  };
+
+  /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
+  const withMarket = async (card) => {
+    let market;
+    try {
+      market = await catalog.market(card);
+    } catch {
+      return card;
+    }
+    return {
+      ...card,
+      rarity: card.rarity ?? market.rarity,
+      pull_chance: market.pull?.chance ?? null,
+      pull_source: market.pull?.source ?? null,
+      ...(market.price
+        ? {
+          market_price: market.price.value,
+          market_currency: market.price.currency,
+          market_low: market.price.low,
+          market_high: market.price.high,
+          market_source: market.price.source,
+          market_updated: market.price.updated ?? new Date().toISOString(),
+        }
+        : {}),
+    };
   };
 
   /**
@@ -69,10 +102,10 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
    * Never throws: if the online database is unreachable the card keeps what the client sent.
    */
   const withOfficial = async (card) => {
-    if (!card.tcg_id) return card;
+    if (!card.tcg_id) return card.set_code && card.number ? withMarket(card) : card;
     let details = null;
     try {
-      details = await tcg.details(card.tcg_id);
+      details = await catalog.details(card.tcg_id);
     } catch {
       // offline: fall through with the client-provided brief
     }
@@ -80,8 +113,8 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
     if (details) {
       for (const [k, v] of Object.entries(details)) if (v != null) merged[k] = v;
     }
-    merged.official_image_path = await cacheOfficialImage(card.tcg_id, merged.official_image_url);
-    return merged;
+    merged.official_image_path = await cacheOfficialImage(merged);
+    return withMarket(merged);
   };
 
   const toJson = (card) => card && {
@@ -173,10 +206,26 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
     const { name, setCode, number } = req.query;
     if (!name && !setCode && !number) throw new HttpError(400, 'Give a name, set code or number to look up');
     try {
-      res.json({ results: await tcg.search({ name, setCode, number }) });
+      const results = await catalog.search({ name, setCode, number });
+      const owned = store.ownedCounts(results.map((r) => r.tcgId));
+      res.json({ results: results.map((r) => ({ ...r, owned: owned[r.tcgId] ?? 0 })) });
     } catch (err) {
       res.status(502).json({ error: 'The online card database could not be reached. You can still save the card and look it up later.', detail: err.message });
     }
+  });
+
+  // Any card from the online sources, with rarity, pull chance and price (for the card search page).
+  app.get('/api/catalog/cards/:id', async (req, res) => {
+    let card;
+    try {
+      card = await catalog.details(req.params.id);
+    } catch {
+      throw new HttpError(502, 'The online card database could not be reached. Try again later.');
+    }
+    if (!card) throw new HttpError(404, 'Card not found');
+    const variant = typeof req.query.variant === 'string' ? req.query.variant : 'normal';
+    const market = await catalog.market({ ...card, variant }).catch(() => ({ rarity: card.rarity, pull: null, price: null }));
+    res.json({ card, market, owned: store.ownedCounts([card.tcg_id])[card.tcg_id] ?? 0 });
   });
 
   // Cards
@@ -203,8 +252,11 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
     const existing = findCard(req.params.id);
     let card = cleanCard({ ...existing, ...req.body });
     const relink = req.body.tcg_id !== undefined && req.body.tcg_id !== existing.tcg_id;
+    const repriced = ['variant', 'set_code', 'number'].some((k) => req.body[k] !== undefined && req.body[k] !== existing[k]);
     if (relink) {
       card = card.tcg_id ? await withOfficial(card) : { ...card, official_image_url: null, official_image_path: null };
+    } else if (repriced) {
+      card = await withMarket(card);
     }
     store.updateCard(existing.id, card);
     res.json(toJson(store.getCard(existing.id)));
@@ -216,6 +268,23 @@ export function createApp({ dataDir, tcg = new TcgClient() } = {}) {
     if (!existing.tcg_id) throw new HttpError(400, 'This card is not linked to an online card yet');
     const card = await withOfficial({ ...existing });
     store.updateCard(existing.id, card);
+    res.json(toJson(store.getCard(existing.id)));
+  });
+
+  // Refresh rarity, pull chance and price for one card, or for the whole collection.
+  app.post('/api/cards/refresh-market', async (_req, res) => {
+    let updated = 0;
+    for (const card of store.listCards()) {
+      const next = await withMarket(card);
+      store.updateCard(card.id, next);
+      if (next.market_price != null || next.pull_chance != null) updated++;
+    }
+    res.json({ updated, stats: store.stats() });
+  });
+
+  app.post('/api/cards/:id/refresh-market', async (req, res) => {
+    const existing = findCard(req.params.id);
+    store.updateCard(existing.id, await withMarket(existing));
     res.json(toJson(store.getCard(existing.id)));
   });
 

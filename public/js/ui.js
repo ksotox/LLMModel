@@ -147,3 +147,48 @@ export function dropZone({ label, hint, multiple = true, onFiles, camera = true 
   });
   return zone;
 }
+
+// ---- rarity, pull chance and price ----
+
+// The symbol printed on modern cards for each rarity, and a colour tier for the badge.
+const RARITY_STYLES = [
+  ['mega hyper rare', '★★★', 'gold'],
+  ['hyper rare', '★★★', 'gold'],
+  ['special illustration rare', '★★', 'gold'],
+  ['illustration rare', '★', 'gold'],
+  ['ultra rare', '★★', 'silver'],
+  ['double rare', '★★', 'purple'],
+  ['ace spec', 'ACE', 'pink'],
+  ['shiny', '✦', 'silver'],
+  ['uncommon', '◆', 'green'],
+  ['common', '●', 'grey'],
+  ['rare', '★', 'blue'],
+];
+
+export function rarityBadge(rarity, extraClass = '') {
+  if (!rarity) return null;
+  const key = rarity.toLowerCase();
+  const [, symbol, tier] = RARITY_STYLES.find(([name]) => key.includes(name)) ?? [null, '★', 'blue'];
+  return h('span.rarity', { class: `tier-${tier} ${extraClass}`, title: `Rarity: ${rarity}` },
+    h('span.rarity-symbol', { 'aria-hidden': 'true' }, symbol), rarity);
+}
+
+export function formatPrice(value, currency = 'USD') {
+  if (value == null) return '';
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency}`;
+  }
+}
+
+export function formatChance(chance) {
+  if (chance == null) return '';
+  const pct = chance * 100;
+  const digits = pct >= 10 ? 0 : pct >= 1 ? 1 : pct >= 0.1 ? 2 : 3;
+  return `${pct.toFixed(digits)}%`;
+}
+
+export function oneIn(chance) {
+  return chance ? Math.max(1, Math.round(1 / chance)) : null;
+}

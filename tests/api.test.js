@@ -4,8 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { createApp } from '../server/app.js';
+import { CardCatalog } from '../server/catalog.js';
+import { TcgCsvClient } from '../server/prices.js';
+import { PtcgDataClient } from '../server/ptcgData.js';
 import { TcgClient } from '../server/tcg.js';
-import { startMockTcgdex } from './helpers/mock-tcgdex.js';
+import { mockCatalog, startMockSources } from './helpers/mock-sources.js';
 
 const PHOTO = fs.readFileSync(new URL('../docs/reference/voltorb-reverse-holo.jpg', import.meta.url));
 
@@ -15,8 +18,8 @@ function listen(app) {
   });
 }
 
-async function start(dataDir, tcgUrl) {
-  const app = createApp({ dataDir, tcg: new TcgClient({ baseUrl: tcgUrl, timeoutMs: 2000 }) });
+async function start(dataDir, catalog) {
+  const app = createApp({ dataDir, catalog });
   const { server, base } = await listen(app);
   return {
     base,
@@ -56,9 +59,9 @@ describe('collection API', () => {
   };
 
   before(async () => {
-    mock = await startMockTcgdex();
+    mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-test-'));
-    srv = await start(dataDir, mock.url);
+    srv = await start(dataDir, mockCatalog(mock));
   });
 
   after(async () => {
@@ -215,7 +218,7 @@ describe('collection API', () => {
 
   test('keeps the collection across restarts', async () => {
     await srv.stop();
-    srv = await start(dataDir, mock.url);
+    srv = await start(dataDir, mockCatalog(mock));
     const { body } = await get('/api/cards');
     assert.equal(body.cards.length, 3);
     const photo = await fetch(srv.base + body.cards[0].photo_url);
@@ -240,7 +243,12 @@ describe('collection API', () => {
 describe('when the online card database is unreachable', () => {
   test('lookups fail softly and cards can still be saved', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-offline-'));
-    const srv = await start(dataDir, 'http://127.0.0.1:9/v2/en');
+    const offline = 'http://127.0.0.1:9';
+    const srv = await start(dataDir, new CardCatalog({
+      tcgdex: new TcgClient({ baseUrl: `${offline}/v2/en`, timeoutMs: 2000 }),
+      ptcg: new PtcgDataClient({ baseUrl: `${offline}/ptcg`, timeoutMs: 2000 }),
+      tcgcsv: new TcgCsvClient({ baseUrl: `${offline}/tcgcsv`, timeoutMs: 2000 }),
+    }));
     try {
       const lookup = await fetch(`${srv.base}/api/lookup?name=voltorb`);
       assert.equal(lookup.status, 502);
