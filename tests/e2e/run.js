@@ -124,7 +124,9 @@ try {
   const voltorbTile = page.locator('.card-tile', { hasText: 'Reverse holo' });
   await voltorbTile.locator('.rarity', { hasText: 'Common' }).waitFor();
   assert.equal((await voltorbTile.locator('.price').textContent()).trim(), '$0.25');
-  assert.match(await voltorbTile.locator('.card-pull').textContent(), /1\.\d% per pack · 1 in 93/);
+  assert.equal(await voltorbTile.locator('.card-foot span').first().textContent(), '1 in 93 packs');
+  assert.match(await voltorbTile.locator('.card-foot span').first().getAttribute('title'), /^1\.\d% per booster pack/);
+  assert.equal(await voltorbTile.locator('.set-tag').textContent(), 'PAL');
   await page.locator('.stats', { hasText: 'Est. value' }).waitFor();
   await page.getByLabel('Sort').selectOption('value');
   await page.waitForFunction(() => document.querySelector('.card-tile .price')?.textContent === '$0.25');

@@ -20,7 +20,8 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | `fee9e5d` | eBay sold prices per card: average, trend chart, listings |
 | 2026-10-30 | `01aa259` | Local daily price history; PokemonPriceTracker graded eBay sales |
 | 2026-10-30 | PR #4 merged | Above, plus `MEMORY.md`, this history and `SOURCES.md` |
-| 2026-10-30 | PR #5 | One-click Windows launcher with desktop icon; API key kept in the user environment |
+| 2026-10-30 | PR #5 merged | One-click Windows launcher with desktop icon; API key kept in the user environment |
+| 2026-10-30 | PR #6 | Link unmatched cards automatically (missing official images); cleaner card tiles |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -180,6 +181,25 @@ The owner chose "find a free way".
 - **`--open`:** opens the default browser once the server is listening. If the port is already in use, it reopens the browser and exits.
 - **A Poké Ball `public/pokedex.ico`.**
 - **A README PowerShell snippet** that saves the key as a Windows user environment variable (it survives updates and stays out of the repo) and creates a desktop shortcut that starts minimised.
+
+## Phase 8: missing official images and cleaner card tiles
+
+**Asked:** why some cards had no official picture, and a cleaner, easier-to-read info block under each card.
+
+**Cause:** those cards were saved with a name, set code and number (typed in, or added on the first version) but were never linked to an official card. **Update prices** could still find their rarity and price from the set code and number, but nothing ever fetched the image. Promo numbers had also been saved as `059/000`.
+
+**Built:**
+- `refreshCardMarket`, which runs on Update prices, on opening a card and in the hourly job, now links unlinked cards through `identifyCard`. It only links when the name, number and set agree (`confidence === 'high'`), then downloads the official image. Linked cards whose image is missing are retried.
+- A total of `000` is treated as no total.
+- The Update prices message says how many images were found.
+- Card tiles:
+  - names wrap to two lines instead of being cut off;
+  - the set code is a small tag next to the number, in grey rather than red;
+  - rarity and price share one row;
+  - a footer shows "1 in N packs" and a short date;
+  - the bottom rows line up across the grid;
+  - cards not yet matched say so.
+- The Search page uses the same layout.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

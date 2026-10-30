@@ -4,7 +4,7 @@
 import { setCodeList } from './add.js';
 import { api } from './api.js';
 import { describeBrief } from './lookup.js';
-import { clear, debounce, formatChance, formatPrice, h, modal, oneIn, rarityBadge, toast, VARIANT_LABELS } from './ui.js';
+import { cardNumber, clear, debounce, formatChance, formatPrice, h, modal, oneIn, rarityBadge, toast, VARIANT_LABELS } from './ui.js';
 
 function marketBlock(market) {
   const { rarity, pull, price } = market;
@@ -106,10 +106,12 @@ export function renderSearch(root, meta, navigate, params) {
       b.thumb || b.image ? h('img', { src: b.thumb || b.image, alt: '', loading: 'lazy', onerror: (e) => { if (b.image && e.target.src !== b.image) e.target.src = b.image; } }) : h('div.card-noimg', b.name),
       b.owned > 0 && h('span.badge.owned', `Owned ×${b.owned}`)),
     h('div.card-info',
-      h('strong.card-name', b.name),
-      h('span.card-set', describeBrief(b) || b.setName || ''),
-      b.setName && h('span.card-date', b.setName),
-      b.rarity && h('div.card-market', rarityBadge(b.rarity))));
+      h('strong.card-name', { title: b.name }, b.name),
+      h('span.card-set',
+        b.setCode && h('span.set-tag', b.setCode),
+        h('span', b.number ? cardNumber({ number: b.number, set_total: b.setTotal }) : '')),
+      b.setName && h('span.card-setname', { title: b.setName }, b.setName),
+      b.rarity && h('div.card-meta', h('div.card-market', rarityBadge(b.rarity)))));
 
   let results = [];
   const render = (list) => clear(grid, list.length ? h('div.card-grid', list.map(tile)) : null);
