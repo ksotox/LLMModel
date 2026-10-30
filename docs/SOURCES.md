@@ -11,15 +11,18 @@ Everything the app calls at run time is **free**. Only PokemonPriceTracker needs
 | **TCGdex assets** | `https://assets.tcgdex.net/en/<series>/<set>/<number>/high.png` | Official card images (a local copy is saved) | `server/tcg.js` | No |
 | **Pokémon TCG dataset** (GitHub, PokemonTCG/pokemon-tcg-data) | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` (`PTCG_DATA_URL`) | Second card source and images when TCGdex has no match; rarity counts per set for pull chances | `server/ptcgData.js` | No |
 | **pokemontcg.io image CDN** (`images.pokemontcg.io`) | URLs come from the dataset above | Card images for cards found in the dataset | `server/ptcgData.js` | No |
-| **tcgcsv.com** | `https://tcgcsv.com/tcgplayer/3` (`TCGCSV_URL`) | Backup TCGplayer prices (category 3 = Pokémon): `/groups`, `/<groupId>/products`, `/<groupId>/prices` | `server/prices.js` | No |
+| **tcgcsv.com** | `https://tcgcsv.com/tcgplayer/3` (`TCGCSV_URL`) | Backup TCGplayer prices and product pictures (category 3 = Pokémon): `/groups`, `/<groupId>/products`, `/<groupId>/prices`. Sets are found by their TCGplayer group id, listed in `server/setCodes.js` and taken from TCGdex's data files. | `server/prices.js` | No |
+| **TCGplayer image CDN** | `https://tcgplayer-cdn.tcgplayer.com/product/<id>_in_1000x1000.jpg` (then `_400w`, `_200w`) | Official picture of a card when TCGdex and the dataset have none, e.g. Mega Evolution promos (MEP) | `server/prices.js`, `server/catalog.js` | No |
+| **Frankfurter** (ECB exchange rates) | `https://api.frankfurter.dev/v1` (`FX_URL`) | Converts Cardmarket euro prices to US dollars (`/latest?base=EUR&symbols=USD`, cached 12 h; `EUR_USD_RATE` fallback when offline) | `server/fx.js` | No |
 | **eBay Marketplace Insights API** (`v1_beta`) | `https://api.ebay.com` | Sold listings from the last 90 days. OAuth client credentials, scope `buy.marketplace.insights`, `item_sales/search` in category 183454 (CCG Individual Cards) | `server/ebay.js` | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET`; eBay must approve the app |
 | **eBay.com "Sold items" search** | `https://www.ebay.com/sch/i.html?…&LH_Sold=1&LH_Complete=1` | Opened in the user's own browser. The user copies the results and pastes them into the app; the app never fetches eBay pages itself. | `server/ebay.js`, `public/js/ebay.js` | No |
 | **PokemonPriceTracker** API v2 | `https://www.pokemonpricetracker.com/api/v2` (`POKEMONPRICETRACKER_URL`) | `GET /cards` with history and eBay data: eBay sales by grade, recent price history, population. Free tier: 100 credits a day. | `server/priceTracker.js`, `server/priceTrackerService.js` | `POKEMONPRICETRACKER_API_KEY` |
 
 ### Where prices come from, in order
+All prices are shown in US dollars.
 1. TCGplayer market price (USD) from TCGdex, using the price for the card's variant (e.g. reverse holo).
-2. Cardmarket trend price (EUR) from TCGdex.
-3. TCGplayer price from tcgcsv.com.
+2. TCGplayer price (USD) from tcgcsv.com.
+3. Cardmarket trend price (EUR) from TCGdex, converted to USD with the day's ECB rate (Frankfurter).
 4. Optional: PokemonPriceTracker market price and eBay graded averages, saved into the local price history.
 
 ### Pull-rate data

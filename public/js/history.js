@@ -8,7 +8,8 @@ import { clear, formatDate, formatPrice, h, toast } from './ui.js';
 const FLAT_BAND = 0.02;
 const SOURCE_NAMES = {
   tcgplayer: 'TCGplayer market price',
-  cardmarket: 'Cardmarket price trend',
+  cardmarket: 'Cardmarket price trend (€)',
+  'cardmarket-usd': 'Cardmarket price trend (in $)',
   pokemonpricetracker: 'PokemonPriceTracker market price',
 };
 const seriesName = (s) => (s.source === 'ebay-graded' ? `eBay average · ${s.label}` : SOURCE_NAMES[s.source] ?? `${s.source} · ${s.label}`);
@@ -56,7 +57,7 @@ export function historySection(card) {
 
   function historyBlock() {
     // Market prices first, then the graded averages from the highest grade down.
-    const order = { tcgplayer: 0, pokemonpricetracker: 1, cardmarket: 2, 'ebay-graded': 3 };
+    const order = { tcgplayer: 0, pokemonpricetracker: 1, 'cardmarket-usd': 2, cardmarket: 3, 'ebay-graded': 4 };
     const series = history.series.filter((s) => s.points.length)
       .sort((a, b) => (order[a.source] ?? 9) - (order[b.source] ?? 9) || b.last - a.last);
     if (!series.length) return h('p.muted', 'No price history yet. A price is saved every day the app runs, so the chart fills in over time.');

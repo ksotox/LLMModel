@@ -45,7 +45,8 @@ npm start            # http://localhost:3000
 | `DATA_DIR` | `./data` | Where the database (`collection.db`) and images are stored. Back up this folder to back up your collection. |
 | `TCGDEX_URL` | `https://api.tcgdex.net/v2/en` | Main card database (cards, images, prices) |
 | `PTCG_DATA_URL` | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` | Second card source (cards, images, rarities) |
-| `TCGCSV_URL` | `https://tcgcsv.com/tcgplayer/3` | Backup price source (TCGplayer prices) |
+| `TCGCSV_URL` | `https://tcgcsv.com/tcgplayer/3` | Backup price source and pictures (TCGplayer prices and product images) |
+| `EUR_USD_RATE` | `1.15` | Dollars per euro, used only when the exchange-rate service can't be reached |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | (not set) | eBay app keys, for automatic sold listings once eBay approves the Marketplace Insights API |
 | `EBAY_MARKETPLACE` | `EBAY_US` | Which eBay site to read sold listings from (e.g. `EBAY_GB`) |
 | `POKEMONPRICETRACKER_API_KEY` | (not set) | Free PokemonPriceTracker key, for eBay graded sales and extra price history (see below) |
@@ -148,9 +149,9 @@ Small print in blurry or dim photos can still defeat it. In that case, type the 
 
 | | Source | Notes |
 | --- | --- | --- |
-| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data) | Both are free and need no API key. |
+| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), then TCGplayer's product picture (via [tcgcsv.com](https://tcgcsv.com)) | All free, no API key. TCGplayer lists every card, including new promos the other two have no picture for. |
 | Rarity | The card's own data | Same rarity names as printed on the card. |
-| Market price | TCGplayer market price (USD) via TCGdex, then Cardmarket trend (EUR) via TCGdex, then TCGplayer via [tcgcsv.com](https://tcgcsv.com) | Uses the price for your variant (e.g. reverse holo) when there is one. Prices change: treat them as a guide, not an offer. |
+| Market price | Always in US dollars: TCGplayer market price via TCGdex, then TCGplayer via [tcgcsv.com](https://tcgcsv.com), then the Cardmarket trend (euros) converted to dollars at the day's [European Central Bank rate](https://frankfurter.dev) | Uses the price for your variant (e.g. reverse holo) when there is one. A converted price says so when you hover over it. Prices change: treat them as a guide, not an offer. |
 | Pull chance | Calculated | See below. |
 
 **Pull chance** is an *estimate* for one booster pack:

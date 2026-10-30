@@ -1,3 +1,4 @@
+import { ExchangeRates } from './fx.js';
 import { priceFromTcgdex, TcgCsvClient } from './prices.js';
 import { PtcgDataClient } from './ptcgData.js';
 import { pullChance } from './pullRates.js';
@@ -8,13 +9,15 @@ const isPtcg = (id) => String(id ?? '').startsWith(PtcgDataClient.PREFIX);
 /**
  * One place to ask about cards. TCGdex is the main source; the Pokémon TCG dataset fills in
  * when TCGdex has no match or no image, and also supplies the rarity counts behind pull-rate
- * estimates. Prices come from TCGdex (TCGplayer / Cardmarket), with tcgcsv.com as a backup.
+ * estimates. Prices are always in US dollars: TCGplayer via TCGdex, then TCGplayer via tcgcsv.com,
+ * then Cardmarket (euros) converted to dollars. Pictures fall back to TCGplayer's product images.
  */
 export class CardCatalog {
-  constructor({ tcgdex = new TcgClient(), ptcg = new PtcgDataClient(), tcgcsv = new TcgCsvClient() } = {}) {
+  constructor({ tcgdex = new TcgClient(), ptcg = new PtcgDataClient(), tcgcsv = new TcgCsvClient(), fx = new ExchangeRates() } = {}) {
     this.tcgdex = tcgdex;
     this.ptcg = ptcg;
     this.tcgcsv = tcgcsv;
+    this.fx = fx;
   }
 
   /** Search both sources. Throws only when every source failed. */
@@ -28,10 +31,16 @@ export class CardCatalog {
     }
 
     if (results.length) {
-      // TCGdex has no picture for some cards (often the newest sets): borrow it from the second source.
+      // TCGdex has no picture for some cards (often the newest sets): borrow it from another source.
       await Promise.all(results.filter((r) => !r.image).map(async (r) => {
         const twin = await this.ptcg.findCard({ setCode: r.setCode, setName: r.setName, number: r.number, name: r.name }).catch(() => null);
-        if (twin?.image) Object.assign(r, { image: twin.image, thumb: twin.thumb, imageSource: 'pokemontcg' });
+        if (twin?.image) {
+          Object.assign(r, { image: twin.image, thumb: twin.thumb, imageSource: 'pokemontcg' });
+          return;
+        }
+        // Not in the dataset either (e.g. the newest promos): TCGplayer's product picture.
+        const [large, medium] = await this.tcgcsv.images({ setCode: r.setCode, setName: r.setName, number: r.number, name: r.name }).catch(() => []);
+        if (large) Object.assign(r, { image: large, thumb: medium ?? large, imageSource: 'tcgplayer' });
       }));
       return results.map((r) => ({ source: 'tcgdex', ...r }));
     }
@@ -79,11 +88,20 @@ export class CardCatalog {
     return this.tcgdex.download(url);
   }
 
-  /** Other places the same card's picture can be downloaded from, if the first one fails. */
-  async fallbackImage(card) {
-    if (isPtcg(card.tcg_id)) return null;
-    const twin = await this.ptcg.findCard({ setCode: card.set_code, setName: card.set_name, number: card.number, name: card.name }).catch(() => null);
-    return twin?.image ?? null;
+  /**
+   * Other places the same card's official picture can be downloaded from, best first: the Pokémon
+   * TCG dataset, then TCGplayer's product image (via tcgcsv.com). TCGplayer lists every card,
+   * including promos the other two sources have no picture for.
+   */
+  async fallbackImages(card) {
+    const urls = [];
+    if (!isPtcg(card.tcg_id)) {
+      const twin = await this.ptcg.findCard({ setCode: card.set_code, setName: card.set_name, number: card.number, name: card.name }).catch(() => null);
+      if (twin?.image) urls.push(twin.image);
+    }
+    const query = { setName: card.set_name, setCode: card.set_code, number: card.number, name: card.name };
+    urls.push(...await this.tcgcsv.images(query).catch(() => []));
+    return urls;
   }
 
   /**
@@ -109,15 +127,15 @@ export class CardCatalog {
       const [twin] = await this.tcgdex.search({ setCode: card.set_code, number: card.number }).catch(() => []);
       tcgdexId = twin?.tcgId ?? null;
     }
-    if (tcgdexId) {
-      const raw = await this.tcgdex.card(tcgdexId).catch(() => null);
-      out.price = priceFromTcgdex(raw?.pricing, card.variant);
-    }
+    const pricing = tcgdexId ? (await this.tcgdex.card(tcgdexId).catch(() => null))?.pricing : null;
+    out.price = priceFromTcgdex(pricing, card.variant, { sources: ['tcgplayer'] });
     if (!out.price && card.number && (card.set_name || card.set_code)) {
       out.price = await this.tcgcsv.price({
         setName: card.set_name, setCode: card.set_code, number: card.number, name: card.name, variant: card.variant,
       }).catch(() => null);
     }
+    // Last resort: the European Cardmarket price, shown in dollars.
+    if (!out.price) out.price = await this.fx.toUsd(priceFromTcgdex(pricing, card.variant, { sources: ['cardmarket'] })).catch(() => null);
     return out;
   }
 }
