@@ -26,6 +26,8 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | **Price history & eBay graded sales** | |
 | ![Price history](docs/screenshots/13-price-history.png) | |
 
+> **More documentation:** [`docs/HISTORY.md`](docs/HISTORY.md) (how the app was built), [`docs/SOURCES.md`](docs/SOURCES.md) (every source, website and API used) and [`MEMORY.md`](MEMORY.md) (handoff notes for the next developer or AI agent).
+
 > The screenshots come from the automated test, which runs against a mock card database, so the "official" images there are flat placeholder colours. In normal use they are the real card PNGs.
 
 ## Running it
@@ -172,9 +174,13 @@ tests/
   identify.test.js  card identification from real OCR readings of the reference photos
   ebay.test.js    sold-price statistics, trend colours, listing matching, eBay API + routes
   pricetracker.test.js  PokemonPriceTracker client, caching, credit budget, price history, scheduler
+  memory.test.js  keeps MEMORY.md within its size budget
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
 docs/reference/ the reference photos used for the upload feature and the tests
+docs/HISTORY.md full project history
+docs/SOURCES.md every source, website, API and library used
+MEMORY.md       short handoff notes for the next agent (size-capped by tests/memory.test.js)
 ```
 
 ### API
