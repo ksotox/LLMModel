@@ -286,6 +286,8 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       return res.end(JSON.stringify({ data: found, metadata: { total: found.length } }));
     }
 
+    // Like the real tcgcsv.com, turn away requests that don't identify the app.
+    if (url.pathname.startsWith('/tcgcsv/') && !/pokedex-collection/.test(req.headers['user-agent'] ?? '')) return json(401, { error: 'unauthorized' });
     if (url.pathname === '/tcgcsv/tcgplayer/3/groups') return json(200, { success: true, results: TCGCSV.groups });
     if ((m = url.pathname.match(/^\/tcgcsv\/tcgplayer\/3\/(\d+)\/(products|prices)$/))) {
       const results = (TCGCSV[m[2]][m[1]] ?? []).map((r) => (r.imageUrl ? { ...r, imageUrl: `http://${req.headers.host}${r.imageUrl}` } : r));

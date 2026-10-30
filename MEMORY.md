@@ -63,6 +63,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Gotchas
 - OpenCV.js 4.12 module is a *thenable*: wrap it as `{cv}` before resolving, or `await` hangs.
   Free every `cv.Mat` after use (an earlier `approx.rows` use-after-free crashed).
+- tcgcsv.com answered **401** to the owner's PC (2026-10-30). The client now sends a descriptive
+  User-Agent (`USER_AGENT` in `server/prices.js`); `npm run check:live` prints its access results.
+  Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`).
 - `node:sqlite` prints an ExperimentalWarning; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
   history and sales. Not yet verified against the live API.

@@ -22,7 +22,8 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | PR #4 merged | Above, plus `MEMORY.md`, this history and `SOURCES.md` |
 | 2026-10-30 | PR #5 merged | One-click Windows launcher with desktop icon; API key kept in the user environment |
 | 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
-| 2026-10-30 | PR #7 | Promo pictures from TCGplayer; all prices in US dollars |
+| 2026-10-30 | PR #7 merged | Promo pictures from TCGplayer; all prices in US dollars |
+| 2026-10-30 | PR #8 | tcgcsv 401: app User-Agent, extra promo picture fallback, access check |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -217,6 +218,17 @@ The owner chose "find a free way".
 - **Price order is always USD:** TCGplayer via TCGdex, then tcgcsv, then Cardmarket converted with the day's ECB rate (`server/fx.js`, Frankfurter). There's a fixed fallback rate when offline, labelled "approximate".
 - **Converted prices get their own history line** (`cardmarket-usd`).
 - **The rarity badge no longer gets clipped** by the price on narrow tiles.
+
+## Phase 10: tcgcsv.com answered 401
+
+**Found:** the owner ran `npm run check:live`.
+- Working: TCGdex, the dataset, images, TCGplayer prices via TCGdex, and the exchange rate (1 EUR = 1.113 USD).
+- Failing: every tcgcsv.com request returned **401**, so promo pictures and the backup prices failed.
+
+**Changed:**
+- `TcgCsvClient` sends a descriptive `User-Agent` and `Accept: application/json`. The mock now rejects requests without it, so the tests prove it's sent.
+- Promo pictures fall back to the dataset image hosts' usual addresses (Scrydex, pokemontcg.io), guessed from the TCGdex set id.
+- `check:live` tests tcgcsv with and without the app's name and lists each promo picture address it tries.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

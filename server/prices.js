@@ -2,6 +2,9 @@ import { parseNumber, sameNumber, setFromCode } from './setCodes.js';
 
 const HOUR = 60 * 60 * 1000;
 
+// tcgcsv.com is run by one person for free; it turns away requests that don't say who they are.
+export const USER_AGENT = 'pokedex-collection/1.0 (personal card catalog; +https://github.com/ksotox/LLMModel)';
+
 const positive = (v) => (typeof v === 'number' && v > 0 ? v : null);
 const round2 = (v) => Math.round(v * 100) / 100;
 
@@ -80,7 +83,10 @@ export class TcgCsvClient {
   async #get(path) {
     const hit = this.cache.get(path);
     if (hit && hit.expires > Date.now()) return hit.value;
-    const res = await this.fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(this.timeoutMs) });
+    const res = await this.fetch(`${this.baseUrl}${path}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
     if (!res.ok) throw new Error(`tcgcsv ${path} responded ${res.status}`);
     const value = (await res.json())?.results ?? [];
     this.cache.set(path, { value, expires: Date.now() + 12 * HOUR });

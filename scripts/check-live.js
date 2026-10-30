@@ -3,7 +3,7 @@
 // Prints what each source returned, so you can see which ones are reachable from this computer.
 
 import { CardCatalog } from '../server/catalog.js';
-import { TcgCsvClient } from '../server/prices.js';
+import { TcgCsvClient, USER_AGENT } from '../server/prices.js';
 import { PtcgDataClient } from '../server/ptcgData.js';
 import { pullChance } from '../server/pullRates.js';
 import { TcgClient } from '../server/tcg.js';
@@ -71,19 +71,34 @@ for (const q of CARDS) {
   }
 }
 
+// tcgcsv.com access: which requests it accepts (it answered 401 to plain requests).
+console.log('\ntcgcsv.com access');
+for (const [label, headers] of [['as this app', { 'User-Agent': USER_AGENT }], ['with no app name', {}]]) {
+  for (const path of ['/groups', '/24451/products']) {
+    try {
+      const res = await fetch(`https://tcgcsv.com/tcgplayer/3${path}`, { headers, signal: AbortSignal.timeout(15000) });
+      (res.ok ? ok : fail)(`${path} ${label}`, `HTTP ${res.status} ${res.headers.get('content-type') ?? ''}`);
+    } catch (err) {
+      fail(`${path} ${label}`, err.cause ?? err);
+    }
+  }
+}
+
 // Promos have no picture on TCGdex or in the dataset: TCGplayer's product picture is used instead.
 console.log('\nFroakie MEP 060 (promo)');
 try {
-  const urls = await catalog.fallbackImages({ set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '060', name: 'Froakie' });
-  if (!urls.length) fail('TCGplayer picture', 'not found on tcgcsv.com');
+  const urls = await catalog.fallbackImages({ tcg_id: 'mep-060', set_id: 'mep', set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '060', name: 'Froakie' });
+  let found = false;
   for (const url of urls) {
     const img = await catalog.download(url).catch(() => null);
     if (img && /^image\//.test(img.contentType)) {
-      ok('TCGplayer picture', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+      ok('Promo picture', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+      found = true;
       break;
     }
-    fail('TCGplayer picture', `${url} not downloadable`);
+    fail('Promo picture', `${url} not downloadable`);
   }
+  if (!found) fail('Promo picture', 'no source had it');
   const price = await tcgcsv.price({ setCode: 'MEP', number: '060', name: 'Froakie', variant: 'promo' });
   price ? ok('Promo price', money(price)) : fail('Promo price', 'no match');
 } catch (err) {
