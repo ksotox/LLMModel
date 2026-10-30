@@ -50,6 +50,10 @@ const CARDS = {
       pricing: { cardmarket: { unit: 'EUR', updated: '2026-10-28T20:00:00.000Z', avg: 0.12, low: 0.02, trend: 0.15 } },
     }]],
   },
+  mep: {
+    name: 'MEP Black Star Promos', series: 'me', official: 0, // TCGdex really lists 0 for this promo set
+    cards: [['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo' }]],
+  },
   sv01: {
     name: 'Scarlet & Violet', series: 'sv', official: 198,
     cards: [['066', 'Voltorb', { hp: 60, types: ['Lightning'], rarity: 'Common' }]],
@@ -113,7 +117,7 @@ export function solidPng(width, height, [r, g, b]) {
   ]);
 }
 
-const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer: [148, 163, 184] };
+const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer: [148, 163, 184], Water: [56, 189, 248] };
 
 export function startMockSources({ tcgdexDown = false } = {}) {
   const requests = [];

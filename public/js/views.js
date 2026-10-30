@@ -1,7 +1,7 @@
 // Browsing views: the card collection, packs, a single pack, and the card detail dialog.
 
 import { api } from './api.js';
-import { cropToBlob, loadImage } from './images.js';
+import { cardQuads, cropToBlob, cutCard, loadImage } from './images.js';
 import { lookupPanel } from './lookup.js';
 import {
   cardNumber, clear, confirmDialog, debounce, formatChance, formatDate, formatPrice, h, KIND_LABELS, modal, oneIn, rarityBadge, toast, VARIANT_LABELS,
@@ -37,9 +37,18 @@ function pickFile(onFile) {
   input.click();
 }
 
-async function fileToBlob(file) {
+/** A new photo of a card: cut the card out of it (the biggest one, if several are in the photo). */
+async function cardPhotoBlob(file) {
   const img = await loadImage(file);
-  return cropToBlob(img, undefined, file.name.replace(/\.\w+$/, '') + '.jpg');
+  const { quads } = await cardQuads(img);
+  const area = (q) => Math.abs((q[2].x - q[0].x) * (q[2].y - q[0].y));
+  const biggest = [...quads].sort((a, b) => area(b) - area(a))[0];
+  return (await cutCard(img, biggest, file.name)).blob;
+}
+
+/** A new photo of a pack: saved as taken (scaled down). */
+async function packPhotoBlob(file) {
+  return cropToBlob(await loadImage(file), file.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +122,7 @@ export async function renderCollection(root, meta, navigate, params) {
   const count = h('span.result-count.muted');
 
   const syncUrl = () => {
+    if (!results.isConnected) return; // the user has left the collection page
     const qs = new URLSearchParams(Object.entries(state).filter(([, v]) => v)).toString();
     history.replaceState(null, '', `#/${qs ? `?${qs}` : ''}`);
   };
@@ -288,7 +298,7 @@ export async function renderPack(root, meta, navigate, id) {
             type: 'button',
             onclick: () => pickFile(async (file) => {
               try {
-                await api.replacePackPhoto(pack.id, await fileToBlob(file));
+                await api.replacePackPhoto(pack.id, await packPhotoBlob(file));
                 reload();
               } catch (err) {
                 toast(err.message, 'error');
@@ -445,7 +455,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
           type: 'button',
           onclick: () => pickFile(async (file) => {
             try {
-              await refresh(await api.replaceCardPhoto(card.id, await fileToBlob(file)));
+              await refresh(await api.replaceCardPhoto(card.id, await cardPhotoBlob(file)));
             } catch (err) {
               toast(err.message, 'error');
             }

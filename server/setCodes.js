@@ -9,6 +9,8 @@ export const SET_CODES = {
   POR: { id: 'me03', name: 'Perfect Order', total: 88 },
   CRI: { id: 'me04', name: 'Chaos Rising', total: 86 },
   PBL: { id: 'me05', name: 'Pitch Black', total: 84 },
+  '30C': { id: '30th', name: '30th Celebration', total: 128 },
+  MEP: { id: 'mep', name: 'MEP Black Star Promos' },
   // Scarlet & Violet
   SVI: { id: 'sv01', name: 'Scarlet & Violet', total: 198 },
   PAL: { id: 'sv02', name: 'Paldea Evolved', total: 193 },

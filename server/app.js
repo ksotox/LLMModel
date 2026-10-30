@@ -1,14 +1,25 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
 import { CardCatalog } from './catalog.js';
 import { openDb, PACK_KINDS, VARIANTS } from './db.js';
+import { identifyCard } from './identify.js';
 import { SET_CODES } from './setCodes.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+const require = createRequire(import.meta.url);
+const packageDir = (name) => path.dirname(require.resolve(`${name}/package.json`));
+// Image tools that run in the browser, served from this app so they work without any CDN.
+const VENDOR = {
+  '/vendor/opencv': path.join(packageDir('@techstark/opencv-js'), 'dist'),
+  '/vendor/tesseract': path.join(packageDir('tesseract.js'), 'dist'),
+  '/vendor/tesseract-core': packageDir('tesseract.js-core'),
+  '/vendor/tessdata': path.join(packageDir('@tesseract.js-data/eng'), '4.0.0_best_int'),
+};
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
@@ -190,6 +201,7 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   app.use(express.json({ limit: '1mb' }));
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
+  for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
   app.use(express.static(PUBLIC_DIR));
 
   app.get('/api/meta', (_req, res) => {
@@ -212,6 +224,15 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
     } catch (err) {
       res.status(502).json({ error: 'The online card database could not be reached. You can still save the card and look it up later.', detail: err.message });
     }
+  });
+
+  // Work out which card a photo shows from the text the browser read off it (see public/js/ocr.js).
+  app.post('/api/identify', async (req, res) => {
+    const texts = (v) => (Array.isArray(v) ? v : []).filter((t) => typeof t === 'string').slice(0, 12).map((t) => t.slice(0, 200));
+    const result = await identifyCard(catalog, { names: texts(req.body?.names), lines: texts(req.body?.lines) });
+    const owned = store.ownedCounts(result.candidates.map((c) => c.tcgId));
+    const withOwned = (c) => c && { ...c, owned: owned[c.tcgId] ?? 0 };
+    res.json({ ...result, match: withOwned(result.match), candidates: result.candidates.map(withOwned) });
   });
 
   // Any card from the online sources, with rarity, pull chance and price (for the card search page).

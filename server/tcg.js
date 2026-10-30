@@ -4,7 +4,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /** The set total as printed next to the number: "092" in a 94-card set reads "092/094". */
 function printedTotal(localId, official) {
-  if (official == null) return null;
+  if (!official) return null; // promo sets have no printed total
   const total = String(official);
   return /^\d+$/.test(String(localId)) ? total.padStart(String(localId).length, '0') : total;
 }

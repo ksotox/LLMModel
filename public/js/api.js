@@ -38,6 +38,7 @@ function multipart(key, items) {
 export const api = {
   meta: () => request('GET', '/api/meta'),
   lookup: (params) => request('GET', `/api/lookup${qs(params)}`),
+  identify: (texts) => request('POST', '/api/identify', texts),
 
   cards: (params = {}) => request('GET', `/api/cards${qs(params)}`).then((r) => r.cards),
   card: (id) => request('GET', `/api/cards/${id}`),

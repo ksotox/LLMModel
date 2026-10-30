@@ -4,7 +4,7 @@ import { renderSearch } from './search.js';
 import { clear, h } from './ui.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
 
-const root = document.getElementById('view');
+const main = document.getElementById('view');
 let renderSeq = 0;
 
 function navigate(hash) {
@@ -22,9 +22,13 @@ async function route() {
   const params = new URLSearchParams(query);
   const parts = path.split('/').filter(Boolean);
   window.scrollTo(0, 0);
+  // Each visit renders into its own container: a slow page that finishes after the user has moved
+  // on only ever writes into its own detached container, never over the page now showing.
+  const root = h('div.page');
   try {
     const meta = await api.meta();
     if (seq !== renderSeq) return;
+    main.replaceChildren(root);
     if (parts[0] === 'add') {
       setActiveNav('add');
       await renderAddCards(root, meta, navigate, { packId: params.get('pack') });
@@ -46,6 +50,7 @@ async function route() {
     }
   } catch (err) {
     if (seq !== renderSeq) return;
+    main.replaceChildren(root);
     clear(root, h('div.empty', h('h2', 'Something went wrong'), h('p.muted', err.message), h('a.btn', { href: '#/' }, 'Back to collection')));
   }
 }

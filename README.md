@@ -2,7 +2,8 @@
 
 Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they came from.
 
-- **Upload cards one at a time or in batches.** Add as many photos as you like. A photo of several cards on a table (like [`docs/reference/three-cards.jpg`](docs/reference/three-cards.jpg)) is split into separate cards automatically, and you can adjust the boxes in a crop editor. A close-up of one card (like [`docs/reference/voltorb-reverse-holo.jpg`](docs/reference/voltorb-reverse-holo.jpg)) is cropped to the card.
+- **Upload cards one at a time or in batches.** Add as many photos as you like. Each card in a photo is found automatically, **cut out along its own edges and straightened**, even when it's tilted, photographed at an angle or fills the whole photo. Only the card is kept, with transparent rounded corners, so no table or background shows. A photo of several cards (like [`docs/reference/three-cards.jpg`](docs/reference/three-cards.jpg)) becomes several cards. You can fine-tune any outline by dragging its corners in the crop editor.
+- **Cards are read automatically.** The app reads the **name**, **set code** and **number** printed on each card (e.g. `PAL 066/193`, or `MEP 060` on promos) and fills them in, then matches the official card, so normally there's nothing to type. You can still correct anything it gets wrong.
 - **Optionally record where each card came from.** Upload one or more photos of packs, tins, kits, bundles, Elite Trainer Boxes and so on (or add one without a photo), and link the cards to them.
 - **Official artwork when it exists.** Type the set code and number printed at the bottom left of the card (e.g. `PAL` `066/193`), or just the name, and the app finds the card in the free [TCGdex](https://tcgdex.dev) database. If TCGdex has no match or no picture, it checks the open [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), which covers every English set. It keeps a local copy of the official image next to your own photo.
 - **Rarity, pull chance and price on every card.** Each card shows its rarity (● Common, ◆ Uncommon, ★ Rare, ★★ Double Rare…), an **estimated chance of pulling it from one booster pack**, and an **estimated market price**. The collection page adds up the total value. Prices refresh automatically when you open a card, or all at once with **Update prices**.
@@ -11,7 +12,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
 - **Searchable.** Search the whole collection by name, set, number (`066/193`), rarity, type, variant, pack name or notes. You can filter by pack/bundle (or "not from a pack") and by set, or search inside a single pack.
 
-| Add cards (auto-split + official match) | Crop / split editor |
+| Add cards: found, cut out, read and matched automatically | Crop editor: drag the corners to fit tilted cards |
 | --- | --- |
 | ![Add cards](docs/screenshots/02-add-cards.png) | ![Crop editor](docs/screenshots/03-crop-editor.png) |
 | **Collection** | **Card: your photo + official image** |
@@ -50,6 +51,17 @@ To use it from your phone, run it on a computer on your home network and open `h
 4. For each card, type the **set code** and **number** from the bottom-left corner, or the **name**. Matching official cards appear, and if there's exactly one it is selected for you. Set the variant (reverse holo, holo…) if you like.
 5. Click **Save**. If the online database can't be reached, the card is still saved with your photo. You can link it later from the card's **Find official card** / **Retry official image** buttons.
 
+## How cards are cut out and read
+
+Both run inside your browser, so your photos aren't sent to any outside service. The tools are served by the app itself: [OpenCV.js](https://docs.opencv.org/) for finding cards and [Tesseract.js](https://tesseract.projectnaptha.com/) for reading text, about 25 MB downloaded once and then cached by the browser.
+
+1. **Find each card:** looks for card-shaped outlines (63 × 88 mm) by brightness and by edges, then snaps each side onto the card's real outer edge so the border is never cut off.
+2. **Straighten it:** a perspective correction turns each outline into a flat, upright card picture.
+3. **Read it:** OCR reads the name strip at the top (or the second line on Trainer cards) and the set code and number at the bottom left, several times with different image processing.
+4. **Match it** (`POST /api/identify`): the server votes across those readings. It fixes typical misreads (a slash read as "7", "0" for "O", a dropped leading zero), looks the card up by set and number, and checks that the name agrees before filling anything in automatically. If it isn't sure, it shows its best guesses and asks you to pick.
+
+Small print in blurry or dim photos can still defeat it. In that case, type the details as before.
+
 ## Where the numbers come from
 
 | | Source | Notes |
@@ -82,17 +94,21 @@ server/
   ptcgData.js   Pokémon TCG dataset client (second source, rarity counts per set)
   prices.js     picks the right price for a variant; tcgcsv.com backup prices
   pullRates.js  pull-chance estimates
+  identify.js   turns OCR readings into the actual card
   setCodes.js   printed set codes (PAL, OBF, PFL…) → TCGdex set ids
 public/         no-build frontend (vanilla ES modules)
   js/add.js     upload flow for cards and packs
   js/cropper.js crop / split editor
   js/images.js  cropping + automatic card detection in photos
   js/lookup.js  official-card picker
+  js/vision.js  finds cards in photos and straightens them (OpenCV.js)
+  js/ocr.js     reads the name / set code / number off a card (Tesseract.js)
   js/views.js   collection, packs, pack page, card dialog
   js/search.js  search any card online
 tests/
   api.test.js     API tests (node:test) against mock sources
   market.test.js  pull chances, prices, second source, market API
+  identify.test.js  card identification from real OCR readings of the reference photos
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
 docs/reference/ the reference photos used for the upload feature and the tests
@@ -112,6 +128,7 @@ docs/reference/ the reference photos used for the upload feature and the tests
 | `GET /api/packs?q=` · `POST /api/packs` | List · add one or more packs (same multipart format, key `packs`) |
 | `PATCH /api/packs/:id` · `POST /api/packs/:id/photo` · `DELETE /api/packs/:id[?withCards=1]` | Edit · replace photo · delete (cards are kept unless `withCards=1`) |
 | `GET /api/lookup?name=&setCode=&number=` | Search the online card database |
+| `POST /api/identify` | Identify a card from OCR readings `{ names: [...], lines: [...] }` |
 | `GET /api/meta` | Pack kinds, variants, known set codes, stats |
 
 ## Tests

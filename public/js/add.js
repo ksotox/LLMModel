@@ -2,12 +2,12 @@
 // cards in it) and, optionally, the pack / tin / kit / bundle they were pulled from.
 
 import { api } from './api.js';
-import { editBoxes } from './cropper.js';
-import { cropToBlob, detectCards, loadImage } from './images.js';
+import { editQuads } from './cropper.js';
+import { cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
 import { describeBrief, lookupPanel } from './lookup.js';
+import { readCardText } from './ocr.js';
 import { clear, debounce, dropZone, h, KIND_LABELS, toast, VARIANT_LABELS } from './ui.js';
 
-const WHOLE = { x: 0, y: 0, w: 1, h: 1 };
 let keySeq = 0;
 const nextKey = () => `k${++keySeq}`;
 
@@ -72,19 +72,19 @@ export function packUploader(meta, { onChange = () => {} } = {}) {
   };
 
   const splitItem = async (item) => {
-    const boxes = await editBoxes(item.img, [item.box ?? WHOLE], { title: 'Mark each pack in the photo' });
-    if (!boxes?.length) return;
-    const [first, ...rest] = boxes;
-    const update = async (target, box) => {
-      target.box = box;
-      target.blob = await cropToBlob(target.img, box, 'pack.jpg');
+    const quads = await editQuads(item.img, [item.quad ?? wholeQuad(item.img)], { title: 'Mark each pack in the photo', detect: false });
+    if (!quads?.length) return;
+    const [first, ...rest] = quads;
+    const update = async (target, quad) => {
+      target.quad = quad;
+      target.blob = await cutRegion(target.img, quad, 'pack.jpg');
       const url = URL.createObjectURL(target.blob);
       target.el.querySelector('.pack-thumb').replaceChildren(h('img', { src: url, alt: 'Pack photo' }));
     };
     await update(item, first);
-    for (const box of rest) {
+    for (const quad of rest) {
       const extra = addItem({ img: item.img, preview: null });
-      await update(extra, box);
+      await update(extra, quad);
     }
   };
 
@@ -92,7 +92,7 @@ export function packUploader(meta, { onChange = () => {} } = {}) {
     for (const file of files) {
       try {
         const img = await loadImage(file);
-        const blob = await cropToBlob(img, WHOLE, 'pack.jpg');
+        const blob = await cropToBlob(img, 'pack.jpg');
         addItem({ blob, preview: URL.createObjectURL(blob), img });
       } catch (err) {
         toast(err.message, 'error');
@@ -198,18 +198,24 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
   // Step 2 — card photos
   const sourceList = h('div.sources');
 
-  function makeCard(source, blob, previous = {}) {
+  // Cards are read one at a time: OCR is heavy and shares one worker.
+  let readQueue = Promise.resolve();
+
+  function makeCard(source, blob, previous = {}, canvas = null) {
+    // After re-cropping, keep what the user typed; anything read automatically is read again.
+    const typed = previous.touched ? previous : {};
     const card = {
       key: nextKey(),
       blob,
       preview: URL.createObjectURL(blob),
-      name: previous.name ?? '',
-      set_code: previous.set_code ?? '',
-      number: previous.number ?? '',
+      touched: typed.touched ?? false,
+      name: typed.name ?? '',
+      set_code: typed.set_code ?? '',
+      number: typed.number ?? '',
       variant: previous.variant ?? 'normal',
       packRef: previous.packTouched ? previous.packRef : defaultPack(),
       packTouched: previous.packTouched ?? false,
-      match: previous.match ?? null,
+      match: typed.match ?? null,
     };
     const nameIn = h('input', { type: 'text', value: card.name, placeholder: 'e.g. Voltorb', autocomplete: 'off' });
     const codeIn = h('input.code', { type: 'text', value: card.set_code, placeholder: 'PAL', list: codeList, maxLength: 6, autocomplete: 'off' });
@@ -219,6 +225,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       onchange: () => { card.packRef = card.packSelect.value; card.packTouched = true; updateSave(); },
     });
     const matchNote = h('span.match-note');
+    const readNote = h('span.read-note');
     const showMatch = () => {
       matchNote.textContent = card.match ? `✓ Official card: ${card.match.name} · ${describeBrief(card.match)}` : '';
       card.el?.classList.toggle('matched', !!card.match);
@@ -226,6 +233,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const panel = lookupPanel({
       selectedId: card.match?.tcgId,
       onSelect: (brief) => {
+        card.touched = true;
         card.match = brief;
         if (brief) {
           nameIn.value = card.name = brief.name;
@@ -238,6 +246,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     });
     const runSearch = debounce(() => panel.search({ name: card.name, setCode: card.set_code, number: card.number }), 500);
     const onField = () => {
+      card.touched = true;
       card.name = nameIn.value;
       card.set_code = codeIn.value.toUpperCase();
       card.number = numIn.value;
@@ -250,6 +259,48 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     };
     for (const input of [nameIn, codeIn, numIn]) input.addEventListener('input', onField);
 
+    // Read the name, set code and number off the photo and fill them in (unless the user got there first).
+    card.autoRead = async () => {
+      if (!canvas || card.touched || card.match) return;
+      readNote.className = 'read-note busy';
+      readNote.textContent = 'Reading the card…';
+      try {
+        const texts = await readCardText(canvas);
+        const result = await api.identify(texts);
+        if (card.touched || card.match) {
+          readNote.textContent = '';
+          return;
+        }
+        const fill = (name, code, number) => {
+          if (name) nameIn.value = card.name = name;
+          if (code) codeIn.value = card.set_code = code;
+          if (number) numIn.value = card.number = number;
+        };
+        if (result.match) {
+          const m = result.match;
+          fill(m.name, m.setCode, m.setTotal ? `${m.number}/${m.setTotal}` : m.number);
+          card.match = m;
+          panel.show(result.candidates, m.tcgId);
+          readNote.className = `read-note ${result.confidence}`;
+          readNote.textContent = result.confidence === 'high' ? '✓ Read from the photo' : 'Read from the photo — please check it’s the right card';
+        } else {
+          const r = result.read;
+          fill(r.name, r.setCode, r.number && (r.total ? `${r.number}/${r.total}` : r.number));
+          if (result.candidates.length) panel.show(result.candidates, null);
+          else if (card.name || card.number) panel.search({ name: card.name, setCode: card.set_code, number: card.number });
+          readNote.className = 'read-note low';
+          readNote.textContent = card.name || card.number
+            ? 'Partly read from the photo — pick the right card below or fix the details'
+            : 'Couldn’t read this card — type its name, or the set code and number';
+        }
+        showMatch();
+        updateSave();
+      } catch (err) {
+        readNote.className = 'read-note low';
+        readNote.textContent = `Couldn’t read this card automatically (${err.message}). Type its details instead.`;
+      }
+    };
+
     card.el = h('div.card-item',
       h('div.card-item-photo', h('img', { src: card.preview, alt: 'Your card photo' })),
       h('div.card-item-body',
@@ -260,6 +311,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         h('div.field-row',
           field('Variant', variant),
           field('Pulled from', card.packSelect)),
+        readNote,
         matchNote,
         panel.el),
       h('div.item-actions',
@@ -296,40 +348,40 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         h('button.btn.small.ghost', { type: 'button', onclick: () => removeSource(source) }, 'Remove photo')));
   }
 
-  async function buildSourceCards(source, boxes) {
+  async function buildSourceCards(source, quads) {
     const previous = source.cards;
     const cards = [];
-    for (const [i, box] of boxes.entries()) {
-      const blob = await cropToBlob(source.img, box, `card-${i + 1}.jpg`);
-      cards.push(makeCard(source, blob, previous[i]));
+    for (const [i, quad] of quads.entries()) {
+      const { canvas, blob } = await cutCard(source.img, quad, `card-${i + 1}`);
+      cards.push(makeCard(source, blob, previous[i], canvas));
     }
-    source.boxes = boxes;
+    source.quads = quads;
     source.cards = cards;
     clear(source.body, cards.map((c) => c.el));
     renderSourceHead(source);
     updateSave();
+    for (const card of cards) readQueue = readQueue.then(() => card.autoRead());
   }
 
   async function adjustSource(source) {
-    const boxes = await editBoxes(source.img, source.boxes);
-    if (!boxes) return;
-    if (!boxes.length) return removeSource(source);
-    await buildSourceCards(source, boxes);
+    const quads = await editQuads(source.img, source.quads);
+    if (!quads) return;
+    if (!quads.length) return removeSource(source);
+    await buildSourceCards(source, quads);
   }
 
   async function addPhotos(files) {
     for (const file of files) {
       try {
         const img = await loadImage(file);
-        const detected = detectCards(img);
-        const source = { key: nextKey(), img, name: file.name || 'Photo', cards: [], boxes: [] };
+        const { quads } = await cardQuads(img);
+        const source = { key: nextKey(), img, name: file.name || 'Photo', cards: [], quads: [] };
         source.head = h('div.source-head');
         source.body = h('div.source-cards');
         source.el = h('div.source', source.head, source.body);
         sources.push(source);
         sourceList.append(source.el);
-        await buildSourceCards(source, detected.length ? detected : [WHOLE]);
-        source.cards[0]?.nameInput.focus({ preventScroll: true });
+        await buildSourceCards(source, quads);
       } catch (err) {
         toast(err.message, 'error');
       }
