@@ -74,9 +74,21 @@ export function lookupPanel({ onSelect, selectedId = null, autoSelectSingle = tr
     }
   }
 
+  /** Show results found elsewhere (e.g. by reading the card photo) with one already chosen. */
+  function show(list, selectedTcgId) {
+    seq++;
+    results = list;
+    selected = selectedTcgId ?? null;
+    status.textContent = list.length
+      ? `${list.length === 1 ? '1 match' : `${list.length} possible matches`} — tap a different one if this isn’t your card.`
+      : 'No matches online.';
+    render();
+  }
+
   return {
     el,
     search,
+    show,
     get selected() {
       return results.find((r) => r.tcgId === selected) ?? null;
     },

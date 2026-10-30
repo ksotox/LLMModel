@@ -173,12 +173,13 @@ export function rarityBadge(rarity, extraClass = '') {
     h('span.rarity-symbol', { 'aria-hidden': 'true' }, symbol), rarity);
 }
 
-export function formatPrice(value, currency = 'USD') {
+export function formatPrice(value, currency = 'USD', { digits } = {}) {
   if (value == null) return '';
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+    const exact = digits != null ? { minimumFractionDigits: digits, maximumFractionDigits: digits } : {};
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, ...exact }).format(value);
   } catch {
-    return `${value.toFixed(2)} ${currency}`;
+    return `${value.toFixed(digits ?? 2)} ${currency}`;
   }
 }
 

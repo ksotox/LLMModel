@@ -11,6 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
+import { EbayClient } from '../../server/ebay.js';
+import { PriceTrackerClient } from '../../server/priceTracker.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
 const require = createRequire(import.meta.url);
@@ -21,7 +23,9 @@ const REF = (f) => path.join(ROOT, 'docs', 'reference', f);
 const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') : null;
 
 async function startServer(dataDir, mock, port = 0) {
-  const app = createApp({ dataDir, catalog: mockCatalog(mock) });
+  const ebay = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
+  const priceTracker = new PriceTrackerClient({ apiKey: 'test-key', baseUrl: mock.pptUrl });
+  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -60,47 +64,47 @@ try {
   await page.locator('.new-packs input[type=file]:not([capture])').setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await page.locator('.pack-item input[type=text]').first().fill('Paldea Evolved booster pack');
 
-  step('upload a photo with three cards: they are detected and split automatically');
+  step('upload a photo with three cards: each is found, cut out and straightened');
   const cardInput = page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])');
   await cardInput.setInputFiles(REF('three-cards.jpg'));
-  await page.getByText('3 cards found in this photo').waitFor();
+  await page.getByText('3 cards found in this photo').waitFor({ timeout: 60000 });
   assert.equal(await page.locator('.card-item').count(), 3);
 
   const item = (i) => page.locator('.card-item').nth(i);
-  const fill = async (i, { name, code, number }) => {
-    if (name) await item(i).getByLabel('Name').fill(name);
-    if (code) await item(i).getByLabel('Set code').fill(code);
-    if (number) await item(i).getByLabel('Number').fill(number);
-  };
+  const cutOut = await item(0).locator('.card-item-photo img').evaluate(async (img) => {
+    await img.decode();
+    return { w: img.naturalWidth, h: img.naturalHeight };
+  });
+  assert.ok(Math.abs(cutOut.w / cutOut.h - 63 / 88) < 0.01, `card picture is card-shaped (${cutOut.w}×${cutOut.h})`);
 
-  step('identify each card from the set code and number printed on it');
-  await fill(0, { code: 'PAL', number: '066/193' });
-  await fill(1, { code: 'PFL', number: '092/094' });
-  await fill(2, { name: 'Linoone', number: '168/197' });
+  step('each card is read from the photo and matched automatically — nothing typed');
   for (const [i, name] of ['Voltorb', 'Punk Helmet', 'Linoone'].entries()) {
-    await item(i).locator('.match-note', { hasText: `Official card: ${name}` }).waitFor();
+    await item(i).locator('.match-note', { hasText: `Official card: ${name}` }).waitFor({ timeout: 90000 });
+    await item(i).locator('.read-note', { hasText: 'Read from the photo' }).waitFor();
   }
-  assert.equal(await item(0).getByLabel('Name').inputValue(), 'Voltorb', 'name filled in from the match');
+  assert.equal(await item(0).getByLabel('Set code').inputValue(), 'PAL');
+  assert.equal(await item(0).getByLabel('Number').inputValue(), '066/193');
+  assert.equal(await item(1).getByLabel('Number').inputValue(), '092/094');
+  assert.equal(await item(2).getByLabel('Set code').inputValue(), 'OBF');
 
-  step('add a single-card photo and pick between several name matches');
+  step('a close-up of a single card is read too');
   await cardInput.setInputFiles(REF('voltorb-reverse-holo.jpg'));
-  await page.locator('.source').nth(1).getByText('1 card in this photo').waitFor();
-  await fill(3, { name: 'voltorb' });
-  await item(3).locator('.lookup-result').nth(1).waitFor();
-  assert.equal(await item(3).locator('.lookup-result').count(), 2);
-  await item(3).locator('.lookup-result', { hasText: 'PAL' }).click();
+  await page.locator('.source').nth(1).getByText('1 card in this photo').waitFor({ timeout: 60000 });
+  await item(3).locator('.match-note', { hasText: 'Official card: Voltorb · PAL' }).waitFor({ timeout: 90000 });
   await item(3).getByLabel('Variant').selectOption('reverse-holo');
   await page.getByText('4 of 4 matched to an official card').waitFor();
   await shot('02-add-cards');
 
-  step('adjust the split in the crop editor');
+  step('adjust the outlines in the crop editor');
   await page.locator('.source').first().getByRole('button', { name: 'Adjust cards' }).click();
-  await page.locator('.crop-box').nth(2).waitFor();
-  assert.equal(await page.locator('.crop-box').count(), 3);
+  await page.locator('.crop-shape').nth(2).waitFor();
+  assert.equal(await page.locator('.crop-shape').count(), 3);
+  assert.equal(await page.locator('.crop-handle').count(), 12, 'four corner handles per card');
   await shot('03-crop-editor');
   await page.getByRole('button', { name: 'Use these 3 cards' }).click();
   await page.locator('dialog').waitFor({ state: 'detached' });
-  assert.equal(await item(0).getByLabel('Name').inputValue(), 'Voltorb', 'entries kept after re-cropping');
+  await item(0).locator('.match-note', { hasText: 'Official card: Voltorb' }).waitFor({ timeout: 90000 });
+  await page.getByText('4 of 4 matched to an official card').waitFor({ timeout: 90000 });
 
   step('save: lands on the pack page with all four cards');
   await page.getByRole('button', { name: 'Save 4 cards' }).click();
@@ -145,6 +149,70 @@ try {
   await shot('06-card-detail');
   await page.keyboard.press('Escape');
 
+  step('price history and eBay graded sales from PokemonPriceTracker');
+  await page.locator('.card-tile', { hasText: 'Reverse holo' }).click();
+  const history = page.locator('dialog.modal .price-history');
+  await history.locator('td', { hasText: 'PSA 10' }).waitFor();
+  assert.match(await history.locator('tr', { hasText: 'PSA 10' }).textContent(), /12.*\$24\.50.*\$23\.00/);
+  await history.getByText(/Population: PSA 10: 143/).waitFor();
+  assert.match(await history.locator('.tracker-foot').textContent(), /updated just now · \d+ of 100 credits used today/);
+  await history.getByLabel('Price line').selectOption('pokemonpricetracker|Market price');
+  assert.ok(await history.locator('.trend-segment').count() >= 2, 'daily line drawn');
+  if (SHOTS) {
+    await page.setViewportSize({ width: 1280, height: 1900 });
+    await history.screenshot({ path: path.join(SHOTS, '13-price-history.png') });
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  const pptCalls = mock.state.pptRequests.length;
+  await page.keyboard.press('Escape');
+  await page.locator('.card-tile', { hasText: 'Reverse holo' }).click();
+  await history.locator('td', { hasText: 'PSA 10' }).waitFor();
+  assert.equal(mock.state.pptRequests.length, pptCalls, 'opening the card again uses the cache — no credits');
+
+  step('eBay sold prices: average, coloured trend chart and the sold listings');
+  const ebay = page.locator('dialog.modal .ebay');
+  // PokemonPriceTracker already contributed its one graded sale (a PSA 10 for $25).
+  await ebay.locator('.stat', { hasText: '1 sale' }).waitFor();
+  await ebay.getByRole('button', { name: 'Update from eBay' }).click();
+  await ebay.locator('.stat', { hasText: 'Average sold' }).waitFor();
+  await ebay.locator('.stat', { hasText: '13 sales' }).waitFor();
+  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$4\.48/); // (8.25 raw + 2 × $25 PSA 10) / 13
+  await ebay.getByLabel('Which sales').selectOption('raw');
+  await ebay.locator('.stat', { hasText: '11 sales' }).waitFor();
+  const colours = await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => [e.dataset.direction, e.getAttribute('stroke')]));
+  assert.deepEqual([...new Set(colours.map(([d, c]) => `${d}:${c}`))].sort(), ['down:#dc2626', 'flat:#eab308', 'up:#16a34a']);
+  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$0\.75/);
+  assert.deepEqual(await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => e.dataset.direction)), ['up', 'up', 'down', 'down', 'flat', 'flat']);
+  await ebay.getByRole('button', { name: 'Monthly' }).click();
+  assert.deepEqual(await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => e.dataset.direction)), ['down']);
+  await ebay.getByRole('button', { name: 'Weekly' }).click();
+  const firstListing = ebay.locator('.ebay-listings tbody tr').first();
+  assert.match(await firstListing.getByRole('link').getAttribute('href'), /^https:\/\/www\.ebay\.com\/itm\//);
+  if (SHOTS) {
+    await page.setViewportSize({ width: 1280, height: 1900 }); // tall enough for the whole section
+    await ebay.screenshot({ path: path.join(SHOTS, '12-ebay-sold-prices.png') });
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+
+  step('paste sold listings copied from eBay.com');
+  await ebay.getByLabel('Which sales').selectOption('all');
+  await ebay.locator('summary', { hasText: 'Add sales from eBay.com' }).click();
+  assert.match(await ebay.getByRole('link', { name: /Open the sold listings on eBay/ }).getAttribute('href'), /^https:\/\/www\.ebay\.com\/sch\/.*LH_Sold=1/);
+  const pasted = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.html'), 'utf8');
+  await ebay.locator('.paste-box').evaluate((box, html) => {
+    const data = new DataTransfer();
+    data.setData('text/html', html);
+    data.setData('text/plain', 'ignored');
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, pasted);
+  await page.getByText('Added 3 sales · skipped 1 that weren’t this card').waitFor();
+  // Phones usually copy plain text only: the same results must come out of it.
+  const fromText = await page.evaluate(async (text) => (await import('/js/ebay.js')).parseEbayPaste({ text }),
+    fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.txt'), 'utf8'));
+  assert.deepEqual(fromText.map((l) => [l.price, l.soldAt.slice(0, 10)]), [[0.66, '2026-08-25'], [0.7, '2026-09-01'], [14.5, '2026-09-03']]);
+  await ebay.getByLabel('Which sales').locator('option', { hasText: 'All sales (16)' }).waitFor({ state: 'attached' });
+  await page.keyboard.press('Escape');
+
   step('search any card online and add it to the collection');
   await page.getByRole('link', { name: 'Search', exact: true }).click();
   await page.getByLabel('Card name').fill('punk helmet');
@@ -169,8 +237,18 @@ try {
   await page.locator('.card-tile', { hasText: 'Zigzagoon' }).waitFor();
   mock.state.tcgdexDown = false;
 
+  step('a promo card (number only, no set total) is read and matched');
+  await page.goto(`${base}/#/add`);
+  await page.getByRole('heading', { name: 'Add cards' }).waitFor();
+  await page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])').setInputFiles(REF('froakie-promo.webp'));
+  await page.locator('.card-item .match-note', { hasText: 'Official card: Froakie' }).waitFor({ timeout: 90000 });
+  assert.equal(await page.locator('.card-item').getByLabel('Set code').inputValue(), 'MEP');
+  assert.equal(await page.locator('.card-item').getByLabel('Number').inputValue(), '060');
+  await shot('11-read-promo');
+
   step('add packs on their own: several at once');
   await page.goto(`${base}/#/add-packs`);
+  await page.getByRole('heading', { name: 'Add packs' }).waitFor();
   await page.locator('input[type=file]:not([capture])').setInputFiles([REF('three-cards.jpg'), REF('voltorb-reverse-holo.jpg')]);
   await page.locator('.pack-item').nth(1).waitFor();
   await page.locator('.pack-item').nth(0).locator('input[type=text]').first().fill('Obsidian Flames tin');

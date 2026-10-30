@@ -38,6 +38,7 @@ function multipart(key, items) {
 export const api = {
   meta: () => request('GET', '/api/meta'),
   lookup: (params) => request('GET', `/api/lookup${qs(params)}`),
+  identify: (texts) => request('POST', '/api/identify', texts),
 
   cards: (params = {}) => request('GET', `/api/cards${qs(params)}`).then((r) => r.cards),
   card: (id) => request('GET', `/api/cards/${id}`),
@@ -52,6 +53,13 @@ export const api = {
   deleteCard: (id) => request('DELETE', `/api/cards/${id}`),
   refreshMarket: (id) => request('POST', `/api/cards/${id}/refresh-market`),
   refreshAllMarket: () => request('POST', '/api/cards/refresh-market'),
+  ebay: (id, condition) => request('GET', `/api/cards/${id}/ebay${qs({ condition })}`),
+  ebayRefresh: (id, condition) => request('POST', `/api/cards/${id}/ebay/refresh${qs({ condition })}`),
+  ebayImport: (id, listings, condition) => request('POST', `/api/cards/${id}/ebay/import${qs({ condition })}`, { listings }),
+  ebayDelete: (id, saleId, condition) => request('DELETE', `/api/cards/${id}/ebay/${saleId}${qs({ condition })}`),
+  priceHistory: (id, days) => request('GET', `/api/cards/${id}/price-history${qs({ days })}`),
+  tracker: (id) => request('GET', `/api/cards/${id}/pricetracker`),
+  trackerRefresh: (id, force) => request('POST', `/api/cards/${id}/pricetracker/refresh${force ? '?force=1' : ''}`),
   catalogCard: (id, variant) => request('GET', `/api/catalog/cards/${encodeURIComponent(id)}${qs({ variant })}`),
 
   packs: (params = {}) => request('GET', `/api/packs${qs(params)}`).then((r) => r.packs),

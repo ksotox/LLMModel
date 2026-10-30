@@ -1,14 +1,29 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
 import { CardCatalog } from './catalog.js';
+import { EbayClient, EbayNotApproved, searchQuery, soldSearchUrl } from './ebay.js';
+import { PriceTrackerClient } from './priceTracker.js';
+import { PriceTrackerService } from './priceTrackerService.js';
+import { direction, gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
 import { openDb, PACK_KINDS, VARIANTS } from './db.js';
+import { identifyCard } from './identify.js';
 import { SET_CODES } from './setCodes.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+const require = createRequire(import.meta.url);
+const packageDir = (name) => path.dirname(require.resolve(`${name}/package.json`));
+// Image tools that run in the browser, served from this app so they work without any CDN.
+const VENDOR = {
+  '/vendor/opencv': path.join(packageDir('@techstark/opencv-js'), 'dist'),
+  '/vendor/tesseract': path.join(packageDir('tesseract.js'), 'dist'),
+  '/vendor/tesseract-core': packageDir('tesseract.js-core'),
+  '/vendor/tessdata': path.join(packageDir('@tesseract.js-data/eng'), '4.0.0_best_int'),
+};
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
@@ -19,7 +34,13 @@ class HttpError extends Error {
   }
 }
 
-export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
+export function createApp({
+  dataDir,
+  catalog = new CardCatalog(),
+  ebay = new EbayClient(),
+  priceTracker = new PriceTrackerClient(),
+  trackerOptions = {},
+} = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
     packs: path.join(dataDir, 'uploads', 'packs'),
@@ -27,6 +48,7 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   };
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true });
   const store = openDb(path.join(dataDir, 'collection.db'));
+  const tracker = new PriceTrackerService({ client: priceTracker, store, catalog, ...trackerOptions });
 
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -74,13 +96,15 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
   const withMarket = async (card) => {
     let market;
+    const checked = new Date().toISOString();
     try {
       market = await catalog.market(card);
     } catch {
-      return card;
+      return { ...card, market_checked_at: checked };
     }
     return {
       ...card,
+      market_checked_at: checked,
       rarity: card.rarity ?? market.rarity,
       pull_chance: market.pull?.chance ?? null,
       pull_source: market.pull?.source ?? null,
@@ -115,6 +139,29 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
     }
     merged.official_image_path = await cacheOfficialImage(merged);
     return withMarket(merged);
+  };
+
+  /**
+   * Add a card's current market price to its price history, dated by when the source last
+   * updated it. Called whenever a card is priced, so every card builds up its own history.
+   */
+  const snapshotPrice = (card) => {
+    if (!card?.market_price) return;
+    store.recordPrice(card.id, {
+      source: /cardmarket/i.test(card.market_source ?? '') ? 'cardmarket' : 'tcgplayer',
+      label: 'Market price',
+      price: card.market_price,
+      currency: card.market_currency ?? 'USD',
+      day: card.market_updated && !Number.isNaN(Date.parse(card.market_updated)) ? new Date(card.market_updated).toISOString().slice(0, 10) : undefined,
+    });
+  };
+
+  /** Re-price a stored card and record the price in its history. */
+  const refreshCardMarket = async (card) => {
+    store.updateCard(card.id, await withMarket(card));
+    const updated = store.getCard(card.id);
+    snapshotPrice(updated);
+    return updated;
   };
 
   const toJson = (card) => card && {
@@ -190,6 +237,7 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   app.use(express.json({ limit: '1mb' }));
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
+  for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
   app.use(express.static(PUBLIC_DIR));
 
   app.get('/api/meta', (_req, res) => {
@@ -212,6 +260,15 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
     } catch (err) {
       res.status(502).json({ error: 'The online card database could not be reached. You can still save the card and look it up later.', detail: err.message });
     }
+  });
+
+  // Work out which card a photo shows from the text the browser read off it (see public/js/ocr.js).
+  app.post('/api/identify', async (req, res) => {
+    const texts = (v) => (Array.isArray(v) ? v : []).filter((t) => typeof t === 'string').slice(0, 12).map((t) => t.slice(0, 200));
+    const result = await identifyCard(catalog, { names: texts(req.body?.names), lines: texts(req.body?.lines) });
+    const owned = store.ownedCounts(result.candidates.map((c) => c.tcgId));
+    const withOwned = (c) => c && { ...c, owned: owned[c.tcgId] ?? 0 };
+    res.json({ ...result, match: withOwned(result.match), candidates: result.candidates.map(withOwned) });
   });
 
   // Any card from the online sources, with rarity, pull chance and price (for the card search page).
@@ -245,7 +302,9 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
     const prepared = [];
     for (const card of input) prepared.push(await withOfficial(card));
     const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
-    res.status(201).json({ cards: ids.map((id) => toJson(store.getCard(id))) });
+    const created = ids.map((id) => store.getCard(id));
+    created.forEach(snapshotPrice);
+    res.status(201).json({ cards: created.map(toJson) });
   });
 
   app.patch('/api/cards/:id', async (req, res) => {
@@ -259,6 +318,7 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
       card = await withMarket(card);
     }
     store.updateCard(existing.id, card);
+    if (relink || repriced) snapshotPrice(store.getCard(existing.id));
     res.json(toJson(store.getCard(existing.id)));
   });
 
@@ -275,17 +335,124 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   app.post('/api/cards/refresh-market', async (_req, res) => {
     let updated = 0;
     for (const card of store.listCards()) {
-      const next = await withMarket(card);
-      store.updateCard(card.id, next);
+      const next = await refreshCardMarket(card);
       if (next.market_price != null || next.pull_chance != null) updated++;
     }
     res.json({ updated, stats: store.stats() });
   });
 
   app.post('/api/cards/:id/refresh-market', async (req, res) => {
-    const existing = findCard(req.params.id);
-    store.updateCard(existing.id, await withMarket(existing));
-    res.json(toJson(store.getCard(existing.id)));
+    res.json(toJson(await refreshCardMarket(findCard(req.params.id))));
+  });
+
+  // Price history: every price the app has seen for the card, one per source, line and day.
+  app.get('/api/cards/:id/price-history', (req, res) => {
+    const card = findCard(req.params.id);
+    const days = Math.min(3650, Math.max(1, Number(req.query.days) || 365));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const groups = new Map();
+    for (const row of store.priceHistory(card.id, { since })) {
+      const key = `${row.source}|${row.label}`;
+      if (!groups.has(key)) groups.set(key, { source: row.source, label: row.label, currency: row.currency, points: [] });
+      groups.get(key).points.push({ day: row.day, price: row.price });
+    }
+    const series = [...groups.values()].map((s) => {
+      const firstPrice = s.points[0].price;
+      const lastPrice = s.points[s.points.length - 1].price;
+      const change = firstPrice ? (lastPrice - firstPrice) / firstPrice : 0;
+      return { ...s, first: firstPrice, last: lastPrice, change: Math.round(change * 1000) / 1000, direction: s.points.length > 1 ? direction(change) : null };
+    });
+    res.json({ days, series });
+  });
+
+  // PokemonPriceTracker: eBay graded sales, recent history and population, within the daily credit budget.
+  app.get('/api/pricetracker/status', (_req, res) => {
+    res.json(tracker.status());
+  });
+
+  app.get('/api/cards/:id/pricetracker', (req, res) => {
+    res.json(tracker.view(findCard(req.params.id)));
+  });
+
+  // Uses the day-old cache unless `force=1`; refuses to spend past the daily budget.
+  app.post('/api/cards/:id/pricetracker/refresh', async (req, res) => {
+    res.json(await tracker.refresh(findCard(req.params.id), { force: req.query.force === '1' }));
+  });
+
+  // eBay sold listings for a card: average sold price, price trend and the listings themselves.
+
+  const CONDITION_FILTERS = {
+    all: () => true,
+    raw: (s) => !s.grade,
+    graded: (s) => Boolean(s.grade),
+  };
+
+  const ebayView = (card, filter = 'all') => {
+    const stored = store.listSales(card.id);
+    const keep = CONDITION_FILTERS[filter] ?? CONDITION_FILTERS.all;
+    const listings = stored.filter(keep);
+    return {
+      query: searchQuery(card),
+      searchUrl: soldSearchUrl(card),
+      apiConfigured: ebay.configured,
+      filter,
+      counts: { all: stored.length, raw: stored.filter(CONDITION_FILTERS.raw).length, graded: stored.filter(CONDITION_FILTERS.graded).length },
+      lastAdded: stored.reduce((latest, s) => (s.created_at > latest ? s.created_at : latest), '') || null,
+      stats: soldStats(listings.map((s) => ({ price: s.price, currency: s.currency, soldAt: s.sold_at }))),
+      listings,
+    };
+  };
+
+  /** Keep only well-formed listings that look like this exact card; add the grade from the title. */
+  const cleanSales = (card, sales) => {
+    const valid = sales.filter((s) => s && typeof s.title === 'string' && Number(s.price) > 0 && !Number.isNaN(Date.parse(s.soldAt)))
+      .map((s) => ({
+        itemId: s.itemId ? String(s.itemId).slice(0, 64) : null,
+        title: s.title.slice(0, 300),
+        price: Math.round(Number(s.price) * 100) / 100,
+        currency: /^[A-Z]{3}$/.test(s.currency ?? '') ? s.currency : 'USD',
+        soldAt: new Date(s.soldAt).toISOString(),
+        condition: s.condition ? String(s.condition).slice(0, 80) : null,
+        url: /^https:\/\/(www\.)?ebay\.[a-z.]+\//.test(s.url ?? '') ? s.url.slice(0, 500) : null,
+        grade: gradeFromTitle(s.title),
+      }));
+    const matching = valid.filter((s) => listingMatchesCard(s.title, card));
+    return { matching, skipped: sales.length - matching.length };
+  };
+
+  app.get('/api/cards/:id/ebay', (req, res) => {
+    res.json(ebayView(findCard(req.params.id), req.query.condition));
+  });
+
+  // Fetch the last 90 days of sold listings from eBay's official API (needs EBAY_CLIENT_ID/SECRET).
+  app.post('/api/cards/:id/ebay/refresh', async (req, res) => {
+    const card = findCard(req.params.id);
+    if (!ebay.configured) throw new HttpError(400, 'The eBay API is not set up. Paste listings from eBay instead, or see the README to connect it.');
+    let sales;
+    try {
+      sales = await ebay.soldListings(card);
+    } catch (err) {
+      throw new HttpError(err instanceof EbayNotApproved ? 403 : 502, err instanceof EbayNotApproved ? err.message : 'eBay could not be reached right now. Try again later.');
+    }
+    const { matching, skipped } = cleanSales(card, sales);
+    const added = store.addSales(card.id, matching, 'ebay-api');
+    res.json({ added, skipped, ...ebayView(card, req.query.condition) });
+  });
+
+  // Listings the user copied from eBay.com and pasted into the app (parsed in the browser).
+  app.post('/api/cards/:id/ebay/import', (req, res) => {
+    const card = findCard(req.params.id);
+    const listings = Array.isArray(req.body?.listings) ? req.body.listings.slice(0, 1000) : null;
+    if (!listings) throw new HttpError(400, 'Send the listings as { listings: [...] }');
+    const { matching, skipped } = cleanSales(card, listings);
+    const added = store.addSales(card.id, matching, 'pasted');
+    res.json({ added, skipped, ...ebayView(card, req.query.condition) });
+  });
+
+  app.delete('/api/cards/:id/ebay/:saleId', (req, res) => {
+    const card = findCard(req.params.id);
+    if (!store.deleteSale(card.id, Number(req.params.saleId))) throw new HttpError(404, 'Listing not found');
+    res.json(ebayView(card, req.query.condition));
   });
 
   app.post('/api/cards/:id/photo', upload.single('photo'), (req, res) => {
@@ -357,5 +524,7 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
   });
 
   app.locals.store = store;
+  app.locals.tracker = tracker;
+  app.locals.refreshCardMarket = refreshCardMarket;
   return app;
 }

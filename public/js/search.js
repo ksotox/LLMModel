@@ -115,6 +115,7 @@ export function renderSearch(root, meta, navigate, params) {
   const render = (list) => clear(grid, list.length ? h('div.card-grid', list.map(tile)) : null);
 
   const search = async () => {
+    if (!form.isConnected) return; // the user has left the search page
     const q = { name: name.value.trim(), setCode: code.value.trim().toUpperCase(), number: num.value.trim() };
     history.replaceState(null, '', `#/search?${new URLSearchParams(Object.entries({ name: q.name, code: q.setCode, number: q.number }).filter(([, v]) => v))}`);
     const id = ++seq;
