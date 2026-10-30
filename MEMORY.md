@@ -65,7 +65,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Free every `cv.Mat` after use (an earlier `approx.rows` use-after-free crashed).
 - tcgcsv.com answered **401** to the owner's PC (2026-10-30). The client now sends a descriptive
   User-Agent (`USER_AGENT` in `server/prices.js`); `npm run check:live` prints its access results.
-  Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`).
+  Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
+  then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
+  (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
 - `node:sqlite` prints an ExperimentalWarning; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
   history and sales. Not yet verified against the live API.

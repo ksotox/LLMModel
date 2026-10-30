@@ -3,6 +3,7 @@
 // Prints what each source returned, so you can see which ones are reachable from this computer.
 
 import { CardCatalog } from '../server/catalog.js';
+import { normalizeCard, PriceTrackerClient, tcgplayerImages } from '../server/priceTracker.js';
 import { TcgCsvClient, USER_AGENT } from '../server/prices.js';
 import { PtcgDataClient } from '../server/ptcgData.js';
 import { pullChance } from '../server/pullRates.js';
@@ -103,6 +104,29 @@ try {
   price ? ok('Promo price', money(price)) : fail('Promo price', 'no match');
 } catch (err) {
   fail('Promo', err.cause ?? err);
+}
+
+// TCGplayer's picture straight from its image server, by product number (Froakie MEP 060 is 709974).
+console.log('\nTCGplayer picture server');
+for (const url of tcgplayerImages('709974')) {
+  const img = await catalog.download(url).catch((err) => ({ error: err.cause ?? err }));
+  if (img?.buffer && /^image\//.test(img.contentType)) ok('Froakie by product number', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+  else fail('Froakie by product number', `${url} ${img?.error?.message ?? 'not downloadable'}`);
+}
+
+// With a PokemonPriceTracker key: the route the app uses when no other source has a picture.
+console.log('\nPokemonPriceTracker picture lookup');
+if (!process.env.POKEMONPRICETRACKER_API_KEY) {
+  fail('PokemonPriceTracker', 'no POKEMONPRICETRACKER_API_KEY set in this window (skipped)');
+} else {
+  try {
+    const { cards, credits } = await new PriceTrackerClient().cards({ search: 'Froakie', limit: 10 });
+    const promo = cards.map((c) => normalizeCard(c)).find((c) => /promo/i.test(c.setName ?? '') && /(^|\D)0*60$/.test(String(c.number ?? '').split('/')[0]));
+    if (!promo) fail('Froakie promo', `not among ${cards.length} results (${credits} credits used)`);
+    else ok('Froakie promo', `TCGplayer ${promo.tcgPlayerId}, "${promo.setName}" ${promo.number}, pictures: ${promo.images.join(' ') || 'none listed'} (${credits} credits used)`);
+  } catch (err) {
+    fail('PokemonPriceTracker', err.cause ?? err);
+  }
 }
 
 console.log('\nExchange rate');

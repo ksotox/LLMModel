@@ -117,6 +117,11 @@ export const PPT_CARDS = [
     ebay: { salesByGrade: {} },
   },
   { id: 'ppt-zigzagoon', tcgPlayerId: 512344, name: 'Zigzagoon', setName: 'Obsidian Flames', cardNumber: '167/197', prices: { market: 0.1 } },
+  // A promo, named the way TCGplayer names the set, with picture links (given the mock's address).
+  {
+    id: 'ppt-froakie-mep', tcgPlayerId: 709974, name: 'Froakie', setName: 'ME: Mega Evolution Promo', cardNumber: 'MEP 060',
+    imageUrl: '/tcgplayer-cdn/product/709974_200w.jpg', imageCdnUrl800: '/tcgplayer-cdn/product/709974_800w.jpg', prices: { market: 6.89 },
+  },
 ];
 
 // Group ids are TCGplayer's real ones (see server/setCodes.js). Image paths get the mock's address.
@@ -272,6 +277,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       let found = id ? PPT_CARDS.filter((c) => String(c.tcgPlayerId) === id) : PPT_CARDS.filter((c) => q.split(/\s+/).some((w) => w.length > 2 && c.name.toLowerCase().includes(w)));
       found = found.slice(0, limit).map((c) => {
         const out = { ...c };
+        for (const k of Object.keys(out)) if (/^image/.test(k) && out[k].startsWith('/')) out[k] = `http://${req.headers.host}${out[k]}`;
         if (url.searchParams.get('includeHistory') !== 'true') { delete out.priceHistory; delete out.history; }
         if (url.searchParams.get('includeEbay') !== 'true') delete out.ebay;
         return out;
@@ -287,7 +293,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
     }
 
     // Like the real tcgcsv.com, turn away requests that don't identify the app.
-    if (url.pathname.startsWith('/tcgcsv/') && !/pokedex-collection/.test(req.headers['user-agent'] ?? '')) return json(401, { error: 'unauthorized' });
+    if (url.pathname.startsWith('/tcgcsv/') && (state.tcgcsvBlocked || !/pokedex-collection/.test(req.headers['user-agent'] ?? ''))) return json(401, { error: 'unauthorized' });
     if (url.pathname === '/tcgcsv/tcgplayer/3/groups') return json(200, { success: true, results: TCGCSV.groups });
     if ((m = url.pathname.match(/^\/tcgcsv\/tcgplayer\/3\/(\d+)\/(products|prices)$/))) {
       const results = (TCGCSV[m[2]][m[1]] ?? []).map((r) => (r.imageUrl ? { ...r, imageUrl: `http://${req.headers.host}${r.imageUrl}` } : r));

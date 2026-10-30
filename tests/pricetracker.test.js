@@ -168,6 +168,36 @@ describe('PokemonPriceTracker within the free tier', () => {
     }
   });
 
+  test('a promo no source has a picture for gets its official picture through PokemonPriceTracker', async () => {
+    // As on the owner's PC: tcgcsv.com answers 401, and TCGdex and the dataset have no picture.
+    mock.state.tcgcsvBlocked = true;
+    await start();
+    try {
+      const form = new FormData();
+      form.append('cards', JSON.stringify([{ name: 'Froakie', set_code: 'MEP', number: '060', variant: 'promo' }]));
+      const [added] = (await (await fetch(`${base}/api/cards`, { method: 'POST', body: form })).json()).cards;
+      assert.equal(added.official_url, null, 'not linked yet');
+
+      // "Update prices" links the card, and the picture comes from PokemonPriceTracker's links.
+      const { body } = await call('POST', `/api/cards/${added.id}/refresh-market`);
+      assert.equal(body.tcg_id, 'mep-060');
+      assert.equal(body.official_url, '/media/official/mep-060.png');
+      const saved = await fetch(base + body.official_url);
+      assert.equal(saved.status, 200);
+      assert.match(saved.headers.get('content-type'), /^image\//);
+      assert.ok(mock.requests.includes('/tcgplayer-cdn/product/709974_800w.jpg'), 'largest picture link first');
+
+      // It found the TCGplayer product with one search, and remembers it.
+      assert.equal(mock.state.pptRequests.length, 1);
+      assert.match(mock.state.pptRequests[0], /search=Froakie/);
+      assert.equal((await call('GET', `/api/cards/${added.id}/pricetracker`)).body.tcgPlayerId, '709974');
+      assert.ok(app.locals.tracker.status().used <= 3, 'a small search inside the daily budget');
+    } finally {
+      mock.state.tcgcsvBlocked = false;
+      await stop();
+    }
+  });
+
   test('never spends past the daily budget, and background refreshes leave a reserve', async () => {
     await start({ dailyCredits: 9, reserveShare: 0.34 });
     try {

@@ -149,7 +149,7 @@ Small print in blurry or dim photos can still defeat it. In that case, type the 
 
 | | Source | Notes |
 | --- | --- | --- |
-| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), then TCGplayer's product picture (via [tcgcsv.com](https://tcgcsv.com)) | All free, no API key. TCGplayer lists every card, including new promos the other two have no picture for. |
+| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), then TCGplayer's product picture (via [tcgcsv.com](https://tcgcsv.com), or via PokemonPriceTracker when you have a key) | All free. TCGplayer lists every card, including new promos the other two have no picture for. With a PokemonPriceTracker key, finding a promo's picture costs one small search, once. |
 | Rarity | The card's own data | Same rarity names as printed on the card. |
 | Market price | Always in US dollars: TCGplayer market price via TCGdex, then TCGplayer via [tcgcsv.com](https://tcgcsv.com), then the Cardmarket trend (euros) converted to dollars at the day's [European Central Bank rate](https://frankfurter.dev) | Uses the price for your variant (e.g. reverse holo) when there is one. A converted price says so when you hover over it. Prices change: treat them as a guide, not an offer. |
 | Pull chance | Calculated | See below. |

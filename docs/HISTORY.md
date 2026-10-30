@@ -229,6 +229,11 @@ The owner chose "find a free way".
 - `TcgCsvClient` sends a descriptive `User-Agent` and `Accept: application/json`. The mock now rejects requests without it, so the tests prove it's sent.
 - Promo pictures fall back to the dataset image hosts' usual addresses (Scrydex, pokemontcg.io), guessed from the TCGdex set id.
 - `check:live` tests tcgcsv with and without the app's name and lists each promo picture address it tries.
+- The owner shared BinderDex's picture address for Froakie, `assets.binderdex.com/collectr/pkmn/mega-evolution-promos/709974.jpg`.
+  - `709974` is Froakie's TCGplayer product number, which confirms TCGplayer has the promo pictures. BinderDex itself isn't used, since it has no API.
+  - When no source has a picture, the app now asks PokemonPriceTracker using the owner's key. It reads the picture links and TCGplayer product number from a search, then downloads TCGplayer's picture.
+  - A test recreates the owner's situation (tcgcsv 401, no TCGdex or dataset picture) and checks the picture is saved.
+  - `check:live` also downloads Froakie's TCGplayer picture by product number and tests the PokemonPriceTracker lookup.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

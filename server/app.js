@@ -72,25 +72,33 @@ export function createApp({
 
   /**
    * Download the official image once and keep a local copy, so it survives the sources being offline.
-   * If the main image can't be downloaded, the same card's picture is tried from the other sources.
+   * If the main image can't be downloaded, the same card's picture is tried from the other sources,
+   * and finally through PokemonPriceTracker when a key is set.
    */
   const cacheOfficialImage = async (card) => {
     const base = `official/${card.tcg_id.replace(/[^\w.-]/g, '_')}`;
     const existing = ['.png', '.jpg', '.webp'].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
     if (existing) return existing;
-    const urls = [card.official_image_url, ...await catalog.fallbackImages(card).catch(() => [])].filter(Boolean);
-    for (const url of [...new Set(urls)]) {
-      try {
-        const img = await catalog.download(url);
-        if (!img || !/^image\//.test(img.contentType)) continue;
-        const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
-        fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
-        return base + ext;
-      } catch {
-        // try the next source
+    const tried = new Set();
+    const save = async (urls) => {
+      for (const url of urls) {
+        if (!url || tried.has(url)) continue;
+        tried.add(url);
+        try {
+          const img = await catalog.download(url);
+          if (!img || !/^image\//.test(img.contentType)) continue;
+          const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
+          fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
+          return base + ext;
+        } catch {
+          // try the next source
+        }
       }
-    }
-    return null;
+      return null;
+    };
+    return await save([card.official_image_url, ...await catalog.fallbackImages(card).catch(() => [])])
+      // Last: PokemonPriceTracker (with a key) knows the card's TCGplayer product, and so its picture.
+      ?? await save(await tracker.pictureUrls(card).catch(() => []));
   };
 
   /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
