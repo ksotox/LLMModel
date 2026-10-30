@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
 import { CardCatalog } from './catalog.js';
+import { EbayClient, EbayNotApproved, searchQuery, soldSearchUrl } from './ebay.js';
+import { gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
 import { openDb, PACK_KINDS, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
 import { SET_CODES } from './setCodes.js';
@@ -30,7 +32,7 @@ class HttpError extends Error {
   }
 }
 
-export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
+export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new EbayClient() } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
     packs: path.join(dataDir, 'uploads', 'packs'),
@@ -307,6 +309,82 @@ export function createApp({ dataDir, catalog = new CardCatalog() } = {}) {
     const existing = findCard(req.params.id);
     store.updateCard(existing.id, await withMarket(existing));
     res.json(toJson(store.getCard(existing.id)));
+  });
+
+  // eBay sold listings for a card: average sold price, price trend and the listings themselves.
+
+  const CONDITION_FILTERS = {
+    all: () => true,
+    raw: (s) => !s.grade,
+    graded: (s) => Boolean(s.grade),
+  };
+
+  const ebayView = (card, filter = 'all') => {
+    const stored = store.listSales(card.id);
+    const keep = CONDITION_FILTERS[filter] ?? CONDITION_FILTERS.all;
+    const listings = stored.filter(keep);
+    return {
+      query: searchQuery(card),
+      searchUrl: soldSearchUrl(card),
+      apiConfigured: ebay.configured,
+      filter,
+      counts: { all: stored.length, raw: stored.filter(CONDITION_FILTERS.raw).length, graded: stored.filter(CONDITION_FILTERS.graded).length },
+      lastAdded: stored.reduce((latest, s) => (s.created_at > latest ? s.created_at : latest), '') || null,
+      stats: soldStats(listings.map((s) => ({ price: s.price, currency: s.currency, soldAt: s.sold_at }))),
+      listings,
+    };
+  };
+
+  /** Keep only well-formed listings that look like this exact card; add the grade from the title. */
+  const cleanSales = (card, sales) => {
+    const valid = sales.filter((s) => s && typeof s.title === 'string' && Number(s.price) > 0 && !Number.isNaN(Date.parse(s.soldAt)))
+      .map((s) => ({
+        itemId: s.itemId ? String(s.itemId).slice(0, 64) : null,
+        title: s.title.slice(0, 300),
+        price: Math.round(Number(s.price) * 100) / 100,
+        currency: /^[A-Z]{3}$/.test(s.currency ?? '') ? s.currency : 'USD',
+        soldAt: new Date(s.soldAt).toISOString(),
+        condition: s.condition ? String(s.condition).slice(0, 80) : null,
+        url: /^https:\/\/(www\.)?ebay\.[a-z.]+\//.test(s.url ?? '') ? s.url.slice(0, 500) : null,
+        grade: gradeFromTitle(s.title),
+      }));
+    const matching = valid.filter((s) => listingMatchesCard(s.title, card));
+    return { matching, skipped: sales.length - matching.length };
+  };
+
+  app.get('/api/cards/:id/ebay', (req, res) => {
+    res.json(ebayView(findCard(req.params.id), req.query.condition));
+  });
+
+  // Fetch the last 90 days of sold listings from eBay's official API (needs EBAY_CLIENT_ID/SECRET).
+  app.post('/api/cards/:id/ebay/refresh', async (req, res) => {
+    const card = findCard(req.params.id);
+    if (!ebay.configured) throw new HttpError(400, 'The eBay API is not set up. Paste listings from eBay instead, or see the README to connect it.');
+    let sales;
+    try {
+      sales = await ebay.soldListings(card);
+    } catch (err) {
+      throw new HttpError(err instanceof EbayNotApproved ? 403 : 502, err instanceof EbayNotApproved ? err.message : 'eBay could not be reached right now. Try again later.');
+    }
+    const { matching, skipped } = cleanSales(card, sales);
+    const added = store.addSales(card.id, matching, 'ebay-api');
+    res.json({ added, skipped, ...ebayView(card, req.query.condition) });
+  });
+
+  // Listings the user copied from eBay.com and pasted into the app (parsed in the browser).
+  app.post('/api/cards/:id/ebay/import', (req, res) => {
+    const card = findCard(req.params.id);
+    const listings = Array.isArray(req.body?.listings) ? req.body.listings.slice(0, 1000) : null;
+    if (!listings) throw new HttpError(400, 'Send the listings as { listings: [...] }');
+    const { matching, skipped } = cleanSales(card, listings);
+    const added = store.addSales(card.id, matching, 'pasted');
+    res.json({ added, skipped, ...ebayView(card, req.query.condition) });
+  });
+
+  app.delete('/api/cards/:id/ebay/:saleId', (req, res) => {
+    const card = findCard(req.params.id);
+    if (!store.deleteSale(card.id, Number(req.params.saleId))) throw new HttpError(404, 'Listing not found');
+    res.json(ebayView(card, req.query.condition));
   });
 
   app.post('/api/cards/:id/photo', upload.single('photo'), (req, res) => {

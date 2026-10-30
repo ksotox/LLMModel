@@ -571,3 +571,61 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 .read-note.low { color: var(--muted); }
 @media (prefers-color-scheme: dark) { .read-note.medium { color: #fbbf24; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- eBay sold prices ---------- */
+
+.ebay {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.ebay h3 { margin: 0; font-size: 1.15rem; }
+.ebay-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ebay-head h3 { margin-right: auto; }
+.ebay-head select { width: auto; }
+.ebay-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); min-width: 0; }
+.stat-label { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-big { font-size: 1.5rem; color: var(--ok); }
+.trend-word.up { color: #16a34a; }
+.trend-word.down { color: #dc2626; }
+.trend-word.flat { color: #ca8a04; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.legend { display: flex; gap: 12px; font-size: 0.82rem; font-weight: 700; }
+.key.up { color: #16a34a; }
+.key.down { color: #dc2626; }
+.key.flat { color: #ca8a04; }
+.trend-chart { width: 100%; height: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+.trend-chart .grid { stroke: var(--line); stroke-width: 1; }
+.trend-chart .axis { fill: var(--muted); font-size: 11px; }
+.trend-chart .trend-segment { stroke-width: 3.5; stroke-linecap: round; }
+.trend-chart .trend-point { stroke: var(--surface); stroke-width: 2; }
+.ebay-listings { overflow-x: auto; }
+.ebay-listings table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.ebay-listings th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ebay-listings td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ebay-listings td a { color: var(--ink); }
+.ebay-listings .num { text-align: right; font-weight: 700; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+.chip.grade { background: #ede4fd; color: #5b21b6; font-weight: 700; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.paste-help { border: 1px dashed var(--line); border-radius: 12px; padding: 10px 14px; background: var(--bg); }
+.paste-help summary { cursor: pointer; font-weight: 700; }
+.paste-help ol { margin: 8px 0; padding-left: 20px; }
+.paste-box {
+  min-height: 64px;
+  max-height: 120px;
+  overflow: hidden;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.paste-box:empty::before { content: attr(data-placeholder); }
+.paste-box:focus { outline: 2px solid var(--focus); }

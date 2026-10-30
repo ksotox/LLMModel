@@ -7,6 +7,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Optionally record where each card came from.** Upload one or more photos of packs, tins, kits, bundles, Elite Trainer Boxes and so on (or add one without a photo), and link the cards to them.
 - **Official artwork when it exists.** Type the set code and number printed at the bottom left of the card (e.g. `PAL` `066/193`), or just the name, and the app finds the card in the free [TCGdex](https://tcgdex.dev) database. If TCGdex has no match or no picture, it checks the open [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), which covers every English set. It keeps a local copy of the official image next to your own photo.
 - **Rarity, pull chance and price on every card.** Each card shows its rarity (● Common, ◆ Uncommon, ★ Rare, ★★ Double Rare…), an **estimated chance of pulling it from one booster pack**, and an **estimated market price**. The collection page adds up the total value. Prices refresh automatically when you open a card, or all at once with **Update prices**.
+- **eBay sold prices.** Open any card in your collection to see its **average sold price** on eBay (plus median and range), a **price trend chart** (weekly or monthly averages; the line is **green** where the price went up, **red** where it went down and **yellow** where it stayed about the same, within 2%), the overall direction and rate of change, and **every sold listing** behind those numbers (title with link, sold price, date, condition / grade). Filter by ungraded or graded sales, and remove any listing that isn't really your card.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -19,6 +20,8 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Collection](docs/screenshots/05-collection.png) | ![Card detail](docs/screenshots/06-card-detail.png) |
 | **Search any card** | **Rarity, pull chance and price** |
 | ![Search](docs/screenshots/10-search.png) | ![Search result](docs/screenshots/09-search-card.png) |
+| **eBay sold prices: average, trend chart, listings** | **A promo read from a photo** |
+| ![eBay sold prices](docs/screenshots/12-ebay-sold-prices.png) | ![Promo read](docs/screenshots/11-read-promo.png) |
 
 > The screenshots come from the automated test, which runs against a mock card database, so the "official" images there are flat placeholder colours. In normal use they are the real card PNGs.
 
@@ -38,6 +41,8 @@ npm start            # http://localhost:3000
 | `TCGDEX_URL` | `https://api.tcgdex.net/v2/en` | Main card database (cards, images, prices) |
 | `PTCG_DATA_URL` | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` | Second card source (cards, images, rarities) |
 | `TCGCSV_URL` | `https://tcgcsv.com/tcgplayer/3` | Backup price source (TCGplayer prices) |
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | (not set) | eBay app keys, for automatic sold listings once eBay approves the Marketplace Insights API |
+| `EBAY_MARKETPLACE` | `EBAY_US` | Which eBay site to read sold listings from (e.g. `EBAY_GB`) |
 
 To check which online sources your computer can reach, run `npm run check:live`. It looks up the three reference cards in every source and prints what each one returns.
 
@@ -50,6 +55,20 @@ To use it from your phone, run it on a computer on your home network and open `h
 3. Drop in card photos. Cards are found in each photo automatically. Use **Adjust cards** / **Crop / split** to fix the boxes: draw, drag, resize, delete, *Auto-detect* again, *Split evenly* (e.g. 3 × 1) or *Whole photo*.
 4. For each card, type the **set code** and **number** from the bottom-left corner, or the **name**. Matching official cards appear, and if there's exactly one it is selected for you. Set the variant (reverse holo, holo…) if you like.
 5. Click **Save**. If the online database can't be reached, the card is still saved with your photo. You can link it later from the card's **Find official card** / **Retry official image** buttons.
+
+## eBay sold prices: two free ways to get them
+
+eBay closed its open sold-listings API in 2025, and scraping eBay breaks its rules (sold searches also require signing in now), so the app supports the two free, allowed routes. Listings are saved with the card either way, so its price history keeps growing.
+
+1. **Copy and paste (works right away).** On a card, open **Add sales from eBay.com**, then click **Open the sold listings on eBay**. That's eBay's own "Sold items" search for the card (e.g. `Voltorb 066/193`). Sign in to eBay if asked, select the results (Ctrl+A / ⌘A, or "Select all" on a phone), copy, and paste them into the box. The app reads each listing's title, price, sale date, condition and link. It keeps only sales of that exact card (same name and number, and the same set total when shown) and skips lots, bundles and other cards.
+2. **eBay's official API (automatic).** eBay's Marketplace Insights API returns the last 90 days of sold listings. It's free, but eBay must approve your developer app for it:
+   1. Create a free account at [developer.eBay.com](https://developer.ebay.com/) and create a production keyset (App ID / Cert ID).
+   2. Apply for access to the **Marketplace Insights API** (a limited-release API; eBay reviews requests).
+   3. Once approved, start the app with `EBAY_CLIENT_ID=<App ID> EBAY_CLIENT_SECRET=<Cert ID> npm start` (on Windows PowerShell: `$env:EBAY_CLIENT_ID="…"; $env:EBAY_CLIENT_SECRET="…"; npm start`).
+   
+   An **Update from eBay** button then appears on every card. Until approval, the app says so and you can keep using copy and paste.
+
+**How the numbers are worked out:** the average is the mean of the sold prices shown (all, ungraded only or graded only). The chart plots the average for each week (Monday to Sunday) or month, and each step is coloured by how it compares with the period before: more than +2% green, more than −2% red, otherwise yellow. The overall trend is a straight line fitted through every sale, so one odd sale can't flip it. Its slope is the rate per week, and its rise or fall over the period, relative to the average price, gives the % change.
 
 ## How cards are cut out and read
 
@@ -95,6 +114,8 @@ server/
   prices.js     picks the right price for a variant; tcgcsv.com backup prices
   pullRates.js  pull-chance estimates
   identify.js   turns OCR readings into the actual card
+  ebay.js       eBay's official sold-listings API + the eBay search for a card
+  soldStats.js  average sold price, weekly/monthly trends, matching listings to a card
   setCodes.js   printed set codes (PAL, OBF, PFL…) → TCGdex set ids
 public/         no-build frontend (vanilla ES modules)
   js/add.js     upload flow for cards and packs
@@ -103,12 +124,14 @@ public/         no-build frontend (vanilla ES modules)
   js/lookup.js  official-card picker
   js/vision.js  finds cards in photos and straightens them (OpenCV.js)
   js/ocr.js     reads the name / set code / number off a card (Tesseract.js)
+  js/ebay.js    eBay sold prices panel: trend chart, listings, reading pasted eBay results
   js/views.js   collection, packs, pack page, card dialog
   js/search.js  search any card online
 tests/
   api.test.js     API tests (node:test) against mock sources
   market.test.js  pull chances, prices, second source, market API
   identify.test.js  card identification from real OCR readings of the reference photos
+  ebay.test.js    sold-price statistics, trend colours, listing matching, eBay API + routes
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
 docs/reference/ the reference photos used for the upload feature and the tests
@@ -128,6 +151,8 @@ docs/reference/ the reference photos used for the upload feature and the tests
 | `GET /api/packs?q=` · `POST /api/packs` | List · add one or more packs (same multipart format, key `packs`) |
 | `PATCH /api/packs/:id` · `POST /api/packs/:id/photo` · `DELETE /api/packs/:id[?withCards=1]` | Edit · replace photo · delete (cards are kept unless `withCards=1`) |
 | `GET /api/lookup?name=&setCode=&number=` | Search the online card database |
+| `GET /api/cards/:id/ebay?condition=all\|raw\|graded` | Average sold price, weekly/monthly trend and the stored eBay sold listings |
+| `POST /api/cards/:id/ebay/refresh` · `POST /api/cards/:id/ebay/import` · `DELETE /api/cards/:id/ebay/:saleId` | Fetch from eBay's API · add pasted listings `{ listings: [...] }` · remove a listing |
 | `POST /api/identify` | Identify a card from OCR readings `{ names: [...], lines: [...] }` |
 | `GET /api/meta` | Pack kinds, variants, known set codes, stats |
 

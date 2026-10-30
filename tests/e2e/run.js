@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
+import { EbayClient } from '../../server/ebay.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
 const require = createRequire(import.meta.url);
@@ -21,7 +22,8 @@ const REF = (f) => path.join(ROOT, 'docs', 'reference', f);
 const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') : null;
 
 async function startServer(dataDir, mock, port = 0) {
-  const app = createApp({ dataDir, catalog: mockCatalog(mock) });
+  const ebay = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
+  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -143,6 +145,49 @@ try {
   await dialog.locator('.market', { hasText: 'per booster pack' }).waitFor();
   await dialog.locator('.market .price-big', { hasText: '$0.12' }).waitFor(); // tcgcsv backup price
   await shot('06-card-detail');
+  await page.keyboard.press('Escape');
+
+  step('eBay sold prices: average, coloured trend chart and the sold listings');
+  await page.locator('.card-tile', { hasText: 'Reverse holo' }).click();
+  const ebay = page.locator('dialog.modal .ebay');
+  await ebay.getByText('No eBay sales saved for this card yet.').waitFor();
+  assert.match(await ebay.getByRole('link', { name: /Open the sold listings on eBay/ }).getAttribute('href'), /^https:\/\/www\.ebay\.com\/sch\/.*LH_Sold=1/);
+  await ebay.getByRole('button', { name: 'Update from eBay' }).click();
+  await ebay.locator('.stat', { hasText: 'Average sold' }).waitFor();
+  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$2\.77.*12 sales/); // 8.25 + 25 (PSA 10) over 12
+  await ebay.getByLabel('Which sales').selectOption('raw');
+  await ebay.locator('.stat', { hasText: '11 sales' }).waitFor();
+  const colours = await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => [e.dataset.direction, e.getAttribute('stroke')]));
+  assert.deepEqual([...new Set(colours.map(([d, c]) => `${d}:${c}`))].sort(), ['down:#dc2626', 'flat:#eab308', 'up:#16a34a']);
+  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$0\.75/);
+  assert.deepEqual(await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => e.dataset.direction)), ['up', 'up', 'down', 'down', 'flat', 'flat']);
+  await ebay.getByRole('button', { name: 'Monthly' }).click();
+  assert.deepEqual(await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => e.dataset.direction)), ['down']);
+  await ebay.getByRole('button', { name: 'Weekly' }).click();
+  const firstListing = ebay.locator('.ebay-listings tbody tr').first();
+  assert.match(await firstListing.getByRole('link').getAttribute('href'), /^https:\/\/www\.ebay\.com\/itm\//);
+  if (SHOTS) {
+    await page.setViewportSize({ width: 1280, height: 1900 }); // tall enough for the whole section
+    await ebay.screenshot({ path: path.join(SHOTS, '12-ebay-sold-prices.png') });
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+
+  step('paste sold listings copied from eBay.com');
+  await ebay.getByLabel('Which sales').selectOption('all');
+  await ebay.locator('summary', { hasText: 'Add sales from eBay.com' }).click();
+  const pasted = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.html'), 'utf8');
+  await ebay.locator('.paste-box').evaluate((box, html) => {
+    const data = new DataTransfer();
+    data.setData('text/html', html);
+    data.setData('text/plain', 'ignored');
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, pasted);
+  await page.getByText('Added 3 sales · skipped 1 that weren’t this card').waitFor();
+  // Phones usually copy plain text only: the same results must come out of it.
+  const fromText = await page.evaluate(async (text) => (await import('/js/ebay.js')).parseEbayPaste({ text }),
+    fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.txt'), 'utf8'));
+  assert.deepEqual(fromText.map((l) => [l.price, l.soldAt.slice(0, 10)]), [[0.66, '2026-08-25'], [0.7, '2026-09-01'], [14.5, '2026-09-03']]);
+  await ebay.getByLabel('Which sales').locator('option', { hasText: 'All sales (15)' }).waitFor({ state: 'attached' });
   await page.keyboard.press('Escape');
 
   step('search any card online and add it to the collection');

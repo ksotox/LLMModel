@@ -60,6 +60,30 @@ const CARDS = {
   },
 };
 
+// eBay sold listings for Voltorb PAL 066/193 over ten weeks: up, then down, then flat, plus
+// listings the app must ignore (a lot, another set's Voltorb, another card).
+export const EBAY_SALES = [
+  ['2026-07-06', 0.50], ['2026-07-08', 0.60],
+  ['2026-07-14', 0.80], ['2026-07-16', 0.90],
+  ['2026-07-21', 1.20], ['2026-07-23', 1.10],
+  ['2026-07-29', 0.70],
+  ['2026-08-04', 0.60], ['2026-08-06', 0.62],
+  ['2026-08-12', 0.61],
+  ['2026-08-18', 0.62],
+].map(([date, price], i) => ({
+  itemId: `v1|1000${i}|0`,
+  title: i % 2 ? `Pokemon Voltorb 066/193 Reverse Holo Paldea Evolved NM` : `Voltorb 66/193 Paldea Evolved Pokemon TCG Card`,
+  lastSoldPrice: { value: price.toFixed(2), currency: 'USD' },
+  lastSoldDate: `${date}T15:00:00.000Z`,
+  condition: 'Ungraded',
+  itemWebUrl: `https://www.ebay.com/itm/1000${i}`,
+})).concat([
+  { itemId: 'v1|2001|0', title: 'Voltorb 066/193 PSA 10 GEM MINT Paldea Evolved', lastSoldPrice: { value: '25.00', currency: 'USD' }, lastSoldDate: '2026-08-10T12:00:00.000Z', condition: 'Graded', itemWebUrl: 'https://www.ebay.com/itm/2001' },
+  { itemId: 'v1|3001|0', title: 'Pokemon card lot x50 Voltorb 066/193 commons', lastSoldPrice: { value: '9.99', currency: 'USD' }, lastSoldDate: '2026-08-01T12:00:00.000Z', condition: 'Ungraded', itemWebUrl: 'https://www.ebay.com/itm/3001' },
+  { itemId: 'v1|3002|0', title: 'Voltorb 066/198 Scarlet & Violet base set', lastSoldPrice: { value: '0.40', currency: 'USD' }, lastSoldDate: '2026-08-02T12:00:00.000Z', condition: 'Ungraded', itemWebUrl: 'https://www.ebay.com/itm/3002' },
+  { itemId: 'v1|3003|0', title: 'Electrode 067/193 Paldea Evolved', lastSoldPrice: { value: '0.30', currency: 'USD' }, lastSoldDate: '2026-08-03T12:00:00.000Z', condition: 'Ungraded', itemWebUrl: 'https://www.ebay.com/itm/3003' },
+]);
+
 const TCGCSV = {
   groups: [
     { groupId: 3001, name: 'SV03: Obsidian Flames', abbreviation: 'OBF' },
@@ -119,9 +143,9 @@ export function solidPng(width, height, [r, g, b]) {
 
 const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer: [148, 163, 184], Water: [56, 189, 248] };
 
-export function startMockSources({ tcgdexDown = false } = {}) {
+export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {}) {
   const requests = [];
-  const state = { tcgdexDown };
+  const state = { tcgdexDown, ebayApproved };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     requests.push(url.pathname + url.search);
@@ -183,6 +207,19 @@ export function startMockSources({ tcgdexDown = false } = {}) {
     }
     if (url.pathname.startsWith('/ptcg-images/')) return png([139, 92, 246]);
 
+    // eBay's official API: OAuth token, then Marketplace Insights sold-item search.
+    if (url.pathname === '/ebay/identity/v1/oauth2/token' && req.method === 'POST') {
+      if (!state.ebayApproved) return json(400, { error: 'invalid_scope', error_description: 'The requested scope is invalid' });
+      return json(200, { access_token: 'mock-token', expires_in: 7200, token_type: 'Application Access Token' });
+    }
+    if (url.pathname === '/ebay/buy/marketplace_insights/v1_beta/item_sales/search') {
+      if (req.headers.authorization !== 'Bearer mock-token') return json(401, { errors: [{ message: 'unauthorized' }] });
+      const q = (url.searchParams.get('q') ?? '').toLowerCase();
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const hits = q.includes('voltorb') ? EBAY_SALES : [];
+      return json(200, { total: hits.length, limit: 200, offset, itemSales: hits.slice(offset, offset + 200) });
+    }
+
     if (url.pathname === '/tcgcsv/tcgplayer/3/groups') return json(200, { success: true, results: TCGCSV.groups });
     if ((m = url.pathname.match(/^\/tcgcsv\/tcgplayer\/3\/(\d+)\/(products|prices)$/))) {
       return json(200, { success: true, results: TCGCSV[m[2]][m[1]] ?? [] });
@@ -197,6 +234,7 @@ export function startMockSources({ tcgdexDown = false } = {}) {
         tcgdexUrl: `${base}/v2/en`,
         ptcgUrl: `${base}/ptcg`,
         tcgcsvUrl: `${base}/tcgcsv/tcgplayer/3`,
+        ebayUrl: `${base}/ebay`,
         requests,
         state,
         close: () => new Promise((r) => server.close(r)),

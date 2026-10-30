@@ -53,6 +53,10 @@ export const api = {
   deleteCard: (id) => request('DELETE', `/api/cards/${id}`),
   refreshMarket: (id) => request('POST', `/api/cards/${id}/refresh-market`),
   refreshAllMarket: () => request('POST', '/api/cards/refresh-market'),
+  ebay: (id, condition) => request('GET', `/api/cards/${id}/ebay${qs({ condition })}`),
+  ebayRefresh: (id, condition) => request('POST', `/api/cards/${id}/ebay/refresh${qs({ condition })}`),
+  ebayImport: (id, listings, condition) => request('POST', `/api/cards/${id}/ebay/import${qs({ condition })}`, { listings }),
+  ebayDelete: (id, saleId, condition) => request('DELETE', `/api/cards/${id}/ebay/${saleId}${qs({ condition })}`),
   catalogCard: (id, variant) => request('GET', `/api/catalog/cards/${encodeURIComponent(id)}${qs({ variant })}`),
 
   packs: (params = {}) => request('GET', `/api/packs${qs(params)}`).then((r) => r.packs),

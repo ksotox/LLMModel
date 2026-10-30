@@ -35,6 +35,24 @@ CREATE TABLE IF NOT EXISTS cards (
 
 CREATE INDEX IF NOT EXISTS idx_cards_pack ON cards(pack_id);
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at);
+
+-- eBay sold listings found for a card (from eBay's API or pasted from eBay.com).
+CREATE TABLE IF NOT EXISTS ebay_sales (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id     INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  item_key    TEXT    NOT NULL,
+  title       TEXT    NOT NULL,
+  price       REAL    NOT NULL,
+  currency    TEXT    NOT NULL DEFAULT 'USD',
+  sold_at     TEXT    NOT NULL,
+  condition   TEXT,
+  grade       TEXT,
+  url         TEXT,
+  source      TEXT    NOT NULL,
+  created_at  TEXT    NOT NULL,
+  UNIQUE (card_id, item_key)
+);
+CREATE INDEX IF NOT EXISTS idx_ebay_sales_card ON ebay_sales(card_id, sold_at);
 `;
 
 // Columns added after the first release; created on start-up for existing collections.
@@ -179,6 +197,29 @@ class Store {
     if (!unique.length) return {};
     const rows = this.db.prepare(`SELECT tcg_id, COUNT(*) AS n FROM cards WHERE tcg_id IN (${unique.map(() => '?').join(', ')}) GROUP BY tcg_id`).all(...unique);
     return Object.fromEntries(rows.map((r) => [r.tcg_id, r.n]));
+  }
+
+  // ---- eBay sold listings ----
+
+  /** Store sold listings for a card, ignoring ones already stored. Returns how many were new. */
+  addSales(cardId, sales, source) {
+    const stmt = this.db.prepare(`INSERT OR IGNORE INTO ebay_sales
+      (card_id, item_key, title, price, currency, sold_at, condition, grade, url, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const createdAt = new Date().toISOString();
+    return this.transaction(() => sales.reduce((added, s) => {
+      const key = s.itemId ?? s.url ?? `${s.title}|${s.soldAt}|${s.price}`;
+      const r = stmt.run(cardId, String(key), s.title, s.price, s.currency ?? 'USD', s.soldAt, s.condition ?? null, s.grade ?? null, s.url ?? null, source, createdAt);
+      return added + Number(r.changes);
+    }, 0));
+  }
+
+  listSales(cardId) {
+    return this.db.prepare('SELECT * FROM ebay_sales WHERE card_id = ? ORDER BY sold_at DESC, id DESC').all(cardId);
+  }
+
+  deleteSale(cardId, saleId) {
+    return Number(this.db.prepare('DELETE FROM ebay_sales WHERE card_id = ? AND id = ?').run(cardId, saleId).changes);
   }
 
   // ---- packs ----

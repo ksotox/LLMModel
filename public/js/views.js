@@ -1,6 +1,7 @@
 // Browsing views: the card collection, packs, a single pack, and the card detail dialog.
 
 import { api } from './api.js';
+import { ebaySection } from './ebay.js';
 import { cardQuads, cropToBlob, cutCard, loadImage } from './images.js';
 import { lookupPanel } from './lookup.js';
 import {
@@ -481,9 +482,12 @@ export async function openCard(id, { onChange = () => {} } = {}) {
         h('p.muted', [card.set_code, cardNumber(card)].filter(Boolean).join(' · ')),
         view === 'edit' ? null : marketSection(),
         info,
-        extra));
+        extra),
+      ebay);
   }
 
+  // Created once, so it keeps its state (filters, chart view) when the rest of the dialog redraws.
+  const ebay = ebaySection(card);
   render();
   // Prices move: refresh in the background when the stored one is missing or more than a day old.
   if (card.tcg_id || (card.set_code && card.number)) {
