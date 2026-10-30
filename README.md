@@ -52,6 +52,32 @@ npm start            # http://localhost:3000
 | `POKEMONPRICETRACKER_DAILY_CREDITS` | `100` | Your plan's daily credits. The app never spends more than this in a day. |
 | `POKEMONPRICETRACKER_HISTORY_DAYS` | `3` | Days of price history to ask for per card (the free plan allows 3) |
 
+### Start it with one click (Windows)
+
+The app folder contains **`Start Pokedex.cmd`**. Double-click it to:
+- install the app the first time;
+- start it;
+- open it in your browser.
+
+Keep its window open while you use the app, and close the window to stop it. Clicking it again while the app is running just opens the browser again.
+
+To get a desktop icon and keep your PokemonPriceTracker key saved, paste these lines into PowerShell once. Put your key in the first line, and change `$app` if your app folder is somewhere else:
+
+```powershell
+[Environment]::SetEnvironmentVariable("POKEMONPRICETRACKER_API_KEY", "your-key", "User")
+$app = "$HOME\Downloads\LLMModel-main"
+$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Desktop'))\Pokedex.lnk")
+$shortcut.TargetPath = "$app\Start Pokedex.cmd"
+$shortcut.WorkingDirectory = $app
+$shortcut.IconLocation = "$app\public\pokedex.ico"
+$shortcut.WindowStyle = 7
+$shortcut.Save()
+```
+
+- **The key** is saved in your Windows user settings, not in the app folder, so it is never uploaded anywhere and is kept when you update the app.
+- **The shortcut** is a **Pokedex** icon on your desktop with a Poké Ball. Its window starts minimised in the taskbar.
+- **Starting with Windows (optional):** press Win+R, type `shell:startup`, and copy the desktop shortcut into the folder that opens.
+
 To check which online sources your computer can reach, run `npm run check:live`. It looks up the three reference cards in every source and prints what each one returns.
 
 To use it from your phone, run it on a computer on your home network and open `http://<computer-ip>:3000`. The **Take photo** button opens the camera.
@@ -180,6 +206,7 @@ tests/
 docs/reference/ the reference photos used for the upload feature and the tests
 docs/HISTORY.md full project history
 docs/SOURCES.md every source, website, API and library used
+Start Pokedex.cmd  Windows one-click launcher (installs on first run, starts, opens the browser)
 MEMORY.md       short handoff notes for the next agent (size-capped by tests/memory.test.js)
 ```
 

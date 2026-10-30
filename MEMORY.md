@@ -20,6 +20,10 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
 - `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough.
   `SCREENSHOTS=1` refreshes `docs/screenshots/`. Both use local mocks, so no network is needed.
+- Windows one-click start: `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`). It installs on first
+  run and runs `npm start -- --open`. `--open` opens the browser; if the app is already running, it
+  just reopens the browser. The desktop shortcut and the user-level env var for the key are set up
+  by a PowerShell snippet in the README. Icon: `public/pokedex.ico`.
 - `npm run check:live`: looks up the 3 reference cards in every real source (run on a networked machine).
 - Data lives in `DATA_DIR` (default `./data`): `collection.db` plus image folders. Back it up to keep the collection.
 

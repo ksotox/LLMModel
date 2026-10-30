@@ -20,6 +20,7 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | `fee9e5d` | eBay sold prices per card: average, trend chart, listings |
 | 2026-10-30 | `01aa259` | Local daily price history; PokemonPriceTracker graded eBay sales |
 | 2026-10-30 | PR #4 merged | Above, plus `MEMORY.md`, this history and `SOURCES.md` |
+| 2026-10-30 | PR #5 | One-click Windows launcher with desktop icon; API key kept in the user environment |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -166,6 +167,19 @@ The owner chose "find a free way".
 - **`MEMORY.md`:** current state only, capped at 150 lines and 10 KB by `tests/memory.test.js`.
 - **`AGENTS.md` and `CLAUDE.md`:** pointers to `MEMORY.md`, so common agents load it automatically.
 - **This file and `SOURCES.md`.**
+
+## Phase 7: one-click start on Windows
+
+**Asked:** start the server by clicking an icon, with the PokemonPriceTracker key already set.
+
+**Built:**
+- **`Start Pokedex.cmd`:**
+  - checks that Node is installed;
+  - runs `npm install` on first run;
+  - starts the app with `--open`.
+- **`--open`:** opens the default browser once the server is listening. If the port is already in use, it reopens the browser and exits.
+- **A Poké Ball `public/pokedex.ico`.**
+- **A README PowerShell snippet** that saves the key as a Windows user environment variable (it survives updates and stays out of the repo) and creates a desktop shortcut that starts minimised.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
