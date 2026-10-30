@@ -61,6 +61,19 @@ export class CardCatalog {
     return card;
   }
 
+  /** The card's TCGplayer product id, taken from TCGdex's price data (no extra request when cached). */
+  async tcgPlayerId(card) {
+    let id = card.tcg_id && !isPtcg(card.tcg_id) ? card.tcg_id : null;
+    if (!id && card.set_code && card.number) {
+      const [twin] = await this.tcgdex.search({ setCode: card.set_code, number: card.number }).catch(() => []);
+      id = twin?.tcgId ?? null;
+    }
+    if (!id) return null;
+    const raw = await this.tcgdex.card(id).catch(() => null);
+    const line = Object.values(raw?.pricing?.tcgplayer ?? {}).find((l) => l && typeof l === 'object' && l.productId);
+    return line ? String(line.productId) : null;
+  }
+
   /** Download an image; returns { buffer, contentType } or null when unavailable. */
   download(url) {
     return this.tcgdex.download(url);

@@ -53,6 +53,40 @@ CREATE TABLE IF NOT EXISTS ebay_sales (
   UNIQUE (card_id, item_key)
 );
 CREATE INDEX IF NOT EXISTS idx_ebay_sales_card ON ebay_sales(card_id, sold_at);
+
+-- One price per card, source, line and day: the app's own long-term price history.
+CREATE TABLE IF NOT EXISTS price_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id      INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  source       TEXT    NOT NULL,
+  label        TEXT    NOT NULL,
+  currency     TEXT    NOT NULL DEFAULT 'USD',
+  price        REAL    NOT NULL,
+  day          TEXT    NOT NULL,
+  recorded_at  TEXT    NOT NULL,
+  UNIQUE (card_id, source, label, day)
+);
+CREATE INDEX IF NOT EXISTS idx_price_history_card ON price_history(card_id, day);
+
+-- Last PokemonPriceTracker answer for each card (graded sales, population…), reused for a day.
+CREATE TABLE IF NOT EXISTS pricetracker_cache (
+  card_id         INTEGER PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
+  tcg_player_id   TEXT,
+  fetched_at      TEXT,
+  attempted_at    TEXT,
+  data            TEXT,
+  error           TEXT
+);
+
+-- Credits spent per day on metered APIs, so the app stays inside free-tier limits.
+CREATE TABLE IF NOT EXISTS api_usage (
+  day       TEXT    NOT NULL,
+  provider  TEXT    NOT NULL,
+  credits   INTEGER NOT NULL DEFAULT 0,
+  requests  INTEGER NOT NULL DEFAULT 0,
+  reported_remaining INTEGER,
+  PRIMARY KEY (day, provider)
+);
 `;
 
 // Columns added after the first release; created on start-up for existing collections.
@@ -65,6 +99,7 @@ const CARD_MIGRATIONS = {
   market_updated: 'TEXT',
   pull_chance: 'REAL',
   pull_source: 'TEXT',
+  market_checked_at: 'TEXT', // when the app last looked for a price (found or not)
 };
 
 export const PACK_KINDS = ['booster-pack', 'tin', 'kit', 'bundle', 'elite-trainer-box', 'collection-box', 'blister', 'booster-box', 'other'];
@@ -220,6 +255,67 @@ class Store {
 
   deleteSale(cardId, saleId) {
     return Number(this.db.prepare('DELETE FROM ebay_sales WHERE card_id = ? AND id = ?').run(cardId, saleId).changes);
+  }
+
+  // ---- price history ----
+
+  /** Record a price for today (or `day`); a second reading on the same day replaces the first. */
+  recordPrice(cardId, { source, label, price, currency = 'USD', day }) {
+    if (!(price > 0)) return;
+    this.db.prepare(`INSERT INTO price_history (card_id, source, label, currency, price, day, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (card_id, source, label, day) DO UPDATE SET price = excluded.price, currency = excluded.currency, recorded_at = excluded.recorded_at`)
+      .run(cardId, source, label, currency, Math.round(price * 100) / 100, day ?? new Date().toISOString().slice(0, 10), new Date().toISOString());
+  }
+
+  priceHistory(cardId, { since } = {}) {
+    return this.db.prepare(`SELECT source, label, currency, price, day FROM price_history
+      WHERE card_id = ? AND day >= ? ORDER BY source, label, day`).all(cardId, since ?? '0000-00-00');
+  }
+
+  /** Cards whose price hasn't been checked yet on `day` (YYYY-MM-DD), least recently checked first. */
+  cardsNeedingSnapshot(day) {
+    return this.db.prepare(`SELECT * FROM cards
+      WHERE (tcg_id IS NOT NULL OR (set_code IS NOT NULL AND number IS NOT NULL))
+        AND (market_checked_at IS NULL OR substr(market_checked_at, 1, 10) < ?)
+      ORDER BY market_checked_at IS NOT NULL, market_checked_at, id`).all(day);
+  }
+
+  // ---- PokemonPriceTracker cache ----
+
+  getTrackerCache(cardId) {
+    const row = this.db.prepare('SELECT * FROM pricetracker_cache WHERE card_id = ?').get(cardId);
+    return row ? { ...row, data: row.data ? JSON.parse(row.data) : null } : null;
+  }
+
+  saveTrackerCache(cardId, { tcgPlayerId, data, error = null }) {
+    const now = new Date().toISOString();
+    this.db.prepare(`INSERT INTO pricetracker_cache (card_id, tcg_player_id, fetched_at, attempted_at, data, error) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (card_id) DO UPDATE SET tcg_player_id = COALESCE(excluded.tcg_player_id, tcg_player_id),
+        fetched_at = COALESCE(excluded.fetched_at, fetched_at), attempted_at = excluded.attempted_at,
+        data = COALESCE(excluded.data, data), error = excluded.error`)
+      .run(cardId, tcgPlayerId ?? null, data ? now : null, now, data ? JSON.stringify(data) : null, error);
+  }
+
+  /** Cards with no PokemonPriceTracker data, or the oldest data, first. */
+  cardsByTrackerAge() {
+    return this.db.prepare(`SELECT c.*, t.attempted_at AS tracker_attempted_at FROM cards c
+      LEFT JOIN pricetracker_cache t ON t.card_id = c.id
+      WHERE c.tcg_id IS NOT NULL OR (c.name IS NOT NULL AND c.number IS NOT NULL)
+      ORDER BY t.attempted_at IS NOT NULL, t.attempted_at, c.id`).all();
+  }
+
+  // ---- API usage ----
+
+  usage(provider, day) {
+    return this.db.prepare('SELECT credits, requests, reported_remaining FROM api_usage WHERE day = ? AND provider = ?').get(day, provider)
+      ?? { credits: 0, requests: 0, reported_remaining: null };
+  }
+
+  addUsage(provider, day, credits, reportedRemaining = null) {
+    this.db.prepare(`INSERT INTO api_usage (day, provider, credits, requests, reported_remaining) VALUES (?, ?, ?, 1, ?)
+      ON CONFLICT (day, provider) DO UPDATE SET credits = credits + excluded.credits, requests = requests + 1,
+        reported_remaining = COALESCE(excluded.reported_remaining, reported_remaining)`).run(day, provider, credits, reportedRemaining);
   }
 
   // ---- packs ----

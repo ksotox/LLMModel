@@ -27,8 +27,8 @@ const CARDS = {
         pricing: {
           tcgplayer: {
             unit: 'USD', updated: '2026-10-28T20:00:00.000Z',
-            normal: { productId: 1, lowPrice: 0.02, midPrice: 0.1, highPrice: 2, marketPrice: 0.08 },
-            'reverse-holofoil': { productId: 1, lowPrice: 0.1, midPrice: 0.3, highPrice: 3, marketPrice: 0.25 },
+            normal: { productId: 497654, lowPrice: 0.02, midPrice: 0.1, highPrice: 2, marketPrice: 0.08 },
+            'reverse-holofoil': { productId: 497654, lowPrice: 0.1, midPrice: 0.3, highPrice: 3, marketPrice: 0.25 },
           },
           cardmarket: { unit: 'EUR', updated: '2026-10-28T20:00:00.000Z', avg: 0.05, low: 0.02, trend: 0.06, 'avg-holo': 0.2, 'trend-holo': 0.22 },
         },
@@ -83,6 +83,39 @@ export const EBAY_SALES = [
   { itemId: 'v1|3002|0', title: 'Voltorb 066/198 Scarlet & Violet base set', lastSoldPrice: { value: '0.40', currency: 'USD' }, lastSoldDate: '2026-08-02T12:00:00.000Z', condition: 'Ungraded', itemWebUrl: 'https://www.ebay.com/itm/3002' },
   { itemId: 'v1|3003|0', title: 'Electrode 067/193 Paldea Evolved', lastSoldPrice: { value: '0.30', currency: 'USD' }, lastSoldDate: '2026-08-03T12:00:00.000Z', condition: 'Ungraded', itemWebUrl: 'https://www.ebay.com/itm/3003' },
 ]);
+
+// PokemonPriceTracker cards, in two of the layouts their docs show.
+export const PPT_CARDS = [
+  {
+    id: 'ppt-voltorb', tcgPlayerId: 497654, name: 'Voltorb', setName: 'SV02: Paldea Evolved', cardNumber: '066/193', rarity: 'Common',
+    prices: { market: 0.24, low: 0.05, primaryCondition: 'Near Mint', primaryPrinting: 'Reverse Holofoil', lastUpdated: '2026-10-29T08:00:00.000Z' },
+    priceHistory: {
+      conditions: {
+        'Near Mint': { history: [{ date: '2026-10-27', market: 0.22 }, { date: '2026-10-28', market: 0.23 }, { date: '2026-10-29', market: 0.24 }] },
+        'Lightly Played': { history: [{ date: '2026-10-29', market: 0.15 }] },
+      },
+    },
+    ebay: {
+      salesByGrade: {
+        psa9: { count: 8, averagePrice: 9.75, medianPrice: 9.5, minPrice: 7, maxPrice: 13, lastSaleDate: '2026-10-20' },
+        psa10: { count: 12, averagePrice: 24.5, medianPrice: 23, minPrice: 18, maxPrice: 35, lastSaleDate: '2026-10-25' },
+        cgc9_5: { salesCount: 2, averagePrice: 12, smartMarketPrice: { price: 11.5, confidence: 'low' } },
+      },
+      sales: [
+        { title: 'Voltorb 066/193 PSA 10 GEM MINT Paldea Evolved', price: 25, soldDate: '2026-10-25', grade: 'psa10', url: 'https://www.ebay.com/itm/880001' },
+        { title: 'Pokemon mystery lot x20 incl Voltorb 066/193', price: 15, soldDate: '2026-10-24', url: 'https://www.ebay.com/itm/880002' },
+      ],
+    },
+    population: { psa10: 143, psa9: 210, psa8: 40 },
+  },
+  {
+    id: 'ppt-linoone', tcgPlayerId: '512345', name: 'Linoone', set: { name: 'Obsidian Flames' }, number: '168/197',
+    price: { marketPrice: '0.14' },
+    history: [{ date: '2026-10-28T00:00:00Z', price: 0.13 }, { date: '2026-10-29T00:00:00Z', price: 0.14 }],
+    ebay: { salesByGrade: {} },
+  },
+  { id: 'ppt-zigzagoon', tcgPlayerId: 512344, name: 'Zigzagoon', setName: 'Obsidian Flames', cardNumber: '167/197', prices: { market: 0.1 } },
+];
 
 const TCGCSV = {
   groups: [
@@ -145,7 +178,7 @@ const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer:
 
 export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {}) {
   const requests = [];
-  const state = { tcgdexDown, ebayApproved };
+  const state = { tcgdexDown, ebayApproved, pptRemaining: null, pptRequests: [] };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     requests.push(url.pathname + url.search);
@@ -220,6 +253,30 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       return json(200, { total: hits.length, limit: 200, offset, itemSales: hits.slice(offset, offset + 200) });
     }
 
+    // PokemonPriceTracker: Bearer key, 1 credit per card returned (+1 history, +1 eBay).
+    if (url.pathname === '/ppt/api/v2/cards') {
+      if (req.headers.authorization !== 'Bearer test-key') return json(401, { error: 'Invalid API key' });
+      state.pptRequests.push(url.search);
+      const id = url.searchParams.get('tcgPlayerId');
+      const q = (url.searchParams.get('search') ?? '').toLowerCase();
+      const limit = Number(url.searchParams.get('limit') ?? 10);
+      let found = id ? PPT_CARDS.filter((c) => String(c.tcgPlayerId) === id) : PPT_CARDS.filter((c) => q.split(/\s+/).some((w) => w.length > 2 && c.name.toLowerCase().includes(w)));
+      found = found.slice(0, limit).map((c) => {
+        const out = { ...c };
+        if (url.searchParams.get('includeHistory') !== 'true') { delete out.priceHistory; delete out.history; }
+        if (url.searchParams.get('includeEbay') !== 'true') delete out.ebay;
+        return out;
+      });
+      const per = 1 + (url.searchParams.get('includeHistory') === 'true' ? 1 : 0) + (url.searchParams.get('includeEbay') === 'true' ? 1 : 0);
+      const headers = { 'content-type': 'application/json' };
+      if (state.pptRemaining != null) {
+        state.pptRemaining -= found.length * per;
+        headers['x-ratelimit-remaining'] = String(state.pptRemaining);
+      }
+      res.writeHead(200, headers);
+      return res.end(JSON.stringify({ data: found, metadata: { total: found.length } }));
+    }
+
     if (url.pathname === '/tcgcsv/tcgplayer/3/groups') return json(200, { success: true, results: TCGCSV.groups });
     if ((m = url.pathname.match(/^\/tcgcsv\/tcgplayer\/3\/(\d+)\/(products|prices)$/))) {
       return json(200, { success: true, results: TCGCSV[m[2]][m[1]] ?? [] });
@@ -235,6 +292,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         ptcgUrl: `${base}/ptcg`,
         tcgcsvUrl: `${base}/tcgcsv/tcgplayer/3`,
         ebayUrl: `${base}/ebay`,
+        pptUrl: `${base}/ppt/api/v2`,
         requests,
         state,
         close: () => new Promise((r) => server.close(r)),

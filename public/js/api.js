@@ -57,6 +57,9 @@ export const api = {
   ebayRefresh: (id, condition) => request('POST', `/api/cards/${id}/ebay/refresh${qs({ condition })}`),
   ebayImport: (id, listings, condition) => request('POST', `/api/cards/${id}/ebay/import${qs({ condition })}`, { listings }),
   ebayDelete: (id, saleId, condition) => request('DELETE', `/api/cards/${id}/ebay/${saleId}${qs({ condition })}`),
+  priceHistory: (id, days) => request('GET', `/api/cards/${id}/price-history${qs({ days })}`),
+  tracker: (id) => request('GET', `/api/cards/${id}/pricetracker`),
+  trackerRefresh: (id, force) => request('POST', `/api/cards/${id}/pricetracker/refresh${force ? '?force=1' : ''}`),
   catalogCard: (id, variant) => request('GET', `/api/catalog/cards/${encodeURIComponent(id)}${qs({ variant })}`),
 
   packs: (params = {}) => request('GET', `/api/packs${qs(params)}`).then((r) => r.packs),

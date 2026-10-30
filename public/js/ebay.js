@@ -139,7 +139,12 @@ export function trendChart(points, { currency = 'USD', by = 'week' } = {}) {
   const W = 640;
   const H = 240;
   const pad = { l: 56, r: 16, t: 16, b: 34 };
-  const label = (p) => `${by === 'month' ? new Date(p.start).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' }) : `Week of ${formatDate(p.start)}`}: ${formatPrice(p.average, currency)} (${p.count} sale${p.count === 1 ? '' : 's'})`;
+  const when = (p) => {
+    if (by === 'month') return new Date(p.start).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    if (by === 'day') return new Date(p.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    return `Week of ${formatDate(p.start)}`;
+  };
+  const label = (p) => `${when(p)}: ${formatPrice(p.average, currency)}${p.count != null ? ` (${p.count} sale${p.count === 1 ? '' : 's'})` : ''}`;
   const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'trend-chart', role: 'img' });
   chart.setAttribute('aria-label', points.map(label).join('; '));
   if (!points.length) return chart;
@@ -157,10 +162,12 @@ export function trendChart(points, { currency = 'USD', by = 'week' } = {}) {
   const x = (t) => (t1 === t0 ? (pad.l + W - pad.r) / 2 : pad.l + ((t - t0) / (t1 - t0)) * (W - pad.l - pad.r));
   const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
 
+  // Cheap cards move by fractions of a cent: show enough decimals that no two ticks read the same.
+  const digits = Math.min(4, Math.ceil(-Math.log10((hi - lo) / 4)));
   for (let i = 0; i <= 4; i++) {
     const v = lo + ((hi - lo) * i) / 4;
     chart.append(svg('line', { x1: pad.l, x2: W - pad.r, y1: y(v), y2: y(v), class: 'grid' }));
-    chart.append(svg('text', { x: pad.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'axis' }, formatPrice(v, currency)));
+    chart.append(svg('text', { x: pad.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'axis' }, formatPrice(v, currency, digits > 2 ? { digits } : {})));
   }
   const step = Math.max(1, Math.ceil(points.length / 6));
   points.forEach((p, i) => {

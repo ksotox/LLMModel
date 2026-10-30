@@ -7,7 +7,9 @@ import express from 'express';
 import multer from 'multer';
 import { CardCatalog } from './catalog.js';
 import { EbayClient, EbayNotApproved, searchQuery, soldSearchUrl } from './ebay.js';
-import { gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
+import { PriceTrackerClient } from './priceTracker.js';
+import { PriceTrackerService } from './priceTrackerService.js';
+import { direction, gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
 import { openDb, PACK_KINDS, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
 import { SET_CODES } from './setCodes.js';
@@ -32,7 +34,13 @@ class HttpError extends Error {
   }
 }
 
-export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new EbayClient() } = {}) {
+export function createApp({
+  dataDir,
+  catalog = new CardCatalog(),
+  ebay = new EbayClient(),
+  priceTracker = new PriceTrackerClient(),
+  trackerOptions = {},
+} = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
     packs: path.join(dataDir, 'uploads', 'packs'),
@@ -40,6 +48,7 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
   };
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true });
   const store = openDb(path.join(dataDir, 'collection.db'));
+  const tracker = new PriceTrackerService({ client: priceTracker, store, catalog, ...trackerOptions });
 
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -87,13 +96,15 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
   /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
   const withMarket = async (card) => {
     let market;
+    const checked = new Date().toISOString();
     try {
       market = await catalog.market(card);
     } catch {
-      return card;
+      return { ...card, market_checked_at: checked };
     }
     return {
       ...card,
+      market_checked_at: checked,
       rarity: card.rarity ?? market.rarity,
       pull_chance: market.pull?.chance ?? null,
       pull_source: market.pull?.source ?? null,
@@ -128,6 +139,29 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
     }
     merged.official_image_path = await cacheOfficialImage(merged);
     return withMarket(merged);
+  };
+
+  /**
+   * Add a card's current market price to its price history, dated by when the source last
+   * updated it. Called whenever a card is priced, so every card builds up its own history.
+   */
+  const snapshotPrice = (card) => {
+    if (!card?.market_price) return;
+    store.recordPrice(card.id, {
+      source: /cardmarket/i.test(card.market_source ?? '') ? 'cardmarket' : 'tcgplayer',
+      label: 'Market price',
+      price: card.market_price,
+      currency: card.market_currency ?? 'USD',
+      day: card.market_updated && !Number.isNaN(Date.parse(card.market_updated)) ? new Date(card.market_updated).toISOString().slice(0, 10) : undefined,
+    });
+  };
+
+  /** Re-price a stored card and record the price in its history. */
+  const refreshCardMarket = async (card) => {
+    store.updateCard(card.id, await withMarket(card));
+    const updated = store.getCard(card.id);
+    snapshotPrice(updated);
+    return updated;
   };
 
   const toJson = (card) => card && {
@@ -268,7 +302,9 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
     const prepared = [];
     for (const card of input) prepared.push(await withOfficial(card));
     const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
-    res.status(201).json({ cards: ids.map((id) => toJson(store.getCard(id))) });
+    const created = ids.map((id) => store.getCard(id));
+    created.forEach(snapshotPrice);
+    res.status(201).json({ cards: created.map(toJson) });
   });
 
   app.patch('/api/cards/:id', async (req, res) => {
@@ -282,6 +318,7 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
       card = await withMarket(card);
     }
     store.updateCard(existing.id, card);
+    if (relink || repriced) snapshotPrice(store.getCard(existing.id));
     res.json(toJson(store.getCard(existing.id)));
   });
 
@@ -298,17 +335,48 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
   app.post('/api/cards/refresh-market', async (_req, res) => {
     let updated = 0;
     for (const card of store.listCards()) {
-      const next = await withMarket(card);
-      store.updateCard(card.id, next);
+      const next = await refreshCardMarket(card);
       if (next.market_price != null || next.pull_chance != null) updated++;
     }
     res.json({ updated, stats: store.stats() });
   });
 
   app.post('/api/cards/:id/refresh-market', async (req, res) => {
-    const existing = findCard(req.params.id);
-    store.updateCard(existing.id, await withMarket(existing));
-    res.json(toJson(store.getCard(existing.id)));
+    res.json(toJson(await refreshCardMarket(findCard(req.params.id))));
+  });
+
+  // Price history: every price the app has seen for the card, one per source, line and day.
+  app.get('/api/cards/:id/price-history', (req, res) => {
+    const card = findCard(req.params.id);
+    const days = Math.min(3650, Math.max(1, Number(req.query.days) || 365));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const groups = new Map();
+    for (const row of store.priceHistory(card.id, { since })) {
+      const key = `${row.source}|${row.label}`;
+      if (!groups.has(key)) groups.set(key, { source: row.source, label: row.label, currency: row.currency, points: [] });
+      groups.get(key).points.push({ day: row.day, price: row.price });
+    }
+    const series = [...groups.values()].map((s) => {
+      const firstPrice = s.points[0].price;
+      const lastPrice = s.points[s.points.length - 1].price;
+      const change = firstPrice ? (lastPrice - firstPrice) / firstPrice : 0;
+      return { ...s, first: firstPrice, last: lastPrice, change: Math.round(change * 1000) / 1000, direction: s.points.length > 1 ? direction(change) : null };
+    });
+    res.json({ days, series });
+  });
+
+  // PokemonPriceTracker: eBay graded sales, recent history and population, within the daily credit budget.
+  app.get('/api/pricetracker/status', (_req, res) => {
+    res.json(tracker.status());
+  });
+
+  app.get('/api/cards/:id/pricetracker', (req, res) => {
+    res.json(tracker.view(findCard(req.params.id)));
+  });
+
+  // Uses the day-old cache unless `force=1`; refuses to spend past the daily budget.
+  app.post('/api/cards/:id/pricetracker/refresh', async (req, res) => {
+    res.json(await tracker.refresh(findCard(req.params.id), { force: req.query.force === '1' }));
   });
 
   // eBay sold listings for a card: average sold price, price trend and the listings themselves.
@@ -456,5 +524,7 @@ export function createApp({ dataDir, catalog = new CardCatalog(), ebay = new Eba
   });
 
   app.locals.store = store;
+  app.locals.tracker = tracker;
+  app.locals.refreshCardMarket = refreshCardMarket;
   return app;
 }

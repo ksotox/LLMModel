@@ -8,6 +8,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Official artwork when it exists.** Type the set code and number printed at the bottom left of the card (e.g. `PAL` `066/193`), or just the name, and the app finds the card in the free [TCGdex](https://tcgdex.dev) database. If TCGdex has no match or no picture, it checks the open [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), which covers every English set. It keeps a local copy of the official image next to your own photo.
 - **Rarity, pull chance and price on every card.** Each card shows its rarity (● Common, ◆ Uncommon, ★ Rare, ★★ Double Rare…), an **estimated chance of pulling it from one booster pack**, and an **estimated market price**. The collection page adds up the total value. Prices refresh automatically when you open a card, or all at once with **Update prices**.
 - **eBay sold prices.** Open any card in your collection to see its **average sold price** on eBay (plus median and range), a **price trend chart** (weekly or monthly averages; the line is **green** where the price went up, **red** where it went down and **yellow** where it stayed about the same, within 2%), the overall direction and rate of change, and **every sold listing** behind those numbers (title with link, sold price, date, condition / grade). Filter by ungraded or graded sales, and remove any listing that isn't really your card.
+- **Price history and eBay graded sales.** Every card keeps its own **day-by-day price history** in the database, saved automatically while the app runs, so you build up long-term history for free. With a free [PokemonPriceTracker](https://www.pokemonpricetracker.com/) key, the card page also shows **eBay sales by grade** (PSA 10, CGC 9.5, raw…: count, average, median, range), recent price history from PokemonPriceTracker, and grading population when your plan includes it. The app keeps well inside the free 100 credits a day by itself.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -22,6 +23,8 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Search](docs/screenshots/10-search.png) | ![Search result](docs/screenshots/09-search-card.png) |
 | **eBay sold prices: average, trend chart, listings** | **A promo read from a photo** |
 | ![eBay sold prices](docs/screenshots/12-ebay-sold-prices.png) | ![Promo read](docs/screenshots/11-read-promo.png) |
+| **Price history & eBay graded sales** | |
+| ![Price history](docs/screenshots/13-price-history.png) | |
 
 > The screenshots come from the automated test, which runs against a mock card database, so the "official" images there are flat placeholder colours. In normal use they are the real card PNGs.
 
@@ -43,6 +46,9 @@ npm start            # http://localhost:3000
 | `TCGCSV_URL` | `https://tcgcsv.com/tcgplayer/3` | Backup price source (TCGplayer prices) |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | (not set) | eBay app keys, for automatic sold listings once eBay approves the Marketplace Insights API |
 | `EBAY_MARKETPLACE` | `EBAY_US` | Which eBay site to read sold listings from (e.g. `EBAY_GB`) |
+| `POKEMONPRICETRACKER_API_KEY` | (not set) | Free PokemonPriceTracker key, for eBay graded sales and extra price history (see below) |
+| `POKEMONPRICETRACKER_DAILY_CREDITS` | `100` | Your plan's daily credits. The app never spends more than this in a day. |
+| `POKEMONPRICETRACKER_HISTORY_DAYS` | `3` | Days of price history to ask for per card (the free plan allows 3) |
 
 To check which online sources your computer can reach, run `npm run check:live`. It looks up the three reference cards in every source and prints what each one returns.
 
@@ -69,6 +75,35 @@ eBay closed its open sold-listings API in 2025, and scraping eBay breaks its rul
    An **Update from eBay** button then appears on every card. Until approval, the app says so and you can keep using copy and paste.
 
 **How the numbers are worked out:** the average is the mean of the sold prices shown (all, ungraded only or graded only). The chart plots the average for each week (Monday to Sunday) or month, and each step is coloured by how it compares with the period before: more than +2% green, more than −2% red, otherwise yellow. The overall trend is a straight line fitted through every sale, so one odd sale can't flip it. Its slope is the rate per week, and its rise or fall over the period, relative to the average price, gives the % change.
+
+## Price history and eBay graded sales (PokemonPriceTracker)
+
+The app already gets everyday prices for free (TCGplayer and Cardmarket via TCGdex and tcgcsv.com). Two things are added on top:
+
+**Your own price history (always on, no key needed).** Each card's price is saved once per day into the database (`price_history` table): when you add it, when you open it, and from a background job that runs a minute after start-up and then every hour while the app is open. Any card not yet priced that day is updated. The **Price history & graded sales** section on a card draws each saved series as a daily chart (green up, red down, yellow flat), with the change since the first day. The longer the app runs, the longer the history.
+
+**PokemonPriceTracker (optional, free key).** Adds eBay sales grouped by grade, its own recent price history and, on plans that include it, population counts.
+
+1. Sign up at [pokemonpricetracker.com](https://www.pokemonpricetracker.com/) (free plan: 100 credits a day, no credit card) and copy your API key.
+2. Start the app with the key:
+   ```bash
+   POKEMONPRICETRACKER_API_KEY=your-key npm start
+   ```
+   On Windows PowerShell: `$env:POKEMONPRICETRACKER_API_KEY="your-key"; npm start`. The start-up message says `PokemonPriceTracker: on (100 credits a day)`.
+3. Open any card. Its graded sales appear under **Price history & graded sales**, with the credits used today and an **Update now** button.
+
+**How the 100 credits a day are kept.** A card costs about 3 credits (1 for the card, 1 for history, 1 for eBay sales).
+
+- **Cached for a day.** A card's data is fetched at most once a day; opening it again uses the saved copy. PokemonPriceTracker only updates daily anyway.
+- **No searches when avoidable.** The card's TCGplayer id usually comes free from TCGdex. Otherwise, one small search (up to 3 credits) is made once, and the id is remembered. The search result must match the card's number, set total and set name.
+- **Counted per day.** Credits spent are recorded in the database (`api_usage` table), along with the remaining credits PokemonPriceTracker reports, so restarts don't reset the count. Nothing is spent once the day's credits are used up. The saved data is shown instead.
+- **A share is kept for you.** The hourly background job refreshes the cards with the oldest data, but it always leaves 30% of the day’s credits unspent, so cards you open yourself can still update.
+- **Failures aren't retried all day.** A card PokemonPriceTracker doesn't have, or a failed request, waits a day before being tried again.
+- **No double calls.** Two requests for the same card at the same moment share one call.
+
+With 100 credits, that's roughly 30 cards refreshed a day. Every answer is also written into your local price history: PokemonPriceTracker's market price history, plus the average for each grade. Individual eBay sales it returns are added to the card's eBay sold listings.
+
+> PokemonPriceTracker's API layout differs between its docs pages, so the app reads several layouts. If something doesn't show up with your key, the card page shows the error message it received.
 
 ## How cards are cut out and read
 
@@ -117,6 +152,9 @@ server/
   ebay.js       eBay's official sold-listings API + the eBay search for a card
   soldStats.js  average sold price, weekly/monthly trends, matching listings to a card
   setCodes.js   printed set codes (PAL, OBF, PFL…) → TCGdex set ids
+  priceTracker.js         PokemonPriceTracker API client + reading its answers
+  priceTrackerService.js  daily credit budget, caching, saving into the price history
+  scheduler.js  hourly background job: daily price snapshot + PokemonPriceTracker top-ups
 public/         no-build frontend (vanilla ES modules)
   js/add.js     upload flow for cards and packs
   js/cropper.js crop / split editor
@@ -125,6 +163,7 @@ public/         no-build frontend (vanilla ES modules)
   js/vision.js  finds cards in photos and straightens them (OpenCV.js)
   js/ocr.js     reads the name / set code / number off a card (Tesseract.js)
   js/ebay.js    eBay sold prices panel: trend chart, listings, reading pasted eBay results
+  js/history.js price history chart + PokemonPriceTracker graded sales
   js/views.js   collection, packs, pack page, card dialog
   js/search.js  search any card online
 tests/
@@ -132,6 +171,7 @@ tests/
   market.test.js  pull chances, prices, second source, market API
   identify.test.js  card identification from real OCR readings of the reference photos
   ebay.test.js    sold-price statistics, trend colours, listing matching, eBay API + routes
+  pricetracker.test.js  PokemonPriceTracker client, caching, credit budget, price history, scheduler
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
 docs/reference/ the reference photos used for the upload feature and the tests
@@ -153,6 +193,9 @@ docs/reference/ the reference photos used for the upload feature and the tests
 | `GET /api/lookup?name=&setCode=&number=` | Search the online card database |
 | `GET /api/cards/:id/ebay?condition=all\|raw\|graded` | Average sold price, weekly/monthly trend and the stored eBay sold listings |
 | `POST /api/cards/:id/ebay/refresh` · `POST /api/cards/:id/ebay/import` · `DELETE /api/cards/:id/ebay/:saleId` | Fetch from eBay's API · add pasted listings `{ listings: [...] }` · remove a listing |
+| `GET /api/cards/:id/price-history?days=` | The card's saved daily price history, one series per source / grade, with change and direction |
+| `GET /api/pricetracker/status` | Whether a key is set, and credits used / left today |
+| `GET /api/cards/:id/pricetracker` · `POST /api/cards/:id/pricetracker/refresh[?force=1]` | Saved PokemonPriceTracker data (no credits used) · update it (uses the cache if under a day old, unless `force`; never exceeds the daily credits) |
 | `POST /api/identify` | Identify a card from OCR readings `{ names: [...], lines: [...] }` |
 | `GET /api/meta` | Pack kinds, variants, known set codes, stats |
 

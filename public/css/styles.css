@@ -629,3 +629,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 }
 .paste-box:empty::before { content: attr(data-placeholder); }
 .paste-box:focus { outline: 2px solid var(--focus); }
+
+/* ---------- Price history & graded sales ---------- */
+
+.price-history {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.price-history h3 { margin: 0; font-size: 1.15rem; }
+.price-history .chart-head select { width: auto; max-width: 100%; }
+.history-block { display: flex; flex-direction: column; gap: 10px; }
+.tracker { display: flex; flex-direction: column; gap: 10px; }
+.tracker-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.population { margin: 0; }
+.tracker-setup { border: 1px dashed var(--line); border-radius: 12px; padding: 10px 14px; background: var(--bg); }
+.tracker-setup summary { cursor: pointer; font-weight: 700; }
+.tracker-setup ol { margin: 8px 0 0; padding-left: 20px; }
+.tracker-setup code { font-size: 0.85em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }

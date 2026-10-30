@@ -2,6 +2,7 @@
 
 import { api } from './api.js';
 import { ebaySection } from './ebay.js';
+import { historySection } from './history.js';
 import { cardQuads, cropToBlob, cutCard, loadImage } from './images.js';
 import { lookupPanel } from './lookup.js';
 import {
@@ -483,10 +484,12 @@ export async function openCard(id, { onChange = () => {} } = {}) {
         view === 'edit' ? null : marketSection(),
         info,
         extra),
+      priceHistory,
       ebay);
   }
 
   // Created once, so it keeps its state (filters, chart view) when the rest of the dialog redraws.
+  const priceHistory = historySection(card);
   const ebay = ebaySection(card);
   render();
   // Prices move: refresh in the background when the stored one is missing or more than a day old.

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
 import { EbayClient } from '../../server/ebay.js';
+import { PriceTrackerClient } from '../../server/priceTracker.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
 const require = createRequire(import.meta.url);
@@ -23,7 +24,8 @@ const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') :
 
 async function startServer(dataDir, mock, port = 0) {
   const ebay = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
-  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay });
+  const priceTracker = new PriceTrackerClient({ apiKey: 'test-key', baseUrl: mock.pptUrl });
+  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -147,14 +149,34 @@ try {
   await shot('06-card-detail');
   await page.keyboard.press('Escape');
 
-  step('eBay sold prices: average, coloured trend chart and the sold listings');
+  step('price history and eBay graded sales from PokemonPriceTracker');
   await page.locator('.card-tile', { hasText: 'Reverse holo' }).click();
+  const history = page.locator('dialog.modal .price-history');
+  await history.locator('td', { hasText: 'PSA 10' }).waitFor();
+  assert.match(await history.locator('tr', { hasText: 'PSA 10' }).textContent(), /12.*\$24\.50.*\$23\.00/);
+  await history.getByText(/Population: PSA 10: 143/).waitFor();
+  assert.match(await history.locator('.tracker-foot').textContent(), /updated just now · \d+ of 100 credits used today/);
+  await history.getByLabel('Price line').selectOption('pokemonpricetracker|Market price');
+  assert.ok(await history.locator('.trend-segment').count() >= 2, 'daily line drawn');
+  if (SHOTS) {
+    await page.setViewportSize({ width: 1280, height: 1900 });
+    await history.screenshot({ path: path.join(SHOTS, '13-price-history.png') });
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  const pptCalls = mock.state.pptRequests.length;
+  await page.keyboard.press('Escape');
+  await page.locator('.card-tile', { hasText: 'Reverse holo' }).click();
+  await history.locator('td', { hasText: 'PSA 10' }).waitFor();
+  assert.equal(mock.state.pptRequests.length, pptCalls, 'opening the card again uses the cache — no credits');
+
+  step('eBay sold prices: average, coloured trend chart and the sold listings');
   const ebay = page.locator('dialog.modal .ebay');
-  await ebay.getByText('No eBay sales saved for this card yet.').waitFor();
-  assert.match(await ebay.getByRole('link', { name: /Open the sold listings on eBay/ }).getAttribute('href'), /^https:\/\/www\.ebay\.com\/sch\/.*LH_Sold=1/);
+  // PokemonPriceTracker already contributed its one graded sale (a PSA 10 for $25).
+  await ebay.locator('.stat', { hasText: '1 sale' }).waitFor();
   await ebay.getByRole('button', { name: 'Update from eBay' }).click();
   await ebay.locator('.stat', { hasText: 'Average sold' }).waitFor();
-  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$2\.77.*12 sales/); // 8.25 + 25 (PSA 10) over 12
+  await ebay.locator('.stat', { hasText: '13 sales' }).waitFor();
+  assert.match(await ebay.locator('.stat', { hasText: 'Average sold' }).textContent(), /\$4\.48/); // (8.25 raw + 2 × $25 PSA 10) / 13
   await ebay.getByLabel('Which sales').selectOption('raw');
   await ebay.locator('.stat', { hasText: '11 sales' }).waitFor();
   const colours = await ebay.locator('.trend-segment').evaluateAll((els) => els.map((e) => [e.dataset.direction, e.getAttribute('stroke')]));
@@ -175,6 +197,7 @@ try {
   step('paste sold listings copied from eBay.com');
   await ebay.getByLabel('Which sales').selectOption('all');
   await ebay.locator('summary', { hasText: 'Add sales from eBay.com' }).click();
+  assert.match(await ebay.getByRole('link', { name: /Open the sold listings on eBay/ }).getAttribute('href'), /^https:\/\/www\.ebay\.com\/sch\/.*LH_Sold=1/);
   const pasted = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.html'), 'utf8');
   await ebay.locator('.paste-box').evaluate((box, html) => {
     const data = new DataTransfer();
@@ -187,7 +210,7 @@ try {
   const fromText = await page.evaluate(async (text) => (await import('/js/ebay.js')).parseEbayPaste({ text }),
     fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'ebay', 'sold-page.txt'), 'utf8'));
   assert.deepEqual(fromText.map((l) => [l.price, l.soldAt.slice(0, 10)]), [[0.66, '2026-08-25'], [0.7, '2026-09-01'], [14.5, '2026-09-03']]);
-  await ebay.getByLabel('Which sales').locator('option', { hasText: 'All sales (15)' }).waitFor({ state: 'attached' });
+  await ebay.getByLabel('Which sales').locator('option', { hasText: 'All sales (16)' }).waitFor({ state: 'attached' });
   await page.keyboard.press('Escape');
 
   step('search any card online and add it to the collection');
