@@ -11,8 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
-import { TcgClient } from '../../server/tcg.js';
-import { startMockTcgdex } from '../helpers/mock-tcgdex.js';
+import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -21,8 +20,8 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const REF = (f) => path.join(ROOT, 'docs', 'reference', f);
 const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') : null;
 
-async function startServer(dataDir, tcgUrl, port = 0) {
-  const app = createApp({ dataDir, tcg: new TcgClient({ baseUrl: tcgUrl }) });
+async function startServer(dataDir, mock, port = 0) {
+  const app = createApp({ dataDir, catalog: mockCatalog(mock) });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -37,9 +36,9 @@ async function startServer(dataDir, tcgUrl, port = 0) {
 
 const step = (msg) => console.log(`• ${msg}`);
 
-const mock = await startMockTcgdex();
+const mock = await startMockSources();
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-e2e-'));
-let srv = await startServer(dataDir, mock.url);
+let srv = await startServer(dataDir, mock);
 const base = `http://127.0.0.1:${srv.port}`;
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -117,6 +116,16 @@ try {
   step('search the whole collection');
   await page.getByRole('link', { name: 'Collection' }).click();
   await page.locator('.card-tile').nth(3).waitFor();
+  step('each card shows its rarity, estimated pull chance and market price');
+  const voltorbTile = page.locator('.card-tile', { hasText: 'Reverse holo' });
+  await voltorbTile.locator('.rarity', { hasText: 'Common' }).waitFor();
+  assert.equal((await voltorbTile.locator('.price').textContent()).trim(), '$0.25');
+  assert.match(await voltorbTile.locator('.card-pull').textContent(), /1\.\d% per pack · 1 in 93/);
+  await page.locator('.stats', { hasText: 'Est. value' }).waitFor();
+  await page.getByLabel('Sort').selectOption('value');
+  await page.waitForFunction(() => document.querySelector('.card-tile .price')?.textContent === '$0.25');
+  await page.getByLabel('Sort').selectOption('');
+
   await page.getByLabel('Search cards').fill('voltorb');
   await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 2);
   await page.getByLabel('Search cards').fill('');
@@ -130,8 +139,35 @@ try {
   await dialog.locator('img[alt^="Official card"]').waitFor();
   await dialog.getByText('Paldea Evolved booster pack').waitFor();
   await dialog.locator('dd', { hasText: /\d{4}/ }).first().waitFor();
+  await dialog.locator('.market .rarity', { hasText: 'Uncommon' }).waitFor();
+  await dialog.locator('.market', { hasText: 'per booster pack' }).waitFor();
+  await dialog.locator('.market .price-big', { hasText: '$0.12' }).waitFor(); // tcgcsv backup price
   await shot('06-card-detail');
   await page.keyboard.press('Escape');
+
+  step('search any card online and add it to the collection');
+  await page.getByRole('link', { name: 'Search', exact: true }).click();
+  await page.getByLabel('Card name').fill('punk helmet');
+  await page.locator('.card-tile', { hasText: 'Punk Helmet' }).first().waitFor();
+  await page.locator('.card-tile', { hasText: 'Owned ×1' }).waitFor();
+  await page.getByLabel('Card name').fill('');
+  await page.getByLabel('Set code').fill('PAL');
+  await page.getByLabel('Number').fill('067/193');
+  await page.locator('.card-tile', { hasText: 'Electrode' }).click();
+  const found = page.locator('dialog.modal');
+  await found.locator('.market', { hasText: 'Pull chance' }).waitFor();
+  await shot('09-search-card');
+  await found.getByRole('button', { name: 'Add to my collection' }).click();
+  await page.getByText('Added Electrode to your collection').waitFor();
+  await page.locator('.card-tile', { hasText: 'Owned ×1' }).waitFor();
+  await shot('10-search');
+
+  step('second source: TCGdex down, search still works');
+  mock.state.tcgdexDown = true;
+  await page.getByLabel('Set code').fill('OBF');
+  await page.getByLabel('Number').fill('167/197');
+  await page.locator('.card-tile', { hasText: 'Zigzagoon' }).waitFor();
+  mock.state.tcgdexDown = false;
 
   step('add packs on their own: several at once');
   await page.goto(`${base}/#/add-packs`);
@@ -148,10 +184,10 @@ try {
 
   step('restart the server: everything is still there');
   await srv.stop();
-  srv = await startServer(dataDir, mock.url, srv.port);
+  srv = await startServer(dataDir, mock, srv.port);
   await page.goto(base);
-  await page.locator('.card-tile').nth(3).waitFor();
-  assert.equal(await page.locator('.card-tile').count(), 4);
+  await page.locator('.card-tile').nth(4).waitFor();
+  assert.equal(await page.locator('.card-tile').count(), 5);
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
 

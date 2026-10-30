@@ -50,6 +50,9 @@ export const api = {
     return request('POST', `/api/cards/${id}/photo`, form);
   },
   deleteCard: (id) => request('DELETE', `/api/cards/${id}`),
+  refreshMarket: (id) => request('POST', `/api/cards/${id}/refresh-market`),
+  refreshAllMarket: () => request('POST', '/api/cards/refresh-market'),
+  catalogCard: (id, variant) => request('GET', `/api/catalog/cards/${encodeURIComponent(id)}${qs({ variant })}`),
 
   packs: (params = {}) => request('GET', `/api/packs${qs(params)}`).then((r) => r.packs),
   pack: (id) => request('GET', `/api/packs/${id}`),

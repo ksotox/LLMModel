@@ -37,11 +37,23 @@ CREATE INDEX IF NOT EXISTS idx_cards_pack ON cards(pack_id);
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at);
 `;
 
+// Columns added after the first release; created on start-up for existing collections.
+const CARD_MIGRATIONS = {
+  market_price: 'REAL',
+  market_currency: 'TEXT',
+  market_low: 'REAL',
+  market_high: 'REAL',
+  market_source: 'TEXT',
+  market_updated: 'TEXT',
+  pull_chance: 'REAL',
+  pull_source: 'TEXT',
+};
+
 export const PACK_KINDS = ['booster-pack', 'tin', 'kit', 'bundle', 'elite-trainer-box', 'collection-box', 'blister', 'booster-box', 'other'];
 export const VARIANTS = ['normal', 'reverse-holo', 'holo', 'full-art', 'promo', 'other'];
 
 const CARD_FIELDS = ['name', 'set_code', 'set_id', 'set_name', 'number', 'set_total', 'variant', 'rarity', 'category', 'hp', 'types',
-  'tcg_id', 'official_image_url', 'official_image_path', 'photo_path', 'pack_id', 'notes'];
+  'tcg_id', 'official_image_url', 'official_image_path', 'photo_path', 'pack_id', 'notes', ...Object.keys(CARD_MIGRATIONS)];
 const PACK_FIELDS = ['name', 'kind', 'set_name', 'notes', 'photo_path'];
 
 const CARD_SELECT = `
@@ -52,6 +64,10 @@ export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  const existing = new Set(db.prepare('PRAGMA table_info(cards)').all().map((c) => c.name));
+  for (const [col, type] of Object.entries(CARD_MIGRATIONS)) {
+    if (!existing.has(col)) db.exec(`ALTER TABLE cards ADD COLUMN ${col} ${type}`);
+  }
   return new Store(db);
 }
 
@@ -150,9 +166,19 @@ class Store {
       oldest: 'c.created_at ASC, c.id ASC',
       name: 'c.name COLLATE NOCASE ASC, c.id DESC',
       set: "c.set_code COLLATE NOCASE ASC, CAST(c.number AS INTEGER) ASC, c.id DESC",
+      value: 'c.market_price IS NULL, c.market_price DESC, c.id DESC',
+      rarity: 'c.pull_chance IS NULL, c.pull_chance ASC, c.id DESC',
     }[sort] ?? 'c.created_at DESC, c.id DESC';
     const sql = `${CARD_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY ${order}`;
     return this.db.prepare(sql).all(...params);
+  }
+
+  /** How many copies of each online card id are in the collection. */
+  ownedCounts(ids) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (!unique.length) return {};
+    const rows = this.db.prepare(`SELECT tcg_id, COUNT(*) AS n FROM cards WHERE tcg_id IN (${unique.map(() => '?').join(', ')}) GROUP BY tcg_id`).all(...unique);
+    return Object.fromEntries(rows.map((r) => [r.tcg_id, r.n]));
   }
 
   // ---- packs ----
@@ -196,7 +222,10 @@ class Store {
         (SELECT COUNT(*) FROM cards) AS cards,
         (SELECT COUNT(DISTINCT IFNULL(tcg_id, LOWER(name) || '|' || IFNULL(set_code, '') || '|' || IFNULL(number, ''))) FROM cards) AS unique_cards,
         (SELECT COUNT(*) FROM packs) AS packs,
-        (SELECT COUNT(*) FROM cards WHERE official_image_url IS NOT NULL) AS with_official`).get();
+        (SELECT COUNT(*) FROM cards WHERE official_image_url IS NOT NULL) AS with_official,
+        (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'USD') AS value_usd,
+        (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'EUR') AS value_eur,
+        (SELECT COUNT(*) FROM cards WHERE market_price IS NOT NULL) AS priced`).get();
   }
 
   setCodes() {

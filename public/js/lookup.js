@@ -38,7 +38,8 @@ export function lookupPanel({ onSelect, selectedId = null, autoSelectSingle = tr
       ? h('img', { src: b.thumb || b.image, alt: b.name, loading: 'lazy', onerror: (e) => { if (b.image && e.target.src !== b.image) e.target.src = b.image; } })
       : h('div.lookup-noimg', 'No image'),
     h('span.lookup-name', b.name),
-    h('span.lookup-meta', describeBrief(b)))));
+    h('span.lookup-meta', describeBrief(b)),
+    b.rarity && h('span.lookup-meta', b.rarity))));
   };
 
   async function search({ name, setCode, number }) {

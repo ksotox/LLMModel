@@ -1,5 +1,6 @@
 import { renderAddCards, renderAddPacks } from './add.js';
 import { api } from './api.js';
+import { renderSearch } from './search.js';
 import { clear, h } from './ui.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
 
@@ -27,6 +28,9 @@ async function route() {
     if (parts[0] === 'add') {
       setActiveNav('add');
       await renderAddCards(root, meta, navigate, { packId: params.get('pack') });
+    } else if (parts[0] === 'search') {
+      setActiveNav('search');
+      renderSearch(root, meta, navigate, params);
     } else if (parts[0] === 'add-packs') {
       setActiveNav('packs');
       renderAddPacks(root, meta, navigate);
