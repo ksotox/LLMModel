@@ -51,6 +51,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Photos stay in the browser** for detection and OCR. The server only gets the cropped card and text readings.
 - **Never overwrite what the user typed** with automatic readings. Auto-match only when the name agrees.
 - **Pull chance and prices are estimates.** Say so in the UI.
+- **Unlinked cards are linked automatically** by `refreshCardMarket` (Update prices, opening a card,
+  hourly job) via `identifyCard`, only at `confidence === 'high'`. A linked card missing its image is retried too.
 - **PokemonPriceTracker budget:** ≤ `POKEMONPRICETRACKER_DAILY_CREDITS` (100) a day; about 3 credits
   per card. 24h cache, a 30% reserve kept back from background use, 1-day backoff after errors. Don't
   add calls that bypass `PriceTrackerService`.

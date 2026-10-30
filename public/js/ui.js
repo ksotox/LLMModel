@@ -69,7 +69,8 @@ export const VARIANT_LABELS = {
 
 export function cardNumber(card) {
   if (!card.number) return '';
-  return card.set_total ? `${card.number}/${card.set_total}` : card.number;
+  // Promos print no total; older saves can hold "000".
+  return card.set_total && /[1-9]/.test(card.set_total) ? `${card.number}/${card.set_total}` : card.number;
 }
 
 export function toast(message, kind = 'info') {

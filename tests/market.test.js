@@ -254,6 +254,31 @@ describe('market API', () => {
     assert.equal(all.body.updated, 3);
   });
 
+  test('links cards saved without their official card and fetches the image', async () => {
+    const { body } = await addCards([
+      { name: 'Froakie', number: '060/000', variant: 'promo' }, // promo typed with a "/000" total
+      { name: 'Electrode', number: '067', set_total: '193' }, // no set code: the total and name find it
+      { name: 'Pikachu', set_code: 'PAL', number: '066', set_total: '193' }, // number is Voltorb's: name disagrees
+    ]);
+    const [froakie, electrode, pikachu] = body.cards;
+    assert.deepEqual([froakie.number, froakie.set_total], ['060', null], 'a zero total is no total');
+
+    const one = (await call('POST', `/api/cards/${froakie.id}/refresh-market`)).body;
+    assert.equal(one.tcg_id, 'mep-060');
+    assert.equal(one.official_url, '/media/official/mep-060.png');
+    assert.equal(one.name, 'Froakie');
+
+    const all = (await call('POST', '/api/cards/refresh-market')).body;
+    assert.ok(all.linked >= 1);
+    const after = (id) => call('GET', `/api/cards/${id}`).then((r) => r.body);
+    const e = await after(electrode.id);
+    assert.deepEqual([e.tcg_id, e.set_code, e.official_url], ['sv02-067', 'PAL', '/media/official/sv02-067.png']);
+    const p = await after(pikachu.id);
+    assert.equal(p.tcg_id, null, 'not linked when the name doesn’t match');
+    assert.equal(p.official_url, null);
+    await call('DELETE', `/api/cards/${pikachu.id}`);
+  });
+
   test('keeps the last known price when the sources are unreachable', async () => {
     mock.state.tcgdexDown = true;
     try {

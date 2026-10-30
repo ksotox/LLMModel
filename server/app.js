@@ -156,9 +156,29 @@ export function createApp({
     });
   };
 
-  /** Re-price a stored card and record the price in its history. */
+  /**
+   * Link a card saved without its official card (typed in by hand, or added while offline) when
+   * its name, number and set point to exactly one card. Uses the same checks as reading a card
+   * from a photo, and only links when it is sure. Returns the card's tcg_id, or null.
+   */
+  const findOfficialCard = async (card) => {
+    if (card.tcg_id || !card.name || !card.number) return null;
+    const number = card.set_total ? `${card.number}/${card.set_total}` : card.number;
+    const result = await identifyCard(catalog, { names: [card.name], lines: [[card.set_code, number].filter(Boolean).join(' ')] })
+      .catch(() => null);
+    return result?.confidence === 'high' ? result.match.tcgId : null;
+  };
+
+  /**
+   * Re-price a stored card and record the price in its history. A card that isn't linked to its
+   * official card yet is linked first, and a linked card whose official image is missing (e.g. the
+   * source was offline when it was added) gets the image now.
+   */
   const refreshCardMarket = async (card) => {
-    store.updateCard(card.id, await withMarket(card));
+    card = { ...card, ...cleanNumber(card) };
+    const tcgId = card.tcg_id ?? await findOfficialCard(card);
+    const needsOfficial = tcgId && (!card.tcg_id || !card.official_image_path);
+    store.updateCard(card.id, needsOfficial ? await withOfficial({ ...card, tcg_id: tcgId }) : await withMarket(card));
     const updated = store.getCard(card.id);
     snapshotPrice(updated);
     return updated;
@@ -182,12 +202,26 @@ export function createApp({
     return list;
   };
 
+  /** "060/000" typed into the number box → number 060; promos print no total, so a total of 0 is none. */
+  const cleanNumber = (card) => {
+    let number = card.number == null ? card.number : String(card.number).trim();
+    let total = card.set_total == null || card.set_total === '' ? null : String(card.set_total).trim();
+    const split = number?.match(/^(\S+?)\s*\/\s*(\d+)$/);
+    if (split) {
+      number = split[1];
+      total ??= split[2];
+    }
+    if (total != null && !/[1-9]/.test(total)) total = null;
+    return { number: number || null, set_total: total };
+  };
+
   const cleanCard = (c) => {
     const name = String(c.name ?? '').trim();
     if (!name && !c.tcg_id) throw new HttpError(400, 'Every card needs a name (or a matched online card)');
     const card = { ...c, name };
     if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
     if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
+    Object.assign(card, cleanNumber(card));
     if (card.pack_id != null && card.pack_id !== '') {
       if (!store.getPack(Number(card.pack_id))) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
       card.pack_id = Number(card.pack_id);
@@ -334,11 +368,13 @@ export function createApp({
   // Refresh rarity, pull chance and price for one card, or for the whole collection.
   app.post('/api/cards/refresh-market', async (_req, res) => {
     let updated = 0;
+    let linked = 0;
     for (const card of store.listCards()) {
       const next = await refreshCardMarket(card);
       if (next.market_price != null || next.pull_chance != null) updated++;
+      if (next.official_image_path && !card.official_image_path) linked++;
     }
-    res.json({ updated, stats: store.stats() });
+    res.json({ updated, linked, stats: store.stats() });
   });
 
   app.post('/api/cards/:id/refresh-market', async (req, res) => {

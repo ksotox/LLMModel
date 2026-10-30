@@ -67,14 +67,28 @@ function cardTile(card, mode, onOpen) {
       secondary && h('img.card-inset', { src: secondary, alt: '', loading: 'lazy', title: secondary === photo ? 'Your photo' : 'Official card' }),
       card.variant && card.variant !== 'normal' && h('span.badge.variant', VARIANT_LABELS[card.variant] ?? card.variant)),
     h('div.card-info',
-      h('strong.card-name', card.name),
-      h('span.card-set', [card.set_code, cardNumber(card)].filter(Boolean).join(' · ') || card.set_name || '—'),
-      (card.rarity || card.market_price != null) && h('div.card-market',
-        rarityBadge(card.rarity),
-        card.market_price != null && h('span.price', { title: card.market_source ?? 'Estimated market price' }, formatPrice(card.market_price, card.market_currency))),
-      card.pull_chance != null && h('span.card-pull', { title: card.pull_source ?? '' }, `${formatChance(card.pull_chance)} per pack · 1 in ${oneIn(card.pull_chance).toLocaleString()}`),
-      h('span.card-date', `Added ${formatDate(card.created_at)}`),
-      card.pack_name && h('span.chip', `📦 ${card.pack_name}`)));
+      h('strong.card-name', { title: card.name }, card.name),
+      h('span.card-set', { title: card.set_name ?? '' },
+        card.set_code && h('span.set-tag', card.set_code),
+        h('span', cardNumber(card) || card.set_name || '')),
+      h('div.card-meta',
+        h('div.card-market',
+          card.rarity ? rarityBadge(card.rarity) : h('span.card-unmatched', { title: 'Open the card to link it to its official card' }, card.tcg_id ? 'No rarity yet' : 'Not matched yet'),
+          card.market_price != null && h('span.price', { title: card.market_source ?? 'Estimated market price' }, formatPrice(card.market_price, card.market_currency))),
+        h('div.card-foot',
+          card.pull_chance != null
+            ? h('span', { title: `${formatChance(card.pull_chance)} per booster pack${card.pull_source ? ` · ${card.pull_source}` : ''}` }, `1 in ${oneIn(card.pull_chance).toLocaleString()} packs`)
+            : h('span'),
+          h('span', { title: `Added ${formatDate(card.created_at, true)}` }, shortDate(card.created_at))),
+        card.pack_name && h('span.chip', `📦 ${card.pack_name}`))));
+}
+
+/** "Oct 28", or "Oct 28, 2025" for another year. */
+function shortDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
 }
 
 function cardGrid(cards, mode, onOpen, emptyState) {
@@ -155,13 +169,13 @@ export async function renderCollection(root, meta, navigate, params) {
   const s = meta.stats;
   const refreshAll = h('button.btn', {
     type: 'button',
-    title: 'Look up current prices and pull chances for every card',
+    title: 'Look up current prices and pull chances for every card, and link cards that are missing their official image',
     onclick: async () => {
       refreshAll.disabled = true;
       refreshAll.textContent = 'Updating prices…';
       try {
-        const { updated } = await api.refreshAllMarket();
-        toast(`Updated ${updated} card${updated === 1 ? '' : 's'}`, 'success');
+        const { updated, linked } = await api.refreshAllMarket();
+        toast([`Updated ${updated} card${updated === 1 ? '' : 's'}`, linked && `found ${linked} official image${linked === 1 ? '' : 's'}`].filter(Boolean).join(', '), 'success');
         navigate(location.hash || '#/');
       } catch (err) {
         toast(err.message, 'error');
@@ -391,8 +405,10 @@ export async function openCard(id, { onChange = () => {} } = {}) {
 
   const refreshMarket = async (quiet = false) => {
     try {
+      const wasLinked = card.tcg_id;
       card = await api.refreshMarket(card.id);
       changed = true;
+      if (!wasLinked && card.tcg_id) toast('Found the official card', 'success');
       // A background refresh must not wipe what the user is typing in the edit form.
       if (currentView !== 'edit') render(currentView);
       if (!quiet) toast(card.market_price != null ? 'Price updated' : 'No price found for this card right now', card.market_price != null ? 'success' : 'info');
@@ -493,9 +509,9 @@ export async function openCard(id, { onChange = () => {} } = {}) {
   const ebay = ebaySection(card);
   render();
   // Prices move: refresh in the background when the stored one is missing or more than a day old.
-  if (card.tcg_id || (card.set_code && card.number)) {
-    const age = card.market_updated ? Date.now() - Date.parse(card.market_updated) : Infinity;
-    if (age > DAY) refreshMarket(true);
-  }
+  // The same request links a card that isn't linked yet and fetches a missing official image.
+  const age = card.market_updated ? Date.now() - Date.parse(card.market_updated) : Infinity;
+  const missingOfficial = card.number && (!card.tcg_id || !card.official_image_path);
+  if (missingOfficial || ((card.tcg_id || (card.set_code && card.number)) && age > DAY)) refreshMarket(true);
   const { dialog } = modal(body, { wide: true, onClose: () => changed && onChange() });
 }
