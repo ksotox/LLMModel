@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { CardCatalog } from './catalog.js';
@@ -26,7 +27,22 @@ function launchBrowser() {
   spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, windowsVerbatimArguments: true }).on('error', () => {}).unref();
 }
 
-const app = createApp({ dataDir, catalog });
+// Run by the desktop launcher (desktop/launcher.mjs): it talks to us over IPC.
+const desktop = process.send && process.env.POKEDEX_DESKTOP
+  ? {
+    update: null,
+    version: () => {
+      try {
+        return JSON.parse(fs.readFileSync('.pokedex-version', 'utf8'));
+      } catch {
+        return null;
+      }
+    },
+    restart: () => process.send({ type: 'restart' }),
+  }
+  : null;
+
+const app = createApp({ dataDir, catalog, desktop });
 const server = app.listen(port);
 server.on('listening', () => {
   console.log(`Pokédex collection running at ${url}`);
@@ -52,4 +68,18 @@ server.on('error', (err) => {
 });
 
 // Keep every card's price history growing while the app is running.
-createScheduler({ store: app.locals.store, refreshCardMarket: app.locals.refreshCardMarket, tracker: app.locals.tracker }).start();
+const scheduler = createScheduler({ store: app.locals.store, refreshCardMarket: app.locals.refreshCardMarket, tracker: app.locals.tracker });
+scheduler.start();
+
+if (desktop) {
+  process.on('message', (msg) => {
+    if (msg?.type === 'update-available') desktop.update = { sha: msg.sha, message: msg.message, date: msg.date };
+    if (msg?.type === 'shutdown') {
+      scheduler.stop();
+      server.close();
+      server.closeAllConnections?.();
+      app.locals.store.close();
+      process.exit(0);
+    }
+  });
+}

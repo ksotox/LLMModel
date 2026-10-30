@@ -33,6 +33,17 @@ Scarlet & Violet base set (8,000+ packs), Scarlet & Violet—151, Temporal Force
 Phantasmal Flames (5,000+ packs). Other Scarlet & Violet and Mega Evolution sets use the average for their era. The
 numbers and their attribution are in `server/pullRates.js`, and each card shows its source in the UI.
 
+### Used by the desktop launcher (`desktop/launcher.mjs`)
+
+| Service | Address | Used for |
+| --- | --- | --- |
+| GitHub (git) | `https://github.com/ksotox/LLMModel.git/info/refs?service=git-upload-pack` | The newest commit on `main` (no API rate limit) |
+| GitHub REST API | `https://api.github.com/repos/ksotox/LLMModel/commits/<sha>` | That commit's message for the update banner (optional; 60 requests/hour without signing in) |
+| GitHub downloads | `https://codeload.github.com/ksotox/LLMModel/zip/<sha>` | The code of that commit |
+| npm registry | `https://registry.npmjs.org` (via `npm ci`) | The app's packages, when `package-lock.json` changed |
+| Microsoft Edge / Google Chrome | already on the PC | The app window (`--app` mode) |
+| Windows C# compiler | `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe` | Builds `Pokedex.exe` from `desktop/Pokedex.cs` during setup |
+
 ## Libraries (npm)
 
 | Package | Version | Used for |

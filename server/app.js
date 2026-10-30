@@ -40,6 +40,7 @@ export function createApp({
   ebay = new EbayClient(),
   priceTracker = new PriceTrackerClient(),
   trackerOptions = {},
+  desktop = null, // { version(), update, restart() } when run by the desktop launcher
 } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
@@ -282,6 +283,17 @@ export function createApp({
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
   for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
   app.use(express.static(PUBLIC_DIR));
+
+  // Desktop app: the installed version, a newer one waiting, and a restart that installs it.
+  app.get('/api/desktop', (_req, res) => {
+    res.json(desktop ? { desktop: true, version: desktop.version(), update: desktop.update ?? null } : { desktop: false });
+  });
+
+  app.post('/api/desktop/restart', (_req, res) => {
+    if (!desktop?.restart) throw new HttpError(404, 'Only the desktop app can restart itself');
+    res.json({ restarting: true });
+    setTimeout(() => desktop.restart(), 200); // after the answer has gone out
+  });
 
   app.get('/api/meta', (_req, res) => {
     res.json({

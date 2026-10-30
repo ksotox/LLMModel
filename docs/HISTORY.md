@@ -23,7 +23,7 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | PR #5 merged | One-click Windows launcher with desktop icon; API key kept in the user environment |
 | 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
 | 2026-10-30 | PR #7 merged | Promo pictures from TCGplayer; all prices in US dollars |
-| 2026-10-30 | PR #8 | tcgcsv 401: app User-Agent, extra promo picture fallback, access check |
+| 2026-10-30 | PR #8 | tcgcsv 401: app User-Agent, promo pictures via PokemonPriceTracker; desktop app that updates itself |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -234,6 +234,33 @@ The owner chose "find a free way".
   - When no source has a picture, the app now asks PokemonPriceTracker using the owner's key. It reads the picture links and TCGplayer product number from a search, then downloads TCGplayer's picture.
   - A test recreates the owner's situation (tcgcsv 401, no TCGdex or dataset picture) and checks the picture is saved.
   - `check:live` also downloads Froakie's TCGplayer picture by product number and tests the PokemonPriceTracker lookup.
+
+## Phase 11: desktop app that updates itself
+
+**Asked:** a real desktop application. Opening an exe should start the server, and every merged change should update the app by replacing the `LLMModel-main` folder with the latest code.
+
+**Built (`desktop/`):**
+- **`install.ps1`**, run once with `irm … | iex`:
+  - builds `Pokedex.exe` from `Pokedex.cs` with Windows' own C# compiler, so there's no downloaded binary;
+  - puts it, `launcher.mjs`, the icon and `config.json` in `%LOCALAPPDATA%\Pokedex`;
+  - adds Desktop and Start menu shortcuts.
+- **`Pokedex.exe`** runs the launcher with Node, without a console window, and shows a message box if it fails.
+- **`launcher.mjs`:**
+  - finds the newest commit through git's `info/refs`, because the API was rate-limited during testing;
+  - downloads the zip and unpacks it with its own zip reader;
+  - installs packages, or copies them when `package-lock.json` didn't change;
+  - swaps the folders, moving `data/` across and keeping `.previous`, and rolls back if the server doesn't start;
+  - installs packages if they're missing;
+  - starts the server with IPC and opens an Edge/Chrome `--app` window, stopping the server when it closes;
+  - checks every 30 minutes, and offers a restart through `/api/desktop`;
+  - updates itself.
+- **Server:** `/api/desktop`, `/api/desktop/restart`, and a clean shutdown on request. **Page:** a "Restart to update" banner.
+
+**Tested:**
+- Unit tests against a stand-in GitHub cover install, update with the cards kept, rollback, the rate limit, missing packages, path safety and the API.
+- **Real run 1:** the real launcher against the real GitHub and npm updated an unversioned folder to `main` (`3ebdcae`). The saved card survived and the page served; closing the window stopped everything.
+- **Real run 2:** this branch's code served as v1 and then v2. A merge arriving while the app was open was detected, Restart to update installed v2 in under a second, and the server shut down cleanly.
+- **Not tested here:** `Pokedex.exe` and `install.ps1` themselves (no Windows in the sandbox).
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

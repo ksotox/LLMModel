@@ -57,3 +57,45 @@ async function route() {
 
 window.addEventListener('hashchange', route);
 route();
+
+// Desktop app: when a newer version has been merged, offer to restart into it.
+const banner = h('div.update-banner', { hidden: true, role: 'status' });
+document.body.prepend(banner);
+
+async function checkForUpdate() {
+  let status;
+  try {
+    status = await api.desktop();
+  } catch {
+    return;
+  }
+  if (!status.desktop || !status.update || status.update.sha === status.version?.sha) return;
+  const restart = h('button.btn.small', {
+    type: 'button',
+    onclick: async () => {
+      restart.disabled = true;
+      restart.textContent = 'Updating…';
+      try {
+        await api.desktopRestart();
+      } catch {
+        // the server may already be going down
+      }
+      // Wait for the new version to answer, then reload into it (up to 5 minutes for a package install).
+      const until = Date.now() + 5 * 60 * 1000;
+      const poll = async () => {
+        const now = await api.desktop().catch(() => null);
+        if (now?.version?.sha === status.update.sha) return location.reload();
+        if (Date.now() > until) return location.reload();
+        setTimeout(poll, 1500);
+      };
+      setTimeout(poll, 2000);
+    },
+  }, 'Restart to update');
+  clear(banner,
+    h('span', h('strong', 'A new version is ready'), status.update.message ? ` — ${status.update.message}` : ''),
+    restart);
+  banner.hidden = false;
+}
+
+checkForUpdate();
+setInterval(checkForUpdate, 5 * 60 * 1000);
