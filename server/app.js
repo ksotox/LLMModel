@@ -72,17 +72,17 @@ export function createApp({
 
   /**
    * Download the official image once and keep a local copy, so it survives the sources being offline.
-   * If the main image can't be downloaded, the same card's picture from the second source is tried.
+   * If the main image can't be downloaded, the same card's picture is tried from the other sources.
    */
   const cacheOfficialImage = async (card) => {
     const base = `official/${card.tcg_id.replace(/[^\w.-]/g, '_')}`;
     const existing = ['.png', '.jpg', '.webp'].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
     if (existing) return existing;
-    const urls = [card.official_image_url, await catalog.fallbackImage(card).catch(() => null)].filter(Boolean);
+    const urls = [card.official_image_url, ...await catalog.fallbackImages(card).catch(() => [])].filter(Boolean);
     for (const url of [...new Set(urls)]) {
       try {
         const img = await catalog.download(url);
-        if (!img) continue;
+        if (!img || !/^image\//.test(img.contentType)) continue;
         const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
         fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
         return base + ext;
@@ -148,7 +148,8 @@ export function createApp({
   const snapshotPrice = (card) => {
     if (!card?.market_price) return;
     store.recordPrice(card.id, {
-      source: /cardmarket/i.test(card.market_source ?? '') ? 'cardmarket' : 'tcgplayer',
+      // Cardmarket prices converted to dollars get their own line, apart from older euro readings.
+      source: /cardmarket/i.test(card.market_source ?? '') ? (card.market_currency === 'EUR' ? 'cardmarket' : 'cardmarket-usd') : 'tcgplayer',
       label: 'Market price',
       price: card.market_price,
       currency: card.market_currency ?? 'USD',

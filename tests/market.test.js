@@ -147,6 +147,23 @@ describe('card catalog with a second source', () => {
     }
   });
 
+  test('promos: TCGplayer’s picture and dollar price when the other sources have none', async () => {
+    const froakie = await catalog.details('mep-060');
+    assert.equal(froakie.official_image_url, null, 'no picture on TCGdex or in the dataset');
+    const images = await catalog.fallbackImages(froakie);
+    assert.deepEqual(images.map((u) => new URL(u).pathname), [
+      '/tcgplayer-cdn/product/77060_in_1000x1000.jpg', '/tcgplayer-cdn/product/77060_400w.jpg', '/tcgplayer-cdn/product/77060_200w.jpg',
+    ], 'found by the set’s TCGplayer group and the digits of "MEP 060"');
+    const { price } = await catalog.market({ ...froakie, variant: 'promo' });
+    assert.deepEqual([price.value, price.currency], [6.89, 'USD']);
+    assert.match(price.source, /tcgcsv/);
+
+    // A listing with the number only in its name.
+    const fennekin = await catalog.fallbackImages({ set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '059', name: 'Fennekin' });
+    assert.ok(fennekin.some((u) => u.endsWith('/77059_in_1000x1000.jpg')));
+    assert.deepEqual(await catalog.fallbackImages({ set_code: 'MEP', number: '059', name: 'Chespin' }), [], 'wrong name, no picture');
+  });
+
   test('market info: rarity, pull chance and price for each reference card', async () => {
     const voltorb = await catalog.market({ ...(await catalog.details('sv02-066')), variant: 'reverse-holo' });
     assert.equal(voltorb.rarity, 'Common');
@@ -154,7 +171,8 @@ describe('card catalog with a second source', () => {
     assert.deepEqual([voltorb.price.value, voltorb.price.currency], [0.25, 'USD']);
 
     const helmet = await catalog.market({ ...(await catalog.details('me02-092')), variant: 'normal' });
-    assert.deepEqual([helmet.price.value, helmet.price.currency, helmet.price.source], [0.15, 'EUR', 'Cardmarket price trend']);
+    // Only a Cardmarket price (€0.15): shown in dollars at the day's rate (1.20 in the mock).
+    assert.deepEqual([helmet.price.value, helmet.price.currency, helmet.price.source], [0.18, 'USD', 'Cardmarket price trend, converted from €0.15']);
     assert.equal(helmet.pull.oneIn, Math.round(31 / 3)); // 3 uncommons per pack, 31 uncommons in the set
 
     // TCGdex has no price for Linoone: the tcgcsv.com backup is used.
@@ -240,8 +258,8 @@ describe('market API', () => {
 
   test('collection value and sorting by value', async () => {
     const meta = (await call('GET', '/api/meta')).body;
-    assert.equal(meta.stats.value_usd, 0.2); // 0.08 + 0.12
-    assert.equal(meta.stats.value_eur, 0.15);
+    assert.equal(meta.stats.value_usd, 0.38); // 0.08 + 0.12 + 0.18 (Punk Helmet's €0.15 in dollars)
+    assert.equal(meta.stats.value_eur, 0);
     const names = (await call('GET', '/api/cards?sort=value')).body.cards.map((c) => c.name);
     assert.deepEqual(names, ['Punk Helmet', 'Linoone', 'Voltorb']);
   });

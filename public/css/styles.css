@@ -556,7 +556,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
   .rarity.tier-pink { background: #4a1530; color: #f9a8d4; }
 }
 
-.card-market { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; min-height: 22px; }
+.card-market { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 6px; min-width: 0; min-height: 22px; }
+.card-market .price { margin-left: auto; }
 .price { font-weight: 800; font-size: 0.95rem; color: var(--ok); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .market {

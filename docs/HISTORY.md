@@ -21,7 +21,8 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | `01aa259` | Local daily price history; PokemonPriceTracker graded eBay sales |
 | 2026-10-30 | PR #4 merged | Above, plus `MEMORY.md`, this history and `SOURCES.md` |
 | 2026-10-30 | PR #5 merged | One-click Windows launcher with desktop icon; API key kept in the user environment |
-| 2026-10-30 | PR #6 | Link unmatched cards automatically (missing official images); cleaner card tiles |
+| 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
+| 2026-10-30 | PR #7 | Promo pictures from TCGplayer; all prices in US dollars |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -200,6 +201,22 @@ The owner chose "find a free way".
   - the bottom rows line up across the grid;
   - cards not yet matched say so.
 - The Search page uses the same layout.
+
+## Phase 9: promo pictures and prices in dollars
+
+**Asked:** find official pictures for the promo cards, even from another source, and show prices in US dollars instead of euros.
+
+**Cause:**
+- The Mega Evolution promos (MEP) have no picture on TCGdex, and the Pokémon TCG dataset has no MEP set at all.
+- The promos showed € because TCGdex had only a Cardmarket price for them, and that euro price was used before the backup TCGplayer price was tried.
+
+**Built:**
+- **TCGplayer group ids for every known set,** read from TCGdex's data files (e.g. MEP 24451). tcgcsv.com finds the exact set by this id instead of by name.
+- **Product lookup by number or name.** It matches "MEP 059"-style numbers by their digits, and listings that carry the number only in the name.
+- **TCGplayer's product picture is the third image source,** for saved cards and for search results.
+- **Price order is always USD:** TCGplayer via TCGdex, then tcgcsv, then Cardmarket converted with the day's ECB rate (`server/fx.js`, Frankfurter). There's a fixed fallback rate when offline, labelled "approximate".
+- **Converted prices get their own history line** (`cardmarket-usd`).
+- **The rarity badge no longer gets clipped** by the price on narrow tiles.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

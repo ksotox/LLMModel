@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import { CardCatalog } from '../../server/catalog.js';
+import { ExchangeRates } from '../../server/fx.js';
 import { TcgCsvClient } from '../../server/prices.js';
 import { PtcgDataClient } from '../../server/ptcgData.js';
 import { TcgClient } from '../../server/tcg.js';
@@ -52,7 +53,8 @@ const CARDS = {
   },
   mep: {
     name: 'MEP Black Star Promos', series: 'me', official: 0, // TCGdex really lists 0 for this promo set
-    cards: [['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo' }]],
+    // No picture on TCGdex or in the dataset: it comes from TCGplayer (tcgcsv.com).
+    cards: [['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }]],
   },
   sv01: {
     name: 'Scarlet & Violet', series: 'sv', official: 198,
@@ -117,24 +119,31 @@ export const PPT_CARDS = [
   { id: 'ppt-zigzagoon', tcgPlayerId: 512344, name: 'Zigzagoon', setName: 'Obsidian Flames', cardNumber: '167/197', prices: { market: 0.1 } },
 ];
 
+// Group ids are TCGplayer's real ones (see server/setCodes.js). Image paths get the mock's address.
 const TCGCSV = {
   groups: [
-    { groupId: 3001, name: 'SV03: Obsidian Flames', abbreviation: 'OBF' },
-    { groupId: 3002, name: 'SV02: Paldea Evolved', abbreviation: 'PAL' },
+    { groupId: 23228, name: 'SV03: Obsidian Flames', abbreviation: 'OBF' },
+    { groupId: 23120, name: 'SV02: Paldea Evolved', abbreviation: 'PAL' },
+    { groupId: 24451, name: 'ME: Mega Evolution Promo', abbreviation: 'MEP' },
   ],
   products: {
-    3001: [
+    24451: [
+      { productId: 77059, name: 'Fennekin - 059', imageUrl: '/tcgplayer-cdn/product/77059_200w.jpg', extendedData: [] },
+      { productId: 77060, name: 'Froakie', imageUrl: '/tcgplayer-cdn/product/77060_200w.jpg', extendedData: [{ name: 'Number', value: 'MEP 060' }] },
+    ],
+    23228: [
       { productId: 9002, name: 'Obsidian Flames Booster Pack', extendedData: [] },
       { productId: 9001, name: 'Linoone - 168/197', extendedData: [{ name: 'Number', value: '168/197' }, { name: 'Rarity', value: 'Uncommon' }] },
     ],
-    3002: [],
+    23120: [],
   },
   prices: {
-    3001: [
+    24451: [{ productId: 77060, subTypeName: 'Holofoil', lowPrice: 4.5, midPrice: 7, highPrice: 12, marketPrice: 6.89 }],
+    23228: [
       { productId: 9001, subTypeName: 'Normal', lowPrice: 0.05, midPrice: 0.2, highPrice: 1, marketPrice: 0.12 },
       { productId: 9001, subTypeName: 'Reverse Holofoil', lowPrice: 0.1, midPrice: 0.4, highPrice: 2, marketPrice: 0.3 },
     ],
-    3002: [],
+    23120: [],
   },
 };
 
@@ -279,7 +288,17 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
 
     if (url.pathname === '/tcgcsv/tcgplayer/3/groups') return json(200, { success: true, results: TCGCSV.groups });
     if ((m = url.pathname.match(/^\/tcgcsv\/tcgplayer\/3\/(\d+)\/(products|prices)$/))) {
-      return json(200, { success: true, results: TCGCSV[m[2]][m[1]] ?? [] });
+      const results = (TCGCSV[m[2]][m[1]] ?? []).map((r) => (r.imageUrl ? { ...r, imageUrl: `http://${req.headers.host}${r.imageUrl}` } : r));
+      return json(200, { success: true, results });
+    }
+    // TCGplayer's image CDN (sky-blue placeholder art).
+    if (url.pathname.startsWith('/tcgplayer-cdn/product/')) {
+      return png([56, 189, 248]);
+    }
+    // Frankfurter exchange rates: a fixed 1.20 dollars per euro.
+    if (url.pathname === '/fx/v1/latest') {
+      if (state.fxDown) return json(503, { error: 'down' });
+      return json(200, { amount: 1, base: url.searchParams.get('base'), date: '2026-10-29', rates: { USD: 1.2 } });
     }
     json(404, { error: 'not found' });
   });
@@ -291,6 +310,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         tcgdexUrl: `${base}/v2/en`,
         ptcgUrl: `${base}/ptcg`,
         tcgcsvUrl: `${base}/tcgcsv/tcgplayer/3`,
+        fxUrl: `${base}/fx/v1`,
         ebayUrl: `${base}/ebay`,
         pptUrl: `${base}/ppt/api/v2`,
         requests,
@@ -307,5 +327,6 @@ export function mockCatalog(mock, { timeoutMs = 3000 } = {}) {
     tcgdex: new TcgClient({ baseUrl: mock.tcgdexUrl, timeoutMs }),
     ptcg: new PtcgDataClient({ baseUrl: mock.ptcgUrl, timeoutMs }),
     tcgcsv: new TcgCsvClient({ baseUrl: mock.tcgcsvUrl, timeoutMs }),
+    fx: new ExchangeRates({ baseUrl: mock.fxUrl, timeoutMs }),
   });
 }

@@ -70,3 +70,30 @@ for (const q of CARDS) {
     }
   }
 }
+
+// Promos have no picture on TCGdex or in the dataset: TCGplayer's product picture is used instead.
+console.log('\nFroakie MEP 060 (promo)');
+try {
+  const urls = await catalog.fallbackImages({ set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '060', name: 'Froakie' });
+  if (!urls.length) fail('TCGplayer picture', 'not found on tcgcsv.com');
+  for (const url of urls) {
+    const img = await catalog.download(url).catch(() => null);
+    if (img && /^image\//.test(img.contentType)) {
+      ok('TCGplayer picture', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+      break;
+    }
+    fail('TCGplayer picture', `${url} not downloadable`);
+  }
+  const price = await tcgcsv.price({ setCode: 'MEP', number: '060', name: 'Froakie', variant: 'promo' });
+  price ? ok('Promo price', money(price)) : fail('Promo price', 'no match');
+} catch (err) {
+  fail('Promo', err.cause ?? err);
+}
+
+console.log('\nExchange rate');
+try {
+  const rate = await catalog.fx.usdRate('EUR');
+  rate?.live ? ok('Euro → dollar rate', `1 EUR = ${rate.rate} USD (${rate.date})`) : fail('Euro → dollar rate', `service unreachable, using the fallback ${rate?.rate}`);
+} catch (err) {
+  fail('Euro → dollar rate', err.cause ?? err);
+}
