@@ -7,6 +7,19 @@ import { TcgClient } from './tcg.js';
 const isPtcg = (id) => String(id ?? '').startsWith(PtcgDataClient.PREFIX);
 
 /**
+ * Where the Pokémon TCG dataset's image hosts would keep a card's picture, worked out from its
+ * TCGdex set id ("mep" + "059" → "mep-59"). Used last, for cards the dataset doesn't list yet
+ * (such as the newest promos); a wrong guess simply fails to download and is skipped.
+ */
+function datasetImageGuesses(card) {
+  const setId = card.set_id ?? String(card.tcg_id ?? '').replace(/-[^-]+$/, '');
+  const n = String(card.number ?? '').match(/^\D*0*(\d+)$/)?.[1];
+  if (!setId || !n || isPtcg(card.tcg_id)) return [];
+  const id = setId.replace(/0+(\d)/, '$1').replace(/\.5$/, 'pt5');
+  return [`https://images.scrydex.com/pokemon/${id}-${n}/large`, `https://images.pokemontcg.io/${id}/${n}_hires.png`];
+}
+
+/**
  * One place to ask about cards. TCGdex is the main source; the Pokémon TCG dataset fills in
  * when TCGdex has no match or no image, and also supplies the rarity counts behind pull-rate
  * estimates. Prices are always in US dollars: TCGplayer via TCGdex, then TCGplayer via tcgcsv.com,
@@ -90,8 +103,8 @@ export class CardCatalog {
 
   /**
    * Other places the same card's official picture can be downloaded from, best first: the Pokémon
-   * TCG dataset, then TCGplayer's product image (via tcgcsv.com). TCGplayer lists every card,
-   * including promos the other two sources have no picture for.
+   * TCG dataset, then TCGplayer's product image (via tcgcsv.com), which lists every card including
+   * promos the other two have no picture for, then the dataset image hosts' usual addresses.
    */
   async fallbackImages(card) {
     const urls = [];
@@ -101,7 +114,8 @@ export class CardCatalog {
     }
     const query = { setName: card.set_name, setCode: card.set_code, number: card.number, name: card.name };
     urls.push(...await this.tcgcsv.images(query).catch(() => []));
-    return urls;
+    urls.push(...datasetImageGuesses(card));
+    return [...new Set(urls)];
   }
 
   /**

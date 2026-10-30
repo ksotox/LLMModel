@@ -20,7 +20,14 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
 - `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough.
   `SCREENSHOTS=1` refreshes `docs/screenshots/`. Both use local mocks, so no network is needed.
-- Windows one-click start: `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`). It installs on first
+- **Desktop app (Windows):** `desktop/install.ps1` (`irm …/desktop/install.ps1 | iex`) builds `Pokedex.exe` from
+  `desktop/Pokedex.cs` with Windows' csc.exe into `%LOCALAPPDATA%\Pokedex`; the exe runs `launcher.mjs` (copied
+  there, self-updating). The launcher reads the newest commit from `github.com/<repo>.git/info/refs` (the API is
+  rate-limited to 60/h, used only for the message), downloads `codeload` zip, swaps `LLMModel-main` (keeps
+  `.previous`, moves `data/`, copies `node_modules` if the lock file is unchanged, rolls back if the server won't
+  start), starts the server with IPC (`POKEDEX_DESKTOP`, `/api/desktop`, restart/shutdown), opens an Edge
+  `--app` window and stops when it closes. `.pokedex-version` in the app folder holds the installed commit.
+- Windows one-click start (older): `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`). It installs on first
   run and runs `npm start -- --open`. `--open` opens the browser; if the app is already running, it
   just reopens the browser. The desktop shortcut and the user-level env var for the key are set up
   by a PowerShell snippet in the README. Icon: `public/pokedex.ico`.
@@ -63,6 +70,11 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Gotchas
 - OpenCV.js 4.12 module is a *thenable*: wrap it as `{cv}` before resolving, or `await` hangs.
   Free every `cv.Mat` after use (an earlier `approx.rows` use-after-free crashed).
+- tcgcsv.com answered **401** to the owner's PC (2026-10-30). The client now sends a descriptive
+  User-Agent (`USER_AGENT` in `server/prices.js`); `npm run check:live` prints its access results.
+  Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
+  then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
+  (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
 - `node:sqlite` prints an ExperimentalWarning; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
   history and sales. Not yet verified against the live API.

@@ -7,7 +7,7 @@
 //  - two requests for the same card at the same time share one call.
 // Every answer is also written into the local price history, which keeps growing for free.
 
-import { PriceTrackerClient, PriceTrackerError, normalizeCard } from './priceTracker.js';
+import { PriceTrackerClient, PriceTrackerError, normalizeCard, tcgplayerImages } from './priceTracker.js';
 import { sameNumber } from './setCodes.js';
 import { listingMatchesCard } from './soldStats.js';
 
@@ -70,24 +70,63 @@ export class PriceTrackerService {
 
   /** The card's TCGplayer product id: remembered, from TCGdex's price data, or by a small search. */
   async #tcgPlayerId(card, { background }) {
-    const cached = this.store.getTrackerCache(card.id)?.tcg_player_id;
-    if (cached) return cached;
+    return (await this.#product(card, { background }))?.tcgPlayerId ?? null;
+  }
+
+  /** { tcgPlayerId, images } for the card; `images` only when a search answered with picture links. */
+  async #product(card, { background }) {
+    const cached = card.id != null ? this.store.getTrackerCache(card.id)?.tcg_player_id : null;
+    if (cached) return { tcgPlayerId: cached, images: [] };
     const fromTcgdex = await this.catalog.tcgPlayerId?.(card).catch(() => null);
-    if (fromTcgdex) return fromTcgdex;
+    if (fromTcgdex) return { tcgPlayerId: fromTcgdex, images: [] };
     if (!card.name) return null;
-    // Search costs a credit per card returned: ask for 3 at most and pick the one with the right number.
-    const found = await this.#call({ search: [card.name, card.set_name].filter(Boolean).join(' '), limit: 3 }, { background });
-    if (!found) return null;
-    // Same number isn't enough (every set has a #066): the printed total and set name must agree too.
+    // Searches cost a credit per card returned: first name + set (3 results), then the name alone
+    // (10 results, for cards whose set PokemonPriceTracker names differently, like promos).
+    for (const [search, limit] of [[[card.name, card.set_name].filter(Boolean).join(' '), 3], [card.name, 10]]) {
+      const found = await this.#call({ search, limit }, { background });
+      if (!found) return null;
+      const match = found.cards.map((c) => normalizeCard(c)).find((c) => this.#sameCard(c, card));
+      if (match) return { tcgPlayerId: match.tcgPlayerId, images: match.images };
+    }
+    return null;
+  }
+
+  /** Same number (promo "MEP 060" = "060"), and the printed total and set agree where both are known. */
+  #sameCard(found, card) {
+    const [n, total] = String(found.number ?? '').split('/');
+    const digits = (v) => String(v ?? '').match(/(\d+)\s*$/)?.[1];
+    const numberOk = !card.number || sameNumber(n, card.number) || (/^\d+$/.test(card.number) && sameNumber(digits(n), card.number));
+    const totalOk = !total || !card.set_total || Number(total) === Number(card.set_total);
     const letters = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const match = found.cards.map((c) => normalizeCard(c)).find((c) => {
-      const [n, total] = String(c.number ?? '').split('/');
-      return c.tcgPlayerId
-        && (!card.number || sameNumber(n, card.number))
-        && (!total || !card.set_total || Number(total) === Number(card.set_total))
-        && (!c.setName || !card.set_name || letters(c.setName).includes(letters(card.set_name)));
-    });
-    return match?.tcgPlayerId ?? null;
+    const a = letters(found.setName);
+    const b = letters(card.set_name);
+    // Promo sets are named differently everywhere ("MEP Black Star Promos" / "ME: Mega Evolution Promo").
+    const setOk = !a || !b || a.includes(b) || b.includes(a) || (a.includes('promo') && b.includes('promo'));
+    return Boolean(found.tcgPlayerId) && numberOk && totalOk && setOk;
+  }
+
+  /**
+   * Official picture addresses for a card from PokemonPriceTracker: its own picture links, then
+   * TCGplayer's picture of the card's TCGplayer product. Used only when no other source has a
+   * picture; finding the product costs a small search once, inside the daily budget.
+   */
+  async pictureUrls(card) {
+    if (!this.configured) return [];
+    const cache = card.id != null ? this.store.getTrackerCache(card.id) : null;
+    const links = [...(cache?.data?.images ?? [])];
+    let tcgPlayerId = cache?.tcg_player_id ?? null;
+    if (!tcgPlayerId) {
+      let product = null;
+      try {
+        product = await this.#product(card, { background: false });
+      } catch {
+        return links;
+      }
+      tcgPlayerId = product?.tcgPlayerId ?? null;
+      links.push(...(product?.images ?? []));
+      if (tcgPlayerId && card.id != null) this.store.saveTrackerCache(card.id, { tcgPlayerId, error: cache?.error ?? null });
+    }
+    return [...new Set([...links, ...tcgplayerImages(tcgPlayerId)])];
   }
 
   /** What the app has for a card, without calling the API. */

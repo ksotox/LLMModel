@@ -13,6 +13,8 @@ Everything the app calls at run time is **free**. Only PokemonPriceTracker needs
 | **pokemontcg.io image CDN** (`images.pokemontcg.io`) | URLs come from the dataset above | Card images for cards found in the dataset | `server/ptcgData.js` | No |
 | **tcgcsv.com** | `https://tcgcsv.com/tcgplayer/3` (`TCGCSV_URL`) | Backup TCGplayer prices and product pictures (category 3 = Pokémon): `/groups`, `/<groupId>/products`, `/<groupId>/prices`. Sets are found by their TCGplayer group id, listed in `server/setCodes.js` and taken from TCGdex's data files. | `server/prices.js` | No |
 | **TCGplayer image CDN** | `https://tcgplayer-cdn.tcgplayer.com/product/<id>_in_1000x1000.jpg` (then `_400w`, `_200w`) | Official picture of a card when TCGdex and the dataset have none, e.g. Mega Evolution promos (MEP) | `server/prices.js`, `server/catalog.js` | No |
+| **PokemonPriceTracker (pictures)** | same API, `GET /cards?search=<name>` | Last resort for a card no other source has a picture for: its picture links and TCGplayer product id (→ TCGplayer image). One search per card, inside the daily credit budget | `server/priceTrackerService.js` (`pictureUrls`) | `POKEMONPRICETRACKER_API_KEY` |
+| **Scrydex / pokemontcg.io image hosts** | `https://images.scrydex.com/pokemon/<set>-<n>/large`, `https://images.pokemontcg.io/<set>/<n>_hires.png` | Last-resort picture, at the address the dataset would use for a card it doesn't list yet (e.g. `mep-59`) | `server/catalog.js` | No |
 | **Frankfurter** (ECB exchange rates) | `https://api.frankfurter.dev/v1` (`FX_URL`) | Converts Cardmarket euro prices to US dollars (`/latest?base=EUR&symbols=USD`, cached 12 h; `EUR_USD_RATE` fallback when offline) | `server/fx.js` | No |
 | **eBay Marketplace Insights API** (`v1_beta`) | `https://api.ebay.com` | Sold listings from the last 90 days. OAuth client credentials, scope `buy.marketplace.insights`, `item_sales/search` in category 183454 (CCG Individual Cards) | `server/ebay.js` | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET`; eBay must approve the app |
 | **eBay.com "Sold items" search** | `https://www.ebay.com/sch/i.html?…&LH_Sold=1&LH_Complete=1` | Opened in the user's own browser. The user copies the results and pastes them into the app; the app never fetches eBay pages itself. | `server/ebay.js`, `public/js/ebay.js` | No |
@@ -30,6 +32,17 @@ Per-pack rates for Double Rare and higher come from **TCGplayer's published pack
 Scarlet & Violet base set (8,000+ packs), Scarlet & Violet—151, Temporal Forces (8,000+ packs) and
 Phantasmal Flames (5,000+ packs). Other Scarlet & Violet and Mega Evolution sets use the average for their era. The
 numbers and their attribution are in `server/pullRates.js`, and each card shows its source in the UI.
+
+### Used by the desktop launcher (`desktop/launcher.mjs`)
+
+| Service | Address | Used for |
+| --- | --- | --- |
+| GitHub (git) | `https://github.com/ksotox/LLMModel.git/info/refs?service=git-upload-pack` | The newest commit on `main` (no API rate limit) |
+| GitHub REST API | `https://api.github.com/repos/ksotox/LLMModel/commits/<sha>` | That commit's message for the update banner (optional; 60 requests/hour without signing in) |
+| GitHub downloads | `https://codeload.github.com/ksotox/LLMModel/zip/<sha>` | The code of that commit |
+| npm registry | `https://registry.npmjs.org` (via `npm ci`) | The app's packages, when `package-lock.json` changed |
+| Microsoft Edge / Google Chrome | already on the PC | The app window (`--app` mode) |
+| Windows C# compiler | `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe` | Builds `Pokedex.exe` from `desktop/Pokedex.cs` during setup |
 
 ## Libraries (npm)
 

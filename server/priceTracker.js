@@ -105,6 +105,27 @@ function population(raw) {
 }
 
 /** One card from any of the documented response layouts, in the shape the app stores. */
+/** TCGplayer's official picture for a product, largest first. */
+export function tcgplayerImages(productId) {
+  if (!productId) return [];
+  const base = `https://tcgplayer-cdn.tcgplayer.com/product/${encodeURIComponent(productId)}`;
+  return [`${base}_in_1000x1000.jpg`, `${base}_400w.jpg`];
+}
+
+/** Picture links in an answer ("imageUrl", "imageCdnUrl800", "images.large"…), largest first. */
+function imageLinks(raw) {
+  const found = [];
+  const walk = (obj, depth) => {
+    for (const [key, value] of Object.entries(obj ?? {})) {
+      if (typeof value === 'string' && /ima?ge?|picture/i.test(key) && /^https?:\/\//i.test(value)) found.push(`${key} ${value}`);
+      else if (value && typeof value === 'object' && !Array.isArray(value) && /ima?ge?/i.test(key) && depth < 2) walk(value, depth + 1);
+    }
+  };
+  walk(raw, 0);
+  const size = (s) => (/1000|large|hi-?res|800|full|original/i.test(s) ? 0 : /400|medium/i.test(s) ? 1 : 2);
+  return [...new Set(found.sort((a, b) => size(a) - size(b)).map((s) => s.slice(s.indexOf(' ') + 1)))];
+}
+
 export function normalizeCard(raw, { printing = null } = {}) {
   const prices = raw.prices ?? raw.price ?? {};
   const conditionPrice = prices.conditions?.['Near Mint'] ?? prices.conditions?.nearMint;
@@ -129,6 +150,7 @@ export function normalizeCard(raw, { printing = null } = {}) {
     gradedSales: gradedSales(raw.ebay),
     sales: individualSales(raw.ebay),
     population: population(raw),
+    images: imageLinks(raw),
   };
 }
 

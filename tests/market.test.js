@@ -151,9 +151,12 @@ describe('card catalog with a second source', () => {
     const froakie = await catalog.details('mep-060');
     assert.equal(froakie.official_image_url, null, 'no picture on TCGdex or in the dataset');
     const images = await catalog.fallbackImages(froakie);
-    assert.deepEqual(images.map((u) => new URL(u).pathname), [
+    assert.deepEqual(images.slice(0, 3).map((u) => new URL(u).pathname), [
       '/tcgplayer-cdn/product/77060_in_1000x1000.jpg', '/tcgplayer-cdn/product/77060_400w.jpg', '/tcgplayer-cdn/product/77060_200w.jpg',
     ], 'found by the set’s TCGplayer group and the digits of "MEP 060"');
+    assert.deepEqual(images.slice(3), [
+      'https://images.scrydex.com/pokemon/mep-60/large', 'https://images.pokemontcg.io/mep/60_hires.png',
+    ], 'then where the dataset’s image hosts would keep it');
     const { price } = await catalog.market({ ...froakie, variant: 'promo' });
     assert.deepEqual([price.value, price.currency], [6.89, 'USD']);
     assert.match(price.source, /tcgcsv/);

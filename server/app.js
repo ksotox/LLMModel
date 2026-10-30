@@ -40,6 +40,7 @@ export function createApp({
   ebay = new EbayClient(),
   priceTracker = new PriceTrackerClient(),
   trackerOptions = {},
+  desktop = null, // { version(), update, restart() } when run by the desktop launcher
 } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
@@ -72,25 +73,33 @@ export function createApp({
 
   /**
    * Download the official image once and keep a local copy, so it survives the sources being offline.
-   * If the main image can't be downloaded, the same card's picture is tried from the other sources.
+   * If the main image can't be downloaded, the same card's picture is tried from the other sources,
+   * and finally through PokemonPriceTracker when a key is set.
    */
   const cacheOfficialImage = async (card) => {
     const base = `official/${card.tcg_id.replace(/[^\w.-]/g, '_')}`;
     const existing = ['.png', '.jpg', '.webp'].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
     if (existing) return existing;
-    const urls = [card.official_image_url, ...await catalog.fallbackImages(card).catch(() => [])].filter(Boolean);
-    for (const url of [...new Set(urls)]) {
-      try {
-        const img = await catalog.download(url);
-        if (!img || !/^image\//.test(img.contentType)) continue;
-        const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
-        fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
-        return base + ext;
-      } catch {
-        // try the next source
+    const tried = new Set();
+    const save = async (urls) => {
+      for (const url of urls) {
+        if (!url || tried.has(url)) continue;
+        tried.add(url);
+        try {
+          const img = await catalog.download(url);
+          if (!img || !/^image\//.test(img.contentType)) continue;
+          const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
+          fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
+          return base + ext;
+        } catch {
+          // try the next source
+        }
       }
-    }
-    return null;
+      return null;
+    };
+    return await save([card.official_image_url, ...await catalog.fallbackImages(card).catch(() => [])])
+      // Last: PokemonPriceTracker (with a key) knows the card's TCGplayer product, and so its picture.
+      ?? await save(await tracker.pictureUrls(card).catch(() => []));
   };
 
   /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
@@ -274,6 +283,17 @@ export function createApp({
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
   for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
   app.use(express.static(PUBLIC_DIR));
+
+  // Desktop app: the installed version, a newer one waiting, and a restart that installs it.
+  app.get('/api/desktop', (_req, res) => {
+    res.json(desktop ? { desktop: true, version: desktop.version(), update: desktop.update ?? null } : { desktop: false });
+  });
+
+  app.post('/api/desktop/restart', (_req, res) => {
+    if (!desktop?.restart) throw new HttpError(404, 'Only the desktop app can restart itself');
+    res.json({ restarting: true });
+    setTimeout(() => desktop.restart(), 200); // after the answer has gone out
+  });
 
   app.get('/api/meta', (_req, res) => {
     res.json({

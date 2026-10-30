@@ -3,7 +3,8 @@
 // Prints what each source returned, so you can see which ones are reachable from this computer.
 
 import { CardCatalog } from '../server/catalog.js';
-import { TcgCsvClient } from '../server/prices.js';
+import { normalizeCard, PriceTrackerClient, tcgplayerImages } from '../server/priceTracker.js';
+import { TcgCsvClient, USER_AGENT } from '../server/prices.js';
 import { PtcgDataClient } from '../server/ptcgData.js';
 import { pullChance } from '../server/pullRates.js';
 import { TcgClient } from '../server/tcg.js';
@@ -71,23 +72,61 @@ for (const q of CARDS) {
   }
 }
 
+// tcgcsv.com access: which requests it accepts (it answered 401 to plain requests).
+console.log('\ntcgcsv.com access');
+for (const [label, headers] of [['as this app', { 'User-Agent': USER_AGENT }], ['with no app name', {}]]) {
+  for (const path of ['/groups', '/24451/products']) {
+    try {
+      const res = await fetch(`https://tcgcsv.com/tcgplayer/3${path}`, { headers, signal: AbortSignal.timeout(15000) });
+      (res.ok ? ok : fail)(`${path} ${label}`, `HTTP ${res.status} ${res.headers.get('content-type') ?? ''}`);
+    } catch (err) {
+      fail(`${path} ${label}`, err.cause ?? err);
+    }
+  }
+}
+
 // Promos have no picture on TCGdex or in the dataset: TCGplayer's product picture is used instead.
 console.log('\nFroakie MEP 060 (promo)');
 try {
-  const urls = await catalog.fallbackImages({ set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '060', name: 'Froakie' });
-  if (!urls.length) fail('TCGplayer picture', 'not found on tcgcsv.com');
+  const urls = await catalog.fallbackImages({ tcg_id: 'mep-060', set_id: 'mep', set_code: 'MEP', set_name: 'MEP Black Star Promos', number: '060', name: 'Froakie' });
+  let found = false;
   for (const url of urls) {
     const img = await catalog.download(url).catch(() => null);
     if (img && /^image\//.test(img.contentType)) {
-      ok('TCGplayer picture', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+      ok('Promo picture', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+      found = true;
       break;
     }
-    fail('TCGplayer picture', `${url} not downloadable`);
+    fail('Promo picture', `${url} not downloadable`);
   }
+  if (!found) fail('Promo picture', 'no source had it');
   const price = await tcgcsv.price({ setCode: 'MEP', number: '060', name: 'Froakie', variant: 'promo' });
   price ? ok('Promo price', money(price)) : fail('Promo price', 'no match');
 } catch (err) {
   fail('Promo', err.cause ?? err);
+}
+
+// TCGplayer's picture straight from its image server, by product number (Froakie MEP 060 is 709974).
+console.log('\nTCGplayer picture server');
+for (const url of tcgplayerImages('709974')) {
+  const img = await catalog.download(url).catch((err) => ({ error: err.cause ?? err }));
+  if (img?.buffer && /^image\//.test(img.contentType)) ok('Froakie by product number', `${url} (${img.buffer.length} bytes, ${img.contentType})`);
+  else fail('Froakie by product number', `${url} ${img?.error?.message ?? 'not downloadable'}`);
+}
+
+// With a PokemonPriceTracker key: the route the app uses when no other source has a picture.
+console.log('\nPokemonPriceTracker picture lookup');
+if (!process.env.POKEMONPRICETRACKER_API_KEY) {
+  fail('PokemonPriceTracker', 'no POKEMONPRICETRACKER_API_KEY set in this window (skipped)');
+} else {
+  try {
+    const { cards, credits } = await new PriceTrackerClient().cards({ search: 'Froakie', limit: 10 });
+    const promo = cards.map((c) => normalizeCard(c)).find((c) => /promo/i.test(c.setName ?? '') && /(^|\D)0*60$/.test(String(c.number ?? '').split('/')[0]));
+    if (!promo) fail('Froakie promo', `not among ${cards.length} results (${credits} credits used)`);
+    else ok('Froakie promo', `TCGplayer ${promo.tcgPlayerId}, "${promo.setName}" ${promo.number}, pictures: ${promo.images.join(' ') || 'none listed'} (${credits} credits used)`);
+  } catch (err) {
+    fail('PokemonPriceTracker', err.cause ?? err);
+  }
 }
 
 console.log('\nExchange rate');

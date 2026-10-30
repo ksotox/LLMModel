@@ -232,6 +232,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 .actions.left { justify-content: flex-start; }
 .back { display: inline-block; margin-bottom: 12px; color: var(--muted); text-decoration: none; }
 
+/* ---------- Desktop update banner ---------- */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  background: var(--ok-soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+.update-banner[hidden] { display: none; }
+
 /* ---------- Card grid ---------- */
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }

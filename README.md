@@ -53,7 +53,31 @@ npm start            # http://localhost:3000
 | `POKEMONPRICETRACKER_DAILY_CREDITS` | `100` | Your plan's daily credits. The app never spends more than this in a day. |
 | `POKEMONPRICETRACKER_HISTORY_DAYS` | `3` | Days of price history to ask for per card (the free plan allows 3) |
 
-### Start it with one click (Windows)
+### Desktop app for Windows (recommended)
+
+The Pokédex can run like a normal desktop program that keeps itself up to date. Install [Node.js](https://nodejs.org) (LTS) first, then paste this into PowerShell once:
+
+```powershell
+irm https://raw.githubusercontent.com/ksotox/LLMModel/main/desktop/install.ps1 | iex
+```
+
+This adds a **Pokedex** icon to your Desktop and Start menu. Every time you open it:
+
+1. **It updates itself.** It checks GitHub for the newest merged version. If there is one, it downloads it into `LLMModel-main` in your user folder and installs its packages (or reuses them when they haven't changed). Your collection in `data\` is moved across, and the version it replaced is kept as `LLMModel-main.previous`. If a new version fails to start, the previous one (with your cards) is put back automatically.
+2. **It starts the server.**
+3. **It opens the app in its own window** (Edge app mode: no tabs or address bar). Closing the window stops the server.
+
+While the app is open, it checks for new versions every 30 minutes and shows **A new version is ready — Restart to update**. Opening the icon a second time just opens another window.
+
+- **The pieces** live in `%LOCALAPPDATA%\Pokedex`:
+  - `Pokedex.exe` is built on your PC from [`desktop/Pokedex.cs`](desktop/Pokedex.cs) by Windows' own C# compiler, so there's no downloaded program to trust. It only starts `launcher.mjs`.
+  - [`desktop/launcher.mjs`](desktop/launcher.mjs) is the launcher, and it updates itself along with the app.
+  - `config.json` holds the settings, and `launcher.log` records what happened.
+- **To use a different app folder,** run `$env:POKEDEX_APP_DIR="D:\Pokedex\LLMModel-main"` before the install command.
+- **If something goes wrong,** the icon shows a message, and `launcher.log` has the details. Running the install command again repairs the setup.
+- **To uninstall,** delete `%LOCALAPPDATA%\Pokedex` and the two shortcuts. Your app folder and cards stay where they are.
+
+### Start it with one click (Windows, without the desktop app)
 
 The app folder contains **`Start Pokedex.cmd`**. Double-click it to:
 - install the app the first time;
@@ -149,7 +173,7 @@ Small print in blurry or dim photos can still defeat it. In that case, type the 
 
 | | Source | Notes |
 | --- | --- | --- |
-| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), then TCGplayer's product picture (via [tcgcsv.com](https://tcgcsv.com)) | All free, no API key. TCGplayer lists every card, including new promos the other two have no picture for. |
+| Card details & images | [TCGdex](https://tcgdex.dev), then the [Pokémon TCG dataset](https://github.com/PokemonTCG/pokemon-tcg-data), then TCGplayer's product picture (via [tcgcsv.com](https://tcgcsv.com), or via PokemonPriceTracker when you have a key) | All free. TCGplayer lists every card, including new promos the other two have no picture for. With a PokemonPriceTracker key, finding a promo's picture costs one small search, once. |
 | Rarity | The card's own data | Same rarity names as printed on the card. |
 | Market price | Always in US dollars: TCGplayer market price via TCGdex, then TCGplayer via [tcgcsv.com](https://tcgcsv.com), then the Cardmarket trend (euros) converted to dollars at the day's [European Central Bank rate](https://frankfurter.dev) | Uses the price for your variant (e.g. reverse holo) when there is one. A converted price says so when you hover over it. Prices change: treat them as a guide, not an offer. |
 | Pull chance | Calculated | See below. |
@@ -202,11 +226,13 @@ tests/
   ebay.test.js    sold-price statistics, trend colours, listing matching, eBay API + routes
   pricetracker.test.js  PokemonPriceTracker client, caching, credit budget, price history, scheduler
   memory.test.js  keeps MEMORY.md within its size budget
+  desktop.test.js desktop launcher: install, update keeping the collection, rollback, server, update banner API
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
 docs/reference/ the reference photos used for the upload feature and the tests
 docs/HISTORY.md full project history
 docs/SOURCES.md every source, website, API and library used
+desktop/        Windows desktop app: install.ps1 (setup), Pokedex.cs (the exe), launcher.mjs (updates, server, window)
 Start Pokedex.cmd  Windows one-click launcher (installs on first run, starts, opens the browser)
 MEMORY.md       short handoff notes for the next agent (size-capped by tests/memory.test.js)
 ```
