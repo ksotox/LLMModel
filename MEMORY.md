@@ -75,6 +75,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
   then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
   (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
+- Updater data safety: backup to `<app>.backups/` before each swap; a failed `data/` move undoes the swap; a
+  `data/` left in `.previous` goes to `<app>.rescued-data-*`, never deleted. Keep these properties.
+- Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
 - `node:sqlite` prints an ExperimentalWarning; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
   history and sales. Not yet verified against the live API.
@@ -89,6 +92,13 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
+- Variant suggestion: `server/printings.js` (TCGdex `variants_detailed`/`variants`, price lines, rarity rules) →
+  `/api/catalog/cards/:id/printings`; `public/js/foil.js` (one-photo art-vs-body texture at 360 px, calibrated on
+  docs/reference; tilt scan = brightness change between angles) → hint + Use / Tilt scan in `add.js`. Never
+  auto-applied unless certain. Tilt thresholds are synthetic-tested only: tune with real tilt photos.
+- **See `docs/CODE_REVIEW.md`** for the prioritised list (bugs B1–B6 now fixed, desktop D1–D3, perf P1–P3, security S1–S2,
+  data-source risks R1–R3, tech debt T1–T9). Biggest: R1 dataset is legacy (pull-chance rarity counts depend on it),
+  T1 no CI, S1 no password + listens on all interfaces, P1 sequential lookups. Users read `docs/USER_GUIDE.md`.
 - Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`. Fix any parser gaps
   using their real responses.
 - Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.

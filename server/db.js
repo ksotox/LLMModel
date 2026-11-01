@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS cards (
 
 CREATE INDEX IF NOT EXISTS idx_cards_pack ON cards(pack_id);
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at);
+CREATE INDEX IF NOT EXISTS idx_cards_tcg ON cards(tcg_id);
 
 -- eBay sold listings found for a card (from eBay's API or pasted from eBay.com).
 CREATE TABLE IF NOT EXISTS ebay_sales (
@@ -121,6 +122,8 @@ export function openDb(file) {
   for (const [col, type] of Object.entries(CARD_MIGRATIONS)) {
     if (!existing.has(col)) db.exec(`ALTER TABLE cards ADD COLUMN ${col} ${type}`);
   }
+  const trackerCols = new Set(db.prepare('PRAGMA table_info(pricetracker_cache)').all().map((c) => c.name));
+  if (!trackerCols.has('picture_checked_at')) db.exec('ALTER TABLE pricetracker_cache ADD COLUMN picture_checked_at TEXT');
   return new Store(db);
 }
 
@@ -218,7 +221,8 @@ class Store {
     const order = {
       oldest: 'c.created_at ASC, c.id ASC',
       name: 'c.name COLLATE NOCASE ASC, c.id DESC',
-      set: "c.set_code COLLATE NOCASE ASC, CAST(c.number AS INTEGER) ASC, c.id DESC",
+      // "TG05", "GG12" and "SV001" sort by their prefix, then their digits.
+      set: "c.set_code COLLATE NOCASE ASC, RTRIM(c.number, '0123456789') COLLATE NOCASE ASC, CAST(LTRIM(c.number, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') AS INTEGER) ASC, c.id DESC",
       value: 'c.market_price IS NULL, c.market_price DESC, c.id DESC',
       rarity: 'c.pull_chance IS NULL, c.pull_chance ASC, c.id DESC',
     }[sort] ?? 'c.created_at DESC, c.id DESC';
@@ -276,7 +280,7 @@ class Store {
   /** Cards whose price hasn't been checked yet on `day` (YYYY-MM-DD), least recently checked first. */
   cardsNeedingSnapshot(day) {
     return this.db.prepare(`SELECT * FROM cards
-      WHERE (tcg_id IS NOT NULL OR (set_code IS NOT NULL AND number IS NOT NULL))
+      WHERE (tcg_id IS NOT NULL OR (number IS NOT NULL AND (set_code IS NOT NULL OR name IS NOT NULL)))
         AND (market_checked_at IS NULL OR substr(market_checked_at, 1, 10) < ?)
       ORDER BY market_checked_at IS NOT NULL, market_checked_at, id`).all(day);
   }
@@ -295,6 +299,13 @@ class Store {
         fetched_at = COALESCE(excluded.fetched_at, fetched_at), attempted_at = excluded.attempted_at,
         data = COALESCE(excluded.data, data), error = excluded.error`)
       .run(cardId, tcgPlayerId ?? null, data ? now : null, now, data ? JSON.stringify(data) : null, error);
+  }
+
+  /** Remember that PokemonPriceTracker was searched for a card's picture (searches cost credits). */
+  markPictureSearch(cardId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`INSERT INTO pricetracker_cache (card_id, picture_checked_at) VALUES (?, ?)
+      ON CONFLICT (card_id) DO UPDATE SET picture_checked_at = excluded.picture_checked_at`).run(cardId, now);
   }
 
   /** Cards with no PokemonPriceTracker data, or the oldest data, first. */
@@ -359,7 +370,7 @@ class Store {
         (SELECT COUNT(*) FROM cards) AS cards,
         (SELECT COUNT(DISTINCT IFNULL(tcg_id, LOWER(name) || '|' || IFNULL(set_code, '') || '|' || IFNULL(number, ''))) FROM cards) AS unique_cards,
         (SELECT COUNT(*) FROM packs) AS packs,
-        (SELECT COUNT(*) FROM cards WHERE official_image_url IS NOT NULL) AS with_official,
+        (SELECT COUNT(*) FROM cards WHERE official_image_path IS NOT NULL) AS with_official,
         (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'USD') AS value_usd,
         (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'EUR') AS value_eur,
         (SELECT COUNT(*) FROM cards WHERE market_price IS NOT NULL) AS priced`).get();

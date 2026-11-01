@@ -188,6 +188,7 @@ describe('card catalog with a second source', () => {
 });
 
 describe('market API', () => {
+  let appCatalog;
   let mock;
   let dataDir;
   let app;
@@ -206,7 +207,8 @@ describe('market API', () => {
   before(async () => {
     mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-market-'));
-    app = createApp({ dataDir, catalog: mockCatalog(mock) });
+    appCatalog = mockCatalog(mock);
+    app = createApp({ dataDir, catalog: appCatalog });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
   });
@@ -298,6 +300,49 @@ describe('market API', () => {
     assert.equal(p.tcg_id, null, 'not linked when the name doesn’t match');
     assert.equal(p.official_url, null);
     await call('DELETE', `/api/cards/${pikachu.id}`);
+  });
+
+  test('changing a linked card’s number re-matches it instead of keeping the old card', async () => {
+    const { body } = await addCards([{ tcg_id: 'sv02-066', name: 'Voltorb' }]);
+    const [voltorb] = body.cards;
+    // Typed the wrong number at first: it was Electrode, 067/193.
+    const fixed = (await call('PATCH', `/api/cards/${voltorb.id}`, { name: 'Electrode', number: '067' })).body;
+    assert.equal(fixed.tcg_id, 'sv02-067');
+    assert.equal(fixed.official_url, '/media/official/sv02-067.png');
+    // Only the notes changed: the link stays.
+    const same = (await call('PATCH', `/api/cards/${voltorb.id}`, { notes: 'mint' })).body;
+    assert.equal(same.tcg_id, 'sv02-067');
+    await call('DELETE', `/api/cards/${voltorb.id}`);
+  });
+
+  test('“Set & number” sort orders by prefix then digits (TG05 after 9, GG12 after TG)', async () => {
+    const { body } = await addCards([
+      { name: 'A', set_code: 'ZZZ', number: 'TG05' }, { name: 'B', set_code: 'ZZZ', number: '10' },
+      { name: 'C', set_code: 'ZZZ', number: '9' }, { name: 'D', set_code: 'ZZZ', number: 'TG12' },
+    ]);
+    const order = (await call('GET', '/api/cards?setCode=ZZZ&sort=set')).body.cards.map((c) => c.number);
+    assert.deepEqual(order, ['9', '10', 'TG05', 'TG12']);
+    for (const c of body.cards) await call('DELETE', `/api/cards/${c.id}`);
+  });
+
+  test('two price updates of the same card at once share one lookup', async () => {
+    const [card] = (await call('GET', '/api/cards?q=linoone')).body.cards;
+    const market = appCatalog.market;
+    let lookups = 0;
+    appCatalog.market = async (...args) => {
+      lookups++;
+      await new Promise((r) => setTimeout(r, 150)); // a slow source, so the two requests overlap
+      return market.apply(appCatalog, args);
+    };
+    try {
+      const [a, b] = await Promise.all([call('POST', `/api/cards/${card.id}/refresh-market`), call('POST', `/api/cards/${card.id}/refresh-market`)]);
+      assert.equal(a.body.market_price, b.body.market_price);
+      assert.equal(lookups, 1, 'both requests got the one lookup');
+      await call('POST', `/api/cards/${card.id}/refresh-market`);
+      assert.equal(lookups, 2, 'a later update looks again');
+    } finally {
+      appCatalog.market = market;
+    }
   });
 
   test('keeps the last known price when the sources are unreachable', async () => {

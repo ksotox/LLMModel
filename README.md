@@ -26,7 +26,9 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | **Price history & eBay graded sales** | |
 | ![Price history](docs/screenshots/13-price-history.png) | |
 
-> **More documentation:** [`docs/HISTORY.md`](docs/HISTORY.md) (how the app was built), [`docs/SOURCES.md`](docs/SOURCES.md) (every source, website and API used) and [`MEMORY.md`](MEMORY.md) (handoff notes for the next developer or AI agent).
+> **New here? Read the [user guide](docs/USER_GUIDE.md)**: every feature, step by step.
+>
+> **More documentation:** [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) (known issues and improvement plan), [`docs/HISTORY.md`](docs/HISTORY.md) (how the app was built), [`docs/SOURCES.md`](docs/SOURCES.md) (every source, website and API used) and [`MEMORY.md`](MEMORY.md) (handoff notes for the next developer or AI agent).
 
 > The screenshots come from the automated test, which runs against a mock card database, so the "official" images there are flat placeholder colours. In normal use they are the real card PNGs.
 
@@ -63,7 +65,7 @@ irm https://raw.githubusercontent.com/ksotox/LLMModel/main/desktop/install.ps1 |
 
 This adds a **Pokedex** icon to your Desktop and Start menu. Every time you open it:
 
-1. **It updates itself.** It checks GitHub for the newest merged version. If there is one, it downloads it into `LLMModel-main` in your user folder and installs its packages (or reuses them when they haven't changed). Your collection in `data\` is moved across, and the version it replaced is kept as `LLMModel-main.previous`. If a new version fails to start, the previous one (with your cards) is put back automatically.
+1. **It updates itself.** It checks GitHub for the newest merged version. If there is one, it downloads it into `LLMModel-main` in your user folder and installs its packages (or reuses them when they haven't changed). Your collection in `data\` is moved across, and the version it replaced is kept as `LLMModel-main.previous`. If a new version fails to start, the previous one (with your cards) is put back automatically. Before each update `collection.db` is copied to `LLMModel-main.backups\` (the last 10 are kept), and the update is cancelled if your collection can't be moved.
 2. **It starts the server.**
 3. **It opens the app in its own window** (Edge app mode: no tabs or address bar). Closing the window stops the server.
 

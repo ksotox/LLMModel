@@ -38,6 +38,7 @@ function multipart(key, items) {
 export const api = {
   meta: () => request('GET', '/api/meta'),
   desktop: () => request('GET', '/api/desktop'),
+  printings: (tcgId) => request('GET', `/api/catalog/cards/${encodeURIComponent(tcgId)}/printings`),
   desktopRestart: () => request('POST', '/api/desktop/restart'),
   lookup: (params) => request('GET', `/api/lookup${qs(params)}`),
   identify: (texts) => request('POST', '/api/identify', texts),

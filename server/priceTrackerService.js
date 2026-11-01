@@ -12,6 +12,7 @@ import { sameNumber } from './setCodes.js';
 import { listingMatchesCard } from './soldStats.js';
 
 export const PROVIDER = 'pokemonpricetracker';
+const pictureKey = (card) => card.tcg_id ?? `${String(card.name ?? '').toLowerCase()}|${card.set_code ?? ''}|${card.number ?? ''}`;
 const HOUR = 60 * 60 * 1000;
 const PRINTING = { 'reverse-holo': 'Reverse Holofoil', holo: 'Holofoil', 'full-art': 'Holofoil', normal: 'Normal' };
 
@@ -28,6 +29,7 @@ export class PriceTrackerService {
   }) {
     Object.assign(this, { client, store, catalog, dailyCredits, reserveShare, freshForMs, historyDays, now });
     this.inFlight = new Map();
+    this.pictureSearches = new Map(); // card identity → when its picture was last searched for
   }
 
   get configured() {
@@ -116,17 +118,32 @@ export class PriceTrackerService {
     const links = [...(cache?.data?.images ?? [])];
     let tcgPlayerId = cache?.tcg_player_id ?? null;
     if (!tcgPlayerId) {
+      // A search that found nothing isn't repeated for a week: it runs on every price update otherwise.
+      const last = cache?.picture_checked_at ?? this.pictureSearches.get(pictureKey(card));
+      if (last && this.now() - new Date(last) < 7 * this.freshForMs) return links;
       let product = null;
+      const requestsBefore = this.store.usage(PROVIDER, this.today()).requests;
       try {
-        product = await this.#product(card, { background: false });
+        product = await this.#product(card, { background: true }); // never uses the share kept for viewing
       } catch {
         return links;
+      } finally {
+        // Only a search that really ran counts (not one skipped for lack of credits).
+        if (this.store.usage(PROVIDER, this.today()).requests > requestsBefore) {
+          this.pictureSearches.set(pictureKey(card), this.now().toISOString());
+          if (card.id != null) this.store.markPictureSearch(card.id);
+        }
       }
       tcgPlayerId = product?.tcgPlayerId ?? null;
       links.push(...(product?.images ?? []));
       if (tcgPlayerId && card.id != null) this.store.saveTrackerCache(card.id, { tcgPlayerId, error: cache?.error ?? null });
     }
     return [...new Set([...links, ...tcgplayerImages(tcgPlayerId)])];
+  }
+
+  /** A card just saved keeps the picture search made while it was being added. */
+  rememberPictureSearch(card) {
+    if (this.pictureSearches.has(pictureKey(card))) this.store.markPictureSearch(card.id);
   }
 
   /** What the app has for a card, without calling the API. */

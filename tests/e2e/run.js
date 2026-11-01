@@ -91,9 +91,23 @@ try {
   await cardInput.setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await page.locator('.source').nth(1).getByText('1 card in this photo').waitFor({ timeout: 60000 });
   await item(3).locator('.match-note', { hasText: 'Official card: Voltorb · PAL' }).waitFor({ timeout: 90000 });
-  await item(3).getByLabel('Variant').selectOption('reverse-holo');
+  step('the variant is suggested from the foil in the photo and the card’s printings; “Use” confirms it');
+  await item(0).locator('.variant-suggestion', { hasText: 'Suggested: Normal' }).waitFor({ timeout: 30000 });
+  const tip = item(3).locator('.variant-suggestion', { hasText: 'Suggested: Reverse holo' });
+  await tip.waitFor({ timeout: 30000 });
+  assert.match(await tip.textContent(), /\d+% sure/);
+  assert.equal(await item(3).getByLabel('Variant').inputValue(), 'normal', 'nothing changes until the user confirms');
+  await tip.getByRole('button', { name: 'Use' }).click();
+  assert.equal(await item(3).getByLabel('Variant').inputValue(), 'reverse-holo');
   await page.getByText('4 of 4 matched to an official card').waitFor();
   await shot('02-add-cards');
+
+  step('tilt scan: more photos of the same card update the suggestion, but never change the choice');
+  await item(3).locator('.variant-hint input[type=file]').setInputFiles([REF('voltorb-reverse-holo.jpg')]);
+  // The same photo again shows no change in shine, so the scan reads "no foil": the user's choice stays.
+  await item(3).locator('.variant-suggestion', { hasText: '(tilt scan)' }).waitFor({ timeout: 60000 });
+  await item(3).getByRole('button', { name: /Add another angle \(2 photos\)/ }).waitFor();
+  assert.equal(await item(3).getByLabel('Variant').inputValue(), 'reverse-holo');
 
   step('adjust the outlines in the crop editor');
   await page.locator('.source').first().getByRole('button', { name: 'Adjust cards' }).click();
@@ -246,6 +260,8 @@ try {
   await page.locator('.card-item .match-note', { hasText: 'Official card: Froakie' }).waitFor({ timeout: 90000 });
   assert.equal(await page.locator('.card-item').getByLabel('Set code').inputValue(), 'MEP');
   assert.equal(await page.locator('.card-item').getByLabel('Number').inputValue(), '060');
+  await page.locator('.card-item .variant-suggestion', { hasText: 'Suggested: Promo · certain' }).waitFor({ timeout: 30000 });
+  assert.equal(await page.locator('.card-item').getByLabel('Variant').inputValue(), 'promo', 'a certain printing is filled in');
   await shot('11-read-promo');
 
   step('add packs on their own: several at once');

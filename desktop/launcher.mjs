@@ -206,7 +206,9 @@ export async function update({ appDir, repo, codeload, latest, log, selfDir = nu
 
   // Swap: the current folder becomes .previous, its collection moves into the new one.
   const previous = `${appDir}.previous`;
+  backupCollection(appDir, log);
   if (fs.existsSync(appDir)) {
+    setAsideCollection(previous, log); // never delete a collection along with old code
     rmrf(previous);
     fs.renameSync(appDir, previous);
   }
@@ -216,13 +218,60 @@ export async function update({ appDir, repo, codeload, latest, log, selfDir = nu
     if (fs.existsSync(previous) && !fs.existsSync(appDir)) fs.renameSync(previous, appDir);
     throw new Error(`could not replace ${appDir} (is it open in another program?): ${err.message}`);
   }
-  if (fs.existsSync(path.join(previous, 'data'))) fs.renameSync(path.join(previous, 'data'), path.join(appDir, 'data'));
+  if (fs.existsSync(path.join(previous, 'data'))) {
+    try {
+      await renameWithRetry(path.join(previous, 'data'), path.join(appDir, 'data'));
+    } catch (err) {
+      // The collection couldn't move (a file is locked): put the old version back, untouched.
+      rmrf(staging);
+      fs.renameSync(appDir, staging);
+      fs.renameSync(previous, appDir);
+      throw new Error(`could not move the collection into the new version, kept the current one: ${err.message}`);
+    }
+  }
 
   // The launcher updates itself too, from the next start.
   const nextLauncher = path.join(appDir, 'desktop', 'launcher.mjs');
   if (selfDir && fs.existsSync(nextLauncher)) fs.copyFileSync(nextLauncher, path.join(selfDir, 'launcher.mjs'));
   log(`updated to ${latest.sha.slice(0, 7)}`);
   return { updated: true, from: current?.sha ?? null, to: latest.sha };
+}
+
+/** Windows can lock a file for a moment (antivirus scans): retry a rename for a few seconds. */
+async function renameWithRetry(from, to, { tries = 10, delayMs = 500 } = {}) {
+  for (let i = 1; ; i++) {
+    try {
+      return fs.renameSync(from, to);
+    } catch (err) {
+      if (i >= tries || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
+/** A collection found in an old .previous folder is moved to a "rescued" folder, never deleted. */
+function setAsideCollection(previous, log) {
+  const data = path.join(previous, 'data');
+  if (!fs.existsSync(data)) return;
+  const rescued = `${previous.replace(/\.previous$/, '')}.rescued-data-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  fs.renameSync(data, rescued);
+  log(`found a collection left in ${previous}: kept it in ${rescued}`);
+}
+
+/** Before each update, a copy of the collection database (the last 10 are kept). */
+export function backupCollection(appDir, log, { keep = 10 } = {}) {
+  const db = path.join(appDir, 'data', 'collection.db');
+  if (!fs.existsSync(db)) return null;
+  const dir = `${appDir}.backups`;
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  for (const ext of ['', '-wal', '-shm']) {
+    if (fs.existsSync(db + ext)) fs.copyFileSync(db + ext, path.join(dir, `collection-${stamp}.db${ext}`));
+  }
+  const old = fs.readdirSync(dir).filter((f) => /^collection-.*\.db$/.test(f)).sort().reverse().slice(keep);
+  for (const f of old) for (const ext of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, f + ext), { force: true });
+  log(`backed up the collection to ${dir}`);
+  return path.join(dir, `collection-${stamp}.db`);
 }
 
 /** Put the previous version back (with the collection) after a failed update. */

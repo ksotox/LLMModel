@@ -22,9 +22,9 @@ const CARDS = {
   sv02: {
     name: 'Paldea Evolved', series: 'sv', official: 193,
     cards: [
-      ['065', 'Pawmot', { hp: 130, types: ['Lightning'], rarity: 'Rare' }],
+      ['065', 'Pawmot', { hp: 130, types: ['Lightning'], rarity: 'Rare', variants: [{ type: 'holo' }, { type: 'reverse' }] }],
       ['066', 'Voltorb', {
-        hp: 70, types: ['Lightning'], rarity: 'Common',
+        hp: 70, types: ['Lightning'], rarity: 'Common', variants: [{ type: 'normal' }, { type: 'reverse' }],
         pricing: {
           tcgplayer: {
             unit: 'USD', updated: '2026-10-28T20:00:00.000Z',
@@ -35,6 +35,7 @@ const CARDS = {
         },
       }],
       ['067', 'Electrode', { hp: 90, types: ['Lightning'], rarity: 'Uncommon' }],
+      ['200', 'Bellibolt ex', { hp: 280, types: ['Lightning'], rarity: 'Special Illustration Rare', variants: [{ type: 'holo' }] }],
     ],
   },
   sv03: {
@@ -54,11 +55,14 @@ const CARDS = {
   mep: {
     name: 'MEP Black Star Promos', series: 'me', official: 0, // TCGdex really lists 0 for this promo set
     // No picture on TCGdex or in the dataset: it comes from TCGplayer (tcgcsv.com).
-    cards: [['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }]],
+    cards: [
+      ['059', 'Fennekin', { hp: 70, types: ['Fire'], rarity: 'Promo', noImage: true }], // no picture anywhere
+      ['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }],
+    ],
   },
   sv01: {
     name: 'Scarlet & Violet', series: 'sv', official: 198,
-    cards: [['066', 'Voltorb', { hp: 60, types: ['Lightning'], rarity: 'Common' }]],
+    cards: [['066', 'Voltorb', { hp: 60, types: ['Lightning'], rarity: 'Common', variants: [{ type: 'normal' }, { type: 'reverse' }, { type: 'reverse', foil: 'pokeball' }] }]],
   },
 };
 
@@ -236,6 +240,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         category: extra.category ?? 'Pokemon', hp: extra.hp, types: extra.types, rarity: extra.rarity,
         set: { id: setId, name: s.name, cardCount: { official: s.official, total: s.official + 20 } },
         pricing: extra.pricing ?? { tcgplayer: null, cardmarket: null },
+        ...(extra.variants ? { variants_detailed: extra.variants } : {}),
       });
     }
     if ((m = url.pathname.match(/^\/assets\/en\/\w+\/([^/]+)\/([^/]+)\/high\.png$/))) {

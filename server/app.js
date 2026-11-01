@@ -78,7 +78,7 @@ export function createApp({
    */
   const cacheOfficialImage = async (card) => {
     const base = `official/${card.tcg_id.replace(/[^\w.-]/g, '_')}`;
-    const existing = ['.png', '.jpg', '.webp'].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
+    const existing = [...new Set(Object.values(IMAGE_EXT))].map((ext) => base + ext).find((rel) => fs.existsSync(path.join(dataDir, rel)));
     if (existing) return existing;
     const tried = new Set();
     const save = async (urls) => {
@@ -88,7 +88,7 @@ export function createApp({
         try {
           const img = await catalog.download(url);
           if (!img || !/^image\//.test(img.contentType)) continue;
-          const ext = { 'image/jpeg': '.jpg', 'image/webp': '.webp' }[img.contentType.split(';')[0]] ?? '.png';
+          const ext = IMAGE_EXT[img.contentType.split(';')[0].trim().toLowerCase()] ?? '.png';
           fs.writeFileSync(path.join(dataDir, base + ext), img.buffer);
           return base + ext;
         } catch {
@@ -184,7 +184,14 @@ export function createApp({
    * official card yet is linked first, and a linked card whose official image is missing (e.g. the
    * source was offline when it was added) gets the image now.
    */
-  const refreshCardMarket = async (card) => {
+  const refreshing = new Map();
+  const refreshCardMarket = (card) => {
+    if (refreshing.has(card.id)) return refreshing.get(card.id);
+    const job = refreshCardMarketNow(card).finally(() => refreshing.delete(card.id));
+    refreshing.set(card.id, job);
+    return job;
+  };
+  const refreshCardMarketNow = async (card) => {
     card = { ...card, ...cleanNumber(card) };
     const tcgId = card.tcg_id ?? await findOfficialCard(card);
     const needsOfficial = tcgId && (!card.tcg_id || !card.official_image_path);
@@ -232,6 +239,8 @@ export function createApp({
     if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
     if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
     Object.assign(card, cleanNumber(card));
+    // Picture addresses come from the browser: only plain web addresses (never "javascript:" etc.).
+    if (card.official_image_url != null && !/^https?:\/\//i.test(String(card.official_image_url))) card.official_image_url = null;
     if (card.pack_id != null && card.pack_id !== '') {
       if (!store.getPack(Number(card.pack_id))) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
       card.pack_id = Number(card.pack_id);
@@ -278,6 +287,20 @@ export function createApp({
 
   const app = express();
   app.disable('x-powered-by');
+  // Only this app's own pages may change things: a web page on another site can't post to it
+  // (browsers mark cross-site requests with Origin / Sec-Fetch-Site). Tools without a browser are fine.
+  app.use('/api', (req, _res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    const origin = req.get('origin');
+    let sameOrigin = true;
+    try {
+      sameOrigin = !origin || new URL(origin).host === req.get('host');
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin || req.get('sec-fetch-site') === 'cross-site') return next(new HttpError(403, 'Requests from other websites are not allowed'));
+    next();
+  });
   app.use(express.json({ limit: '1mb' }));
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
@@ -340,6 +363,18 @@ export function createApp({
     res.json({ card, market, owned: store.ownedCounts([card.tcg_id])[card.tcg_id] ?? 0 });
   });
 
+  // Which printings of a card exist (normal / reverse holo / holo / full art), for the variant suggestion.
+  app.get('/api/catalog/cards/:id/printings', async (req, res) => {
+    let printings;
+    try {
+      printings = await catalog.printings(req.params.id);
+    } catch {
+      throw new HttpError(502, 'The online card database could not be reached. Try again later.');
+    }
+    if (!printings) throw new HttpError(404, 'Card not found');
+    res.json(printings);
+  });
+
   // Cards
 
   app.get('/api/cards', (req, res) => {
@@ -359,6 +394,7 @@ export function createApp({
     const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
     const created = ids.map((id) => store.getCard(id));
     created.forEach(snapshotPrice);
+    created.forEach((c) => tracker.rememberPictureSearch(c));
     res.status(201).json({ cards: created.map(toJson) });
   });
 
@@ -366,9 +402,16 @@ export function createApp({
     const existing = findCard(req.params.id);
     let card = cleanCard({ ...existing, ...req.body });
     const relink = req.body.tcg_id !== undefined && req.body.tcg_id !== existing.tcg_id;
-    const repriced = ['variant', 'set_code', 'number'].some((k) => req.body[k] !== undefined && req.body[k] !== existing[k]);
+    const before = { ...existing, ...cleanNumber(existing), set_code: existing.set_code?.toUpperCase() ?? null };
+    const moved = ['set_code', 'number', 'set_total'].some((k) => (card[k] ?? null) !== (before[k] ?? null));
+    const repriced = moved || (card.variant ?? null) !== (existing.variant ?? null);
     if (relink) {
       card = card.tcg_id ? await withOfficial(card) : { ...card, official_image_url: null, official_image_path: null };
+    } else if (moved && existing.tcg_id) {
+      // A different set code or number is a different card: find it again rather than keep the old link.
+      card = { ...card, tcg_id: null, official_image_url: null, official_image_path: null };
+      const tcgId = await findOfficialCard(card);
+      card = tcgId ? await withOfficial({ ...card, tcg_id: tcgId }) : await withMarket(card);
     } else if (repriced) {
       card = await withMarket(card);
     }
