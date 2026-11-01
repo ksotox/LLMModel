@@ -209,6 +209,21 @@ describe('collection API', () => {
     assert.equal(notJson.status, 400);
   });
 
+  test('other websites can’t change the collection, and picture links must be web addresses', async () => {
+    const evil = await fetch(`${srv.base}/api/cards/refresh-market`, { method: 'POST', headers: { Origin: 'https://evil.example' } });
+    assert.equal(evil.status, 403);
+    const crossSite = await fetch(`${srv.base}/api/desktop/restart`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    assert.equal(crossSite.status, 403);
+    const own = await fetch(`${srv.base}/api/cards/refresh-market`, { method: 'POST', headers: { Origin: srv.base } });
+    assert.equal(own.status, 200, 'the app’s own page is fine');
+
+    const form = new FormData();
+    form.append('cards', JSON.stringify([{ name: 'Sneaky', official_image_url: 'javascript:alert(1)' }]));
+    const { cards: [card] } = await (await fetch(`${srv.base}/api/cards`, { method: 'POST', body: form })).json();
+    assert.equal(card.official_url, null);
+    await fetch(`${srv.base}/api/cards/${card.id}`, { method: 'DELETE' });
+  });
+
   test('never serves the database file', async () => {
     for (const p of ['/media/collection.db', '/media/uploads/../collection.db', '/collection.db']) {
       const res = await fetch(srv.base + p);

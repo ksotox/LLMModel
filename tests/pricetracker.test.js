@@ -198,6 +198,26 @@ describe('PokemonPriceTracker within the free tier', () => {
     }
   });
 
+  test('a picture search that finds nothing isn’t repeated (and charged) on every price update', async () => {
+    mock.state.tcgcsvBlocked = true;
+    await start();
+    try {
+      const form = new FormData();
+      // On TCGdex (so it gets linked) but no source, PokemonPriceTracker included, has its picture.
+      form.append('cards', JSON.stringify([{ tcg_id: 'mep-059', name: 'Fennekin' }]));
+      const [card] = (await (await fetch(`${base}/api/cards`, { method: 'POST', body: form })).json()).cards;
+      assert.equal(card.official_url, null);
+      const searches = mock.state.pptRequests.length;
+      assert.ok(searches >= 1, 'searched when added');
+      await call('POST', `/api/cards/${card.id}/refresh-market`);
+      await call('POST', `/api/cards/${card.id}/refresh-market`);
+      assert.equal(mock.state.pptRequests.length, searches, 'not searched again on each price update');
+    } finally {
+      mock.state.tcgcsvBlocked = false;
+      await stop();
+    }
+  });
+
   test('never spends past the daily budget, and background refreshes leave a reserve', async () => {
     await start({ dailyCredits: 9, reserveShare: 0.34 });
     try {

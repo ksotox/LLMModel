@@ -337,8 +337,9 @@ export async function openCard(id, { onChange = () => {} } = {}) {
   let changed = false;
   const body = h('div.card-detail');
 
+  const safe = (src) => (/^(\/|https?:\/\/)/i.test(src ?? '') ? src : null); // only this app's files or web addresses
   const figure = (label, src, empty) => h('figure.detail-img',
-    src ? h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: `${label}: ${card.name}` })) : h('div.detail-noimg', empty),
+    safe(src) ? h('a', { href: safe(src), target: '_blank', rel: 'noopener' }, h('img', { src: safe(src), alt: `${label}: ${card.name}` })) : h('div.detail-noimg', empty),
     h('figcaption', label));
 
   let currentView = 'info';

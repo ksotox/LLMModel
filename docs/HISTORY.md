@@ -23,7 +23,8 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | PR #5 merged | One-click Windows launcher with desktop icon; API key kept in the user environment |
 | 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
 | 2026-10-30 | PR #7 merged | Promo pictures from TCGplayer; all prices in US dollars |
-| 2026-10-30 | PR #8 | tcgcsv 401: app User-Agent, promo pictures via PokemonPriceTracker; desktop app that updates itself |
+| 2026-10-30 | PR #8 merged | tcgcsv 401: app User-Agent, promo pictures via PokemonPriceTracker; desktop app that updates itself |
+| 2026-11-01 | PR #9 | User guide, code review; fixes: updater data safety, credit drain, cross-site requests |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -261,6 +262,22 @@ The owner chose "find a free way".
 - **Real run 1:** the real launcher against the real GitHub and npm updated an unversioned folder to `main` (`3ebdcae`). The saved card survived and the page served; closing the window stopped everything.
 - **Real run 2:** this branch's code served as v1 and then v2. A merge arriving while the app was open was detected, Restart to update installed v2 in under a second, and the server shut down cleanly.
 - **Not tested here:** `Pokedex.exe` and `install.ps1` themselves (no Windows in the sandbox).
+
+## Phase 12: user guide and code review
+
+**Asked:** a user guide covering every feature, and a review of the code for improvements, bugs and tech debt.
+
+**Built:**
+- **`docs/USER_GUIDE.md`**, written for a non-developer: getting started, each screen, adding cards, prices, eBay, history, updates and backups, phone use, troubleshooting and a glossary.
+- **`docs/CODE_REVIEW.md`**: four problems fixed in this PR, plus prioritised open findings.
+
+**Fixed:**
+- **F1 (critical):** the updater could lose the collection if moving `data/` failed. A failed move now undoes the swap, a collection left in `.previous` is set aside rather than deleted, and the database is backed up before each update.
+- **F2:** PokemonPriceTracker picture searches repeated on every price update and drew on the viewing reserve. They're now remembered for 7 days and never use the reserve.
+- **F3:** other websites could post to the app, and a `javascript:` picture address could become a link. Cross-site requests are now refused and picture addresses must be `http(s)`.
+- **F4:** the hourly job skipped unmatched cards with no set code.
+
+Tests cover each fix, and the credit-drain test fails without its fix. 102 tests pass.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

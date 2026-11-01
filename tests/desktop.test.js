@@ -188,10 +188,34 @@ describe('desktop app: installing and updating from GitHub', () => {
     assert.equal(await ensurePackages(appDir, log, { npm }), false, 'nothing to do when they are there');
   });
 
+  test('if the collection can’t be moved, the current version is kept, cards included', async () => {
+    // A version that (wrongly) ships its own data/ folder makes moving the collection fail.
+    const v4 = '4'.repeat(40);
+    publish(v4, 'Ships a data folder', { ...app('lock-1'), 'data/collection.db': 'empty' });
+    await assert.rejects(update({ ...config(), latest: await latestCommit(config()), log, npm }), /could not move the collection/);
+    assert.equal(installedVersion(appDir).sha, v2, 'old version back in place');
+    assert.equal(fs.readFileSync(path.join(appDir, 'data', 'collection.db'), 'utf8'), 'my cards');
+  });
+
+  test('a collection left in .previous is set aside, never deleted, and each update backs up the database', async () => {
+    fs.mkdirSync(path.join(`${appDir}.previous`, 'data'), { recursive: true });
+    fs.writeFileSync(path.join(`${appDir}.previous`, 'data', 'collection.db'), 'stranded cards');
+    const v5 = '5'.repeat(40);
+    publish(v5, 'Next', app('lock-1'));
+    await update({ ...config(), latest: await latestCommit(config()), log, npm });
+    const rescued = fs.readdirSync(dir).filter((f) => f.startsWith('LLMModel-main.rescued-data-'));
+    assert.equal(rescued.length, 1);
+    assert.equal(fs.readFileSync(path.join(dir, rescued[0], 'collection.db'), 'utf8'), 'stranded cards');
+    const backups = fs.readdirSync(`${appDir}.backups`).filter((f) => f.endsWith('.db'));
+    assert.ok(backups.length >= 1);
+    assert.equal(fs.readFileSync(path.join(`${appDir}.backups`, backups.sort().at(-1)), 'utf8'), 'my cards');
+    assert.equal(fs.readFileSync(path.join(appDir, 'data', 'collection.db'), 'utf8'), 'my cards');
+  });
+
   test('a failed download leaves the current version alone', async () => {
     head = { sha: 'd'.repeat(40), commit: { message: 'Not downloadable' } };
     await assert.rejects(update({ ...config(), latest: await latestCommit(config()), log, npm }), /download failed: 404/);
-    assert.equal(installedVersion(appDir).sha, v2);
+    assert.notEqual(installedVersion(appDir).sha, 'd'.repeat(40));
     assert.equal(fs.readFileSync(path.join(appDir, 'data', 'collection.db'), 'utf8'), 'my cards');
   });
 

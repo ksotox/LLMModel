@@ -54,7 +54,10 @@ const CARDS = {
   mep: {
     name: 'MEP Black Star Promos', series: 'me', official: 0, // TCGdex really lists 0 for this promo set
     // No picture on TCGdex or in the dataset: it comes from TCGplayer (tcgcsv.com).
-    cards: [['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }]],
+    cards: [
+      ['059', 'Fennekin', { hp: 70, types: ['Fire'], rarity: 'Promo', noImage: true }], // no picture anywhere
+      ['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }],
+    ],
   },
   sv01: {
     name: 'Scarlet & Violet', series: 'sv', official: 198,

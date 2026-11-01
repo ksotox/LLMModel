@@ -232,6 +232,8 @@ export function createApp({
     if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
     if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
     Object.assign(card, cleanNumber(card));
+    // Picture addresses come from the browser: only plain web addresses (never "javascript:" etc.).
+    if (card.official_image_url != null && !/^https?:\/\//i.test(String(card.official_image_url))) card.official_image_url = null;
     if (card.pack_id != null && card.pack_id !== '') {
       if (!store.getPack(Number(card.pack_id))) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
       card.pack_id = Number(card.pack_id);
@@ -278,6 +280,20 @@ export function createApp({
 
   const app = express();
   app.disable('x-powered-by');
+  // Only this app's own pages may change things: a web page on another site can't post to it
+  // (browsers mark cross-site requests with Origin / Sec-Fetch-Site). Tools without a browser are fine.
+  app.use('/api', (req, _res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    const origin = req.get('origin');
+    let sameOrigin = true;
+    try {
+      sameOrigin = !origin || new URL(origin).host === req.get('host');
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin || req.get('sec-fetch-site') === 'cross-site') return next(new HttpError(403, 'Requests from other websites are not allowed'));
+    next();
+  });
   app.use(express.json({ limit: '1mb' }));
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
@@ -359,6 +375,7 @@ export function createApp({
     const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
     const created = ids.map((id) => store.getCard(id));
     created.forEach(snapshotPrice);
+    created.forEach((c) => tracker.rememberPictureSearch(c));
     res.status(201).json({ cards: created.map(toJson) });
   });
 
