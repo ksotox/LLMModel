@@ -70,6 +70,7 @@ describe('PokemonPriceTracker within the free tier', () => {
   const start = async (options = {}) => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-ppt-'));
     app = createApp({
+      requireLogin: false,
       dataDir,
       catalog: mockCatalog(mock),
       priceTracker: new PriceTrackerClient({ apiKey: 'test-key', baseUrl: mock.pptUrl }),
@@ -258,7 +259,7 @@ describe('PokemonPriceTracker within the free tier', () => {
 
   test('switched off without an API key: no requests, clear status', async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-ppt-'));
-    app = createApp({ dataDir, catalog: mockCatalog(mock), priceTracker: new PriceTrackerClient({ apiKey: '', baseUrl: mock.pptUrl }) });
+    app = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), priceTracker: new PriceTrackerClient({ apiKey: '', baseUrl: mock.pptUrl }) });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
     try {
@@ -271,7 +272,7 @@ describe('PokemonPriceTracker within the free tier', () => {
 
   test('a wrong API key is reported, not retried in a loop', async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-ppt-'));
-    app = createApp({ dataDir, catalog: mockCatalog(mock), priceTracker: new PriceTrackerClient({ apiKey: 'wrong', baseUrl: mock.pptUrl }) });
+    app = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), priceTracker: new PriceTrackerClient({ apiKey: 'wrong', baseUrl: mock.pptUrl }) });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
     try {

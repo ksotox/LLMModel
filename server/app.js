@@ -10,7 +10,8 @@ import { EbayClient, EbayNotApproved, searchQuery, soldSearchUrl } from './ebay.
 import { PriceTrackerClient } from './priceTracker.js';
 import { PriceTrackerService } from './priceTrackerService.js';
 import { direction, gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
-import { openDb, PACK_KINDS, VARIANTS } from './db.js';
+import { createAuth, hashPassword, checkPassword, publicUser, validateProfile } from './auth.js';
+import { CONDITIONS, openDb, PACK_KINDS, STATUSES, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
 import { SET_CODES } from './setCodes.js';
 
@@ -42,6 +43,8 @@ export function createApp({
   priceTracker = new PriceTrackerClient(),
   trackerOptions = {},
   desktop = null, // { version(), update, restart() } when run by the desktop launcher
+  requireLogin = true, // false: one built-in profile, no sign-in (tests, scripts)
+  secureCookie = false,
 } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
@@ -50,6 +53,19 @@ export function createApp({
   };
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true });
   const store = openDb(path.join(dataDir, 'collection.db'));
+  const auth = createAuth(store, { secureCookie });
+  store.purgeSessions();
+  for (const { photo_path } of store.purgeTrash(30)) if (photo_path) fs.rmSync(path.join(dataDir, photo_path), { force: true });
+  // Without sign-in, everything belongs to one built-in profile.
+  let localUser = null;
+  if (!requireLogin) {
+    localUser = store.getUserByName('local');
+    if (!localUser) {
+      store.createUser({ username: 'local', display_name: 'Me', password_hash: '!', is_owner: 1 });
+      localUser = store.getUserByName('local');
+    }
+    store.claimUnowned(localUser.id);
+  }
   const tracker = new PriceTrackerService({ client: priceTracker, store, catalog, ...trackerOptions });
 
   const upload = multer({
@@ -196,7 +212,11 @@ export function createApp({
     card = { ...card, ...cleanNumber(card) };
     const tcgId = card.tcg_id ?? await findOfficialCard(card);
     const needsOfficial = tcgId && (!card.tcg_id || !card.official_image_path);
-    store.updateCard(card.id, needsOfficial ? await withOfficial({ ...card, tcg_id: tcgId }) : await withMarket(card));
+    // Copies of the same card and printing share one price lookup a day.
+    const today = new Date().toISOString().slice(0, 10);
+    const shared = !needsOfficial && store.sharedPrice(card, today);
+    store.updateCard(card.id, needsOfficial ? await withOfficial({ ...card, tcg_id: tcgId })
+      : shared ? { ...card, ...shared, rarity: card.rarity ?? shared.rarity, market_checked_at: new Date().toISOString() } : await withMarket(card));
     const updated = store.getCard(card.id);
     snapshotPrice(updated);
     return updated;
@@ -233,17 +253,25 @@ export function createApp({
     return { number: number || null, set_total: total };
   };
 
-  const cleanCard = (c) => {
+  const cleanCard = (c, userId) => {
     const name = String(c.name ?? '').trim();
     if (!name && !c.tcg_id) throw new HttpError(400, 'Every card needs a name (or a matched online card)');
     const card = { ...c, name };
     if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
     if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
+    // Per-copy details: only known values, prices as numbers.
+    if (card.condition !== undefined && card.condition !== null && !CONDITIONS.includes(card.condition)) card.condition = null;
+    if (card.status !== undefined && card.status !== null && !STATUSES.includes(card.status)) card.status = null;
+    if (card.purchase_price !== undefined && card.purchase_price !== null && card.purchase_price !== '') {
+      const n = Number(card.purchase_price);
+      card.purchase_price = Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+    }
+    if (card.grade_company !== undefined && card.grade_company) card.grade_company = String(card.grade_company).trim().toUpperCase().slice(0, 12);
     Object.assign(card, cleanNumber(card));
     // Picture addresses come from the browser: only plain web addresses (never "javascript:" etc.).
     if (card.official_image_url != null && !/^https?:\/\//i.test(String(card.official_image_url))) card.official_image_url = null;
     if (card.pack_id != null && card.pack_id !== '') {
-      if (!store.getPack(Number(card.pack_id))) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
+      if (!store.getPack(Number(card.pack_id), userId)) throw new HttpError(400, `Pack ${card.pack_id} does not exist`);
       card.pack_id = Number(card.pack_id);
     } else {
       card.pack_id = null;
@@ -273,13 +301,13 @@ export function createApp({
       throw err;
     }
   };
-  const findCard = (id) => {
-    const card = store.getCard(Number(id));
+  const findCard = (id, req) => {
+    const card = store.getCard(Number(id), req.user.id);
     if (!card) throw new HttpError(404, 'Card not found');
     return card;
   };
-  const findPack = (id) => {
-    const pack = store.getPack(Number(id));
+  const findPack = (id, req) => {
+    const pack = store.getPack(Number(id), req.user.id);
     if (!pack) throw new HttpError(404, 'Pack not found');
     return pack;
   };
@@ -288,6 +316,17 @@ export function createApp({
 
   const app = express();
   app.disable('x-powered-by');
+
+  // Who is signed in. Photos and the API (except signing in and /api/meta) need a profile.
+  app.use((req, _res, next) => {
+    req.user = requireLogin ? auth.userFor(req) : localUser;
+    next();
+  });
+  const PUBLIC_API = new Set(['GET /api/meta', 'GET /api/auth/state', 'POST /api/auth/setup', 'POST /api/auth/login', 'POST /api/auth/logout']);
+  app.use(['/api', '/media'], (req, res, next) => {
+    if (req.user || PUBLIC_API.has(`${req.method} ${req.baseUrl}${req.path}`)) return next();
+    res.status(401).json({ error: 'Please sign in', signIn: true });
+  });
   // Only this app's own pages may change things: a web page on another site can't post to it
   // (browsers mark cross-site requests with Origin / Sec-Fetch-Site). Tools without a browser are fine.
   app.use('/api', (req, _res, next) => {
@@ -308,6 +347,88 @@ export function createApp({
   for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
   app.use(express.static(PUBLIC_DIR));
 
+  // ---- profiles and signing in ----
+
+  const meJson = (user) => publicUser(store.getUser(user.id));
+
+  app.get('/api/auth/state', (req, res) => {
+    res.json({ setupNeeded: requireLogin && store.countUsers() === 0, requireLogin, user: req.user ? meJson(req.user) : null });
+  });
+
+  // First start: create the owner profile, which takes over any collection made before profiles.
+  app.post('/api/auth/setup', async (req, res) => {
+    if (!requireLogin || store.countUsers() > 0) throw new HttpError(409, 'The app is already set up: sign in instead');
+    const { username, display_name, password } = req.body ?? {};
+    const problem = validateProfile({ username, display_name: display_name ?? username, password });
+    if (problem) throw new HttpError(400, problem);
+    const id = store.createUser({ username: username.trim(), display_name: String(display_name || username).trim(), password_hash: await hashPassword(password), is_owner: 1 });
+    store.claimUnowned(id);
+    auth.startSession(res, id);
+    res.status(201).json({ user: meJson({ id }) });
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    const result = await auth.login(req.body?.username, req.body?.password, req.ip);
+    if (result.error) throw new HttpError(result.status, result.error);
+    auth.startSession(res, result.user.id);
+    res.json({ user: meJson(result.user) });
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    auth.endSession(req, res);
+    res.json({ ok: true });
+  });
+
+  app.get('/api/auth/me', (req, res) => res.json(meJson(req.user)));
+
+  // Change your display name, preferences (theme, gallery view…) or password.
+  app.patch('/api/auth/me', async (req, res) => {
+    const { display_name, settings, current_password, new_password } = req.body ?? {};
+    const changes = {};
+    if (display_name !== undefined) {
+      if (!String(display_name).trim()) throw new HttpError(400, 'Give the profile a display name.');
+      changes.display_name = String(display_name).trim().slice(0, 60);
+    }
+    if (settings !== undefined) {
+      if (typeof settings !== 'object' || Array.isArray(settings) || JSON.stringify(settings).length > 4000) throw new HttpError(400, 'Invalid settings');
+      changes.settings = { ...publicUser(store.getUser(req.user.id)).settings, ...settings };
+    }
+    if (new_password !== undefined) {
+      if (!(await checkPassword(current_password, store.getUser(req.user.id).password_hash))) throw new HttpError(403, 'Your current password is wrong.');
+      if (String(new_password).length < 6) throw new HttpError(400, 'Passwords need at least 6 characters.');
+      changes.password_hash = await hashPassword(new_password);
+      store.deleteSessionsOf(req.user.id, auth.currentHash(req)); // sign out everywhere else
+    }
+    store.updateUser(req.user.id, changes);
+    res.json(meJson(req.user));
+  });
+
+  // The owner manages the other profiles (each has its own collection).
+  const ownerOnly = (req) => {
+    if (!store.getUser(req.user.id)?.is_owner) throw new HttpError(403, 'Only the owner profile can manage profiles');
+  };
+  app.get('/api/users', (req, res) => {
+    ownerOnly(req);
+    res.json({ users: store.listUsers() });
+  });
+  app.post('/api/users', async (req, res) => {
+    ownerOnly(req);
+    const { username, display_name, password } = req.body ?? {};
+    const problem = validateProfile({ username, display_name: display_name ?? username, password });
+    if (problem) throw new HttpError(400, problem);
+    if (store.getUserByName(username.trim())) throw new HttpError(409, 'That username is taken');
+    const id = store.createUser({ username: username.trim(), display_name: String(display_name || username).trim(), password_hash: await hashPassword(password) });
+    res.status(201).json({ user: publicUser(store.getUser(id)) });
+  });
+  app.delete('/api/users/:id', (req, res) => {
+    ownerOnly(req);
+    const id = Number(req.params.id);
+    if (id === req.user.id) throw new HttpError(400, 'You can’t delete your own profile');
+    if (!store.getUser(id)) throw new HttpError(404, 'Profile not found');
+    for (const photo of store.deleteUser(id)) removeFile(photo);
+    res.status(204).end();
+  });
+
   // Desktop app: the installed version, a newer one waiting, and a restart that installs it.
   app.get('/api/desktop', (_req, res) => {
     res.json(desktop ? { desktop: true, version: desktop.version(), update: desktop.update ?? null } : { desktop: false });
@@ -319,13 +440,16 @@ export function createApp({
     setTimeout(() => desktop.restart(), 200); // after the answer has gone out
   });
 
-  app.get('/api/meta', (_req, res) => {
+  app.get('/api/meta', (req, res) => {
     res.json({
       packKinds: PACK_KINDS,
       variants: VARIANTS,
       setCodes: SET_CODES,
-      collectionSets: store.setCodes(),
-      stats: store.stats(),
+      // Public (the desktop launcher checks it to see the server is up): collection details only when signed in.
+      collectionSets: req.user ? store.setCodes(req.user.id) : [],
+      stats: req.user ? store.stats(req.user.id) : null,
+      conditions: CONDITIONS,
+      statuses: STATUSES,
     });
   });
 
@@ -335,7 +459,7 @@ export function createApp({
     if (!name && !setCode && !number) throw new HttpError(400, 'Give a name, set code or number to look up');
     try {
       const results = await catalog.search({ name, setCode, number, lang });
-      const owned = store.ownedCounts(results.map((r) => r.tcgId));
+      const owned = store.ownedCounts(results.map((r) => r.tcgId), req.user.id);
       res.json({ results: results.map((r) => ({ ...r, owned: owned[r.tcgId] ?? 0 })) });
     } catch (err) {
       res.status(502).json({ error: 'The online card database could not be reached. You can still save the card and look it up later.', detail: err.message });
@@ -346,7 +470,7 @@ export function createApp({
   app.post('/api/identify', async (req, res) => {
     const texts = (v) => (Array.isArray(v) ? v : []).filter((t) => typeof t === 'string').slice(0, 12).map((t) => t.slice(0, 200));
     const result = await identifyCard(catalog, { names: texts(req.body?.names), lines: texts(req.body?.lines) });
-    const owned = store.ownedCounts(result.candidates.map((c) => c.tcgId));
+    const owned = store.ownedCounts(result.candidates.map((c) => c.tcgId), req.user.id);
     const withOwned = (c) => c && { ...c, owned: owned[c.tcgId] ?? 0 };
     res.json({ ...result, match: withOwned(result.match), candidates: result.candidates.map(withOwned) });
   });
@@ -362,7 +486,7 @@ export function createApp({
     if (!card) throw new HttpError(404, 'Card not found');
     const variant = typeof req.query.variant === 'string' ? req.query.variant : 'normal';
     const market = await catalog.market({ ...card, variant }).catch(() => ({ rarity: card.rarity, pull: null, price: null }));
-    res.json({ card, market, owned: store.ownedCounts([card.tcg_id])[card.tcg_id] ?? 0 });
+    res.json({ card, market, owned: store.ownedCounts([card.tcg_id], req.user.id)[card.tcg_id] ?? 0 });
   });
 
   // Which printings of a card exist (normal / reverse holo / holo / full art), for the variant suggestion.
@@ -380,20 +504,41 @@ export function createApp({
   // Cards
 
   app.get('/api/cards', (req, res) => {
-    res.json({ cards: store.listCards(req.query).map(toJson) });
+    const filters = { ...req.query, userId: req.user.id, ids: req.query.ids ? String(req.query.ids).split(',') : undefined };
+    if (req.query.page === undefined) return res.json({ cards: store.listCards(filters).map(toJson) });
+    // A page of the collection (optionally with copies grouped): { cards, total, page, pageSize }.
+    const { cards, total } = store.queryCards({ ...filters, group: req.query.group === '1' });
+    res.json({ cards: cards.map(toJson), total, page: Number(req.query.page) || 1, pageSize: Number(req.query.pageSize) || 60 });
+  });
+
+  // The chosen cards (or every card) as a CSV file for a spreadsheet.
+  app.get('/api/cards/export', (req, res) => {
+    const ids = req.query.ids ? String(req.query.ids).split(',') : undefined;
+    const rows = store.listCards({ userId: req.user.id, ids, sort: 'set' });
+    const cols = ['name', 'set_code', 'set_name', 'number', 'set_total', 'variant', 'language', 'rarity', 'condition', 'grade_company', 'grade',
+      'purchase_price', 'market_price', 'market_currency', 'storage_location', 'status', 'pack_name', 'notes', 'created_at', 'tcg_id'];
+    const cell = (v) => {
+      const t = v == null ? '' : String(v);
+      return /[",\n\r]|^[=+\-@]/.test(t) ? `"${t.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"` : t;
+    };
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="pokedex-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(`\ufeff${[cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\r\n')}\r\n`);
   });
 
   app.get('/api/cards/:id', (req, res) => {
-    res.json(toJson(findCard(req.params.id)));
+    const card = findCard(req.params.id, req);
+    // Every copy of the same card (official card + printing), for the card page.
+    res.json({ ...toJson(card), copies: store.copiesOf(card).map(toJson) });
   });
 
   // Batch create: multipart with `cards` (JSON array) and one image per card, referenced by `photoField`.
   app.post('/api/cards', upload.any(), async (req, res) => {
     const files = filesByField(req);
-    const input = parseList(req.body.cards, 'cards').map(cleanCard);
+    const input = parseList(req.body.cards, 'cards').map((c) => ({ ...cleanCard(c, req.user.id), user_id: req.user.id }));
     const prepared = [];
     for (const card of input) prepared.push(await withOfficial(card));
-    const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard(card));
+    const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard({ ...card, user_id: req.user.id }));
     const created = ids.map((id) => store.getCard(id));
     created.forEach(snapshotPrice);
     created.forEach((c) => tracker.rememberPictureSearch(c));
@@ -401,8 +546,8 @@ export function createApp({
   });
 
   app.patch('/api/cards/:id', async (req, res) => {
-    const existing = findCard(req.params.id);
-    let card = cleanCard({ ...existing, ...req.body });
+    const existing = findCard(req.params.id, req);
+    let card = cleanCard({ ...existing, ...req.body, user_id: existing.user_id }, req.user.id);
     const relink = req.body.tcg_id !== undefined && req.body.tcg_id !== existing.tcg_id;
     const before = { ...existing, ...cleanNumber(existing), set_code: existing.set_code?.toUpperCase() ?? null };
     const moved = ['set_code', 'number', 'set_total'].some((k) => (card[k] ?? null) !== (before[k] ?? null));
@@ -424,7 +569,7 @@ export function createApp({
 
   // Re-fetch the official details/image for a card that is already linked (e.g. it was added offline).
   app.post('/api/cards/:id/refresh-official', async (req, res) => {
-    const existing = findCard(req.params.id);
+    const existing = findCard(req.params.id, req);
     if (!existing.tcg_id) throw new HttpError(400, 'This card is not linked to an online card yet');
     const card = await withOfficial({ ...existing });
     store.updateCard(existing.id, card);
@@ -432,24 +577,24 @@ export function createApp({
   });
 
   // Refresh rarity, pull chance and price for one card, or for the whole collection.
-  app.post('/api/cards/refresh-market', async (_req, res) => {
+  app.post('/api/cards/refresh-market', async (req, res) => {
     let updated = 0;
     let linked = 0;
-    for (const card of store.listCards()) {
+    for (const card of store.listCards({ userId: req.user.id })) {
       const next = await refreshCardMarket(card);
       if (next.market_price != null || next.pull_chance != null) updated++;
       if (next.official_image_path && !card.official_image_path) linked++;
     }
-    res.json({ updated, linked, stats: store.stats() });
+    res.json({ updated, linked, stats: store.stats(req.user.id) });
   });
 
   app.post('/api/cards/:id/refresh-market', async (req, res) => {
-    res.json(toJson(await refreshCardMarket(findCard(req.params.id))));
+    res.json(toJson(await refreshCardMarket(findCard(req.params.id, req))));
   });
 
   // Price history: every price the app has seen for the card, one per source, line and day.
   app.get('/api/cards/:id/price-history', (req, res) => {
-    const card = findCard(req.params.id);
+    const card = findCard(req.params.id, req);
     const days = Math.min(3650, Math.max(1, Number(req.query.days) || 365));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const groups = new Map();
@@ -473,12 +618,12 @@ export function createApp({
   });
 
   app.get('/api/cards/:id/pricetracker', (req, res) => {
-    res.json(tracker.view(findCard(req.params.id)));
+    res.json(tracker.view(findCard(req.params.id, req)));
   });
 
   // Uses the day-old cache unless `force=1`; refuses to spend past the daily budget.
   app.post('/api/cards/:id/pricetracker/refresh', async (req, res) => {
-    res.json(await tracker.refresh(findCard(req.params.id), { force: req.query.force === '1' }));
+    res.json(await tracker.refresh(findCard(req.params.id, req), { force: req.query.force === '1' }));
   });
 
   // eBay sold listings for a card: average sold price, price trend and the listings themselves.
@@ -523,12 +668,12 @@ export function createApp({
   };
 
   app.get('/api/cards/:id/ebay', (req, res) => {
-    res.json(ebayView(findCard(req.params.id), req.query.condition));
+    res.json(ebayView(findCard(req.params.id, req), req.query.condition));
   });
 
   // Fetch the last 90 days of sold listings from eBay's official API (needs EBAY_CLIENT_ID/SECRET).
   app.post('/api/cards/:id/ebay/refresh', async (req, res) => {
-    const card = findCard(req.params.id);
+    const card = findCard(req.params.id, req);
     if (!ebay.configured) throw new HttpError(400, 'The eBay API is not set up. Paste listings from eBay instead, or see the README to connect it.');
     let sales;
     try {
@@ -543,7 +688,7 @@ export function createApp({
 
   // Listings the user copied from eBay.com and pasted into the app (parsed in the browser).
   app.post('/api/cards/:id/ebay/import', (req, res) => {
-    const card = findCard(req.params.id);
+    const card = findCard(req.params.id, req);
     const listings = Array.isArray(req.body?.listings) ? req.body.listings.slice(0, 1000) : null;
     if (!listings) throw new HttpError(400, 'Send the listings as { listings: [...] }');
     const { matching, skipped } = cleanSales(card, listings);
@@ -552,13 +697,13 @@ export function createApp({
   });
 
   app.delete('/api/cards/:id/ebay/:saleId', (req, res) => {
-    const card = findCard(req.params.id);
+    const card = findCard(req.params.id, req);
     if (!store.deleteSale(card.id, Number(req.params.saleId))) throw new HttpError(404, 'Listing not found');
     res.json(ebayView(card, req.query.condition));
   });
 
   app.post('/api/cards/:id/photo', upload.single('photo'), (req, res) => {
-    const existing = findCard(req.params.id);
+    const existing = findCard(req.params.id, req);
     if (!req.file) throw new HttpError(400, 'Attach an image as "photo"');
     const photo_path = saveUpload(req.file, 'cards');
     store.updateCard(existing.id, { photo_path });
@@ -566,38 +711,70 @@ export function createApp({
     res.json(toJson(store.getCard(existing.id)));
   });
 
+  // Deleting moves a card to the trash (restorable for 30 days); ?permanent=1 removes it for good.
   app.delete('/api/cards/:id', (req, res) => {
-    const existing = findCard(req.params.id);
-    store.deleteCard(existing.id);
-    removeFile(existing.photo_path);
+    const existing = store.getCard(Number(req.params.id), req.user.id, { trash: true });
+    if (!existing) throw new HttpError(404, 'Card not found');
+    if (req.query.permanent === '1') {
+      store.deleteCard(existing.id);
+      removeFile(existing.photo_path);
+    } else {
+      store.trashCards([existing.id], req.user.id);
+    }
     res.status(204).end();
   });
+
+  // Before saving new cards: how many of each the user already has (same official card and printing).
+  app.post('/api/cards/duplicates', (req, res) => {
+    const cards = Array.isArray(req.body?.cards) ? req.body.cards.slice(0, 500) : [];
+    const owned = store.ownedByKey(req.user.id, cards.map((c) => ({ ...c, ...cleanNumber(c), set_code: c.set_code ? String(c.set_code).toUpperCase() : null })));
+    res.json({ owned });
+  });
+
+  // One change for many cards: pack, condition, storage place, keep/trade/sell, grading; or trash / restore.
+  app.post('/api/cards/bulk', (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isInteger).slice(0, 5000) : [];
+    if (!ids.length) throw new HttpError(400, 'Choose some cards first');
+    const action = req.body.action;
+    if (action === 'trash' || action === 'restore') {
+      const changed = store.trashCards(ids, req.user.id, action === 'restore');
+      return res.json({ changed, stats: store.stats(req.user.id) });
+    }
+    if (action !== 'set') throw new HttpError(400, 'Unknown bulk action');
+    const allowed = ['pack_id', 'condition', 'storage_location', 'status', 'grade_company', 'grade', 'purchase_price', 'variant'];
+    const fields = Object.fromEntries(Object.entries(req.body.set ?? {}).filter(([k]) => allowed.includes(k)));
+    if (!Object.keys(fields).length) throw new HttpError(400, 'Nothing to change');
+    const clean = cleanCard({ name: 'x', ...fields }, req.user.id);
+    const changes = Object.fromEntries(Object.keys(fields).map((k) => [k, clean[k] ?? null]));
+    res.json({ changed: store.updateCards(ids, req.user.id, changes), stats: store.stats(req.user.id) });
+  });
+
 
   // Packs / tins / kits / bundles
 
   app.get('/api/packs', (req, res) => {
-    res.json({ packs: store.listPacks(req.query).map(packJson) });
+    res.json({ packs: store.listPacks({ ...req.query, userId: req.user.id }).map(packJson) });
   });
 
   app.get('/api/packs/:id', (req, res) => {
-    res.json(packJson(findPack(req.params.id)));
+    res.json(packJson(findPack(req.params.id, req)));
   });
 
   app.post('/api/packs', upload.any(), (req, res) => {
     const files = filesByField(req);
     const input = parseList(req.body.packs, 'packs').map(cleanPack);
-    const ids = insertWithPhotos(input, files, 'packs', (pack) => store.insertPack(pack));
+    const ids = insertWithPhotos(input, files, 'packs', (pack) => store.insertPack({ ...pack, user_id: req.user.id }));
     res.status(201).json({ packs: ids.map((id) => packJson(store.getPack(id))) });
   });
 
   app.patch('/api/packs/:id', (req, res) => {
-    const existing = findPack(req.params.id);
-    store.updatePack(existing.id, cleanPack({ ...existing, ...req.body }));
+    const existing = findPack(req.params.id, req);
+    store.updatePack(existing.id, cleanPack({ ...existing, ...req.body, user_id: existing.user_id }));
     res.json(packJson(store.getPack(existing.id)));
   });
 
   app.post('/api/packs/:id/photo', upload.single('photo'), (req, res) => {
-    const existing = findPack(req.params.id);
+    const existing = findPack(req.params.id, req);
     if (!req.file) throw new HttpError(400, 'Attach an image as "photo"');
     store.updatePack(existing.id, { photo_path: saveUpload(req.file, 'packs') });
     removeFile(existing.photo_path);
@@ -606,8 +783,8 @@ export function createApp({
 
   // Deleting a pack keeps its cards (they become "no pack") unless ?withCards=1.
   app.delete('/api/packs/:id', (req, res) => {
-    const existing = findPack(req.params.id);
-    const cards = req.query.withCards === '1' ? store.listCards({ packId: existing.id }) : [];
+    const existing = findPack(req.params.id, req);
+    const cards = req.query.withCards === '1' ? store.listCards({ packId: existing.id, userId: req.user.id }) : [];
     store.transaction(() => {
       for (const c of cards) store.deleteCard(c.id);
       store.deletePack(existing.id);

@@ -142,7 +142,7 @@ describe('eBay sold prices API', () => {
   before(async () => {
     mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-ebay-'));
-    app = createApp({ dataDir, catalog: mockCatalog(mock), ebay: new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl }) });
+    app = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), ebay: new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl }) });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
     const form = new FormData();
@@ -221,7 +221,7 @@ describe('eBay sold prices API', () => {
     mock.state.ebayApproved = false;
     try {
       const fresh = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
-      const app2 = createApp({ dataDir, catalog: mockCatalog(mock), ebay: fresh });
+      const app2 = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), ebay: fresh });
       const s2 = await new Promise((resolve) => { const s = app2.listen(0, '127.0.0.1', () => resolve(s)); });
       const res = await fetch(`http://127.0.0.1:${s2.address().port}/api/cards/${cardId}/ebay/refresh`, { method: 'POST' });
       assert.equal(res.status, 403);
@@ -231,7 +231,7 @@ describe('eBay sold prices API', () => {
     } finally {
       mock.state.ebayApproved = true;
     }
-    const app3 = createApp({ dataDir, catalog: mockCatalog(mock), ebay: new EbayClient({ clientId: '', clientSecret: '' }) });
+    const app3 = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), ebay: new EbayClient({ clientId: '', clientSecret: '' }) });
     const s3 = await new Promise((resolve) => { const s = app3.listen(0, '127.0.0.1', () => resolve(s)); });
     const res3 = await fetch(`http://127.0.0.1:${s3.address().port}/api/cards/${cardId}/ebay/refresh`, { method: 'POST' });
     assert.equal(res3.status, 400);
@@ -239,9 +239,11 @@ describe('eBay sold prices API', () => {
     app3.locals.store.close();
   });
 
-  test('a card’s listings are removed with the card', async () => {
-    assert.equal((await fetch(`${base}/api/cards/${cardId}`, { method: 'DELETE' })).status, 204);
+  test('a card’s listings stay while it’s in the trash, and go when it is deleted for good', async () => {
     const db = app.locals.store;
+    assert.equal((await fetch(`${base}/api/cards/${cardId}`, { method: 'DELETE' })).status, 204);
+    assert.ok(db.listSales(cardId).length > 0, 'restorable with its listings');
+    assert.equal((await fetch(`${base}/api/cards/${cardId}?permanent=1`, { method: 'DELETE' })).status, 204);
     assert.equal(db.listSales(cardId).length, 0);
   });
 });

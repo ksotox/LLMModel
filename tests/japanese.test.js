@@ -47,7 +47,7 @@ describe('Japanese cards in the app', () => {
     mock = await startMockSources();
     catalog = mockCatalog(mock);
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-ja-'));
-    const app = createApp({ dataDir, catalog });
+    const app = createApp({ requireLogin: false, dataDir, catalog });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     server.on('close', () => app.locals.store.close());
     base = `http://127.0.0.1:${server.address().port}`;

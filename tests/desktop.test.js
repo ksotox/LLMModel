@@ -237,7 +237,7 @@ describe('desktop app: update banner API', () => {
   before(async () => {
     mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-desktop-api-'));
-    const appWithDesktop = createApp({ dataDir, catalog: mockCatalog(mock), desktop });
+    const appWithDesktop = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock), desktop });
     server = await new Promise((resolve) => { const s = appWithDesktop.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
     server.on('close', () => appWithDesktop.locals.store.close());

@@ -52,7 +52,7 @@ describe('printings API', () => {
   before(async () => {
     mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-printings-'));
-    const app = createApp({ dataDir, catalog: mockCatalog(mock) });
+    const app = createApp({ requireLogin: false, dataDir, catalog: mockCatalog(mock) });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     server.on('close', () => app.locals.store.close());
     base = `http://127.0.0.1:${server.address().port}`;
