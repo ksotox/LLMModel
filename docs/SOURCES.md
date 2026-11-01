@@ -8,6 +8,7 @@ Everything the app calls at run time is **free**. Only PokemonPriceTracker needs
 | Service | Base URL (env override) | Used for | Code | Key? |
 | --- | --- | --- | --- | --- |
 | **TCGdex** REST API v2 | `https://api.tcgdex.net/v2/en` (`TCGDEX_URL`) | Main card database: sets, cards, name search, rarity, TCGplayer/Cardmarket prices, TCGplayer product id, and each card's printings (`variants_detailed`: normal / reverse / holo, pattern foils, stamps) for the variant suggestion | `server/tcg.js` | No |
+| **TCGdex** (Japanese) | `https://api.tcgdex.net/v2/ja` (`TCGDEX_JA_URL`) | Japanese cards: sets (the printed code is the set id, e.g. `SV2a`), Japanese names, printings, Cardmarket prices | `server/tcg.js` (`lang: 'ja'`), `server/catalog.js` | No |
 | **TCGdex assets** | `https://assets.tcgdex.net/en/<series>/<set>/<number>/high.png` | Official card images (a local copy is saved) | `server/tcg.js` | No |
 | **Pokémon TCG dataset** (GitHub, PokemonTCG/pokemon-tcg-data) | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` (`PTCG_DATA_URL`) | Second card source and images when TCGdex has no match; rarity counts per set for pull chances | `server/ptcgData.js` | No |
 | **pokemontcg.io image CDN** (`images.pokemontcg.io`) | URLs come from the dataset above | Card images for cards found in the dataset | `server/ptcgData.js` | No |
@@ -53,6 +54,7 @@ numbers and their attribution are in `server/pullRates.js`, and each card shows 
 | [@techstark/opencv-js](https://github.com/TechStark/opencv-js) (OpenCV.js) | 4.12.0 | Finding cards in photos, edge snapping, perspective straightening (in the browser) |
 | [tesseract.js](https://tesseract.projectnaptha.com/) | 7.0.0 | OCR of the card name, set code and number (in the browser) |
 | [@tesseract.js-data/eng](https://github.com/naptha/tessdata) | 1.0.0 | English OCR model, served by the app |
+| [@tesseract.js-data/jpn](https://github.com/naptha/tessdata) | 1.0.0 | Japanese OCR model (~2 MB), loaded only when a Japanese card is read |
 | `node:sqlite` | built into Node ≥ 22.5 | The collection database |
 | [Playwright](https://playwright.dev/) | preinstalled | Browser e2e test (not a project dependency) |
 

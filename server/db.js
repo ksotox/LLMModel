@@ -101,6 +101,7 @@ const CARD_MIGRATIONS = {
   pull_chance: 'REAL',
   pull_source: 'TEXT',
   market_checked_at: 'TEXT', // when the app last looked for a price (found or not)
+  language: 'TEXT', // 'ja' for Japanese cards; empty means English
 };
 
 export const PACK_KINDS = ['booster-pack', 'tin', 'kit', 'bundle', 'elite-trainer-box', 'collection-box', 'blister', 'booster-box', 'other'];
@@ -198,8 +199,12 @@ class Store {
     const where = [];
     const params = [];
     for (const term of String(q ?? '').trim().split(/\s+/).filter(Boolean)) {
+      if (/^(jp|japan|japanese)$/i.test(term)) {
+        where.push("c.language = 'ja'");
+        continue;
+      }
       const like = `%${term.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
-      const cols = ['c.name', 'c.set_code', 'c.set_name', 'c.number', "c.number || '/' || IFNULL(c.set_total, '')", 'c.rarity',
+      const cols = ['c.name', 'c.set_code', 'c.set_name', 'c.number', "c.number || '/' || IFNULL(c.set_total, '')", 'c.rarity', 'c.language',
         'c.category', 'c.types', 'c.variant', 'c.notes', 'p.name', 'p.set_name'];
       where.push(`(${cols.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ')})`);
       params.push(...cols.map(() => like));

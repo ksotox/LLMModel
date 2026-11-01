@@ -53,7 +53,7 @@ export function printingsFor({ variantsDetailed, variants, priceLines = [], rari
   }
   const allowed = [...new Set(found)];
 
-  const promo = !setTotal && (/promo/i.test(setName ?? '') || /p$/.test(setId ?? ''));
+  const promo = !setTotal && (/promo|プロモ/i.test(setName ?? '') || /p$/i.test(setId ?? ''));
   if (promo) return { allowed: ['promo'], fixed: 'promo', reason: 'Promo cards are recorded as Promo.', notes, source: source ?? 'set' };
   if (numberIsSecret(number, setTotal)) {
     return { allowed: ['full-art'], fixed: 'full-art', reason: `Its number is above the set total (${number}/${setTotal}): a secret rare, always full art.`, notes, source: 'number' };

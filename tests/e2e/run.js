@@ -48,7 +48,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+// Tesseract's Japanese model logs "Parameter not found" for settings its engine doesn't use: harmless.
+page.on('console', (m) => m.type() === 'error' && !/^Warning: Parameter not found/.test(m.text()) && errors.push(m.text()));
 const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -264,6 +265,27 @@ try {
   assert.equal(await page.locator('.card-item').getByLabel('Variant').inputValue(), 'promo', 'a certain printing is filled in');
   await shot('11-read-promo');
 
+  step('a Japanese card is read (Japanese name + "SV2a 100/165"), matched and saved with its picture');
+  await page.goto(`${base}/#/add`);
+  await page.reload(); // a fresh Add page, without the promo from the step before
+  await page.getByRole('heading', { name: 'Add cards' }).waitFor();
+  await page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])')
+    .setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'photos', 'japanese-voltorb.jpg'));
+  const jp = page.locator('.card-item');
+  await jp.locator('.match-note', { hasText: 'Official card: ビリリダマ · JP · SV2a · 100/165' }).waitFor({ timeout: 120000 });
+  await jp.locator('.read-note', { hasText: 'Read from the photo' }).waitFor();
+  assert.equal(await jp.getByLabel('Name').inputValue(), 'ビリリダマ');
+  await jp.locator('.variant-reasons', { hasText: 'Poké Ball pattern' }).waitFor({ timeout: 30000 });
+  await shot('14-japanese-card');
+  await page.getByRole('button', { name: 'Save 1 card' }).click();
+  await page.getByRole('heading', { name: 'My collection' }).waitFor();
+  const jpTile = page.locator('.card-tile', { hasText: 'ビリリダマ' });
+  await jpTile.locator('.lang-tag', { hasText: 'JP' }).waitFor();
+  assert.equal(await jpTile.locator('.price').textContent(), '$0.36', 'Cardmarket €0.30 shown in dollars');
+  await page.getByLabel('Search cards').fill('japanese');
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 1);
+  await page.getByLabel('Search cards').fill('');
+
   step('add packs on their own: several at once');
   await page.goto(`${base}/#/add-packs`);
   await page.getByRole('heading', { name: 'Add packs' }).waitFor();
@@ -282,8 +304,8 @@ try {
   await srv.stop();
   srv = await startServer(dataDir, mock, srv.port);
   await page.goto(base);
-  await page.locator('.card-tile').nth(4).waitFor();
-  assert.equal(await page.locator('.card-tile').count(), 5);
+  await page.locator('.card-tile').nth(5).waitFor();
+  assert.equal(await page.locator('.card-tile').count(), 6, 'four from the first photos, one from Search, one Japanese');
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
 

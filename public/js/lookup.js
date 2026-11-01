@@ -5,7 +5,7 @@ import { h, clear } from './ui.js';
 
 export function describeBrief(b) {
   const num = b.number ? (b.setTotal ? `${b.number}/${b.setTotal}` : b.number) : '';
-  return [b.setCode || b.setName, num].filter(Boolean).join(' · ');
+  return [b.language === 'ja' && 'JP', b.setCode || b.setName, num].filter(Boolean).join(' · ');
 }
 
 /**

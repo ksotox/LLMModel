@@ -12,6 +12,7 @@ const port = Number(process.env.PORT ?? 3000);
 const dataDir = path.resolve(process.env.DATA_DIR ?? 'data');
 const catalog = new CardCatalog({
   tcgdex: new TcgClient({ baseUrl: process.env.TCGDEX_URL }),
+  tcgdexJa: new TcgClient({ baseUrl: process.env.TCGDEX_JA_URL, lang: 'ja' }),
   ptcg: new PtcgDataClient({ baseUrl: process.env.PTCG_DATA_URL }),
   tcgcsv: new TcgCsvClient({ baseUrl: process.env.TCGCSV_URL }),
 });

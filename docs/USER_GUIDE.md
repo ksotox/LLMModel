@@ -120,6 +120,16 @@ Click **Save N cards**. The date added is recorded automatically. Each card is s
 
 **If the internet is down,** the card is still saved with your photo, and it's linked to its official card automatically later.
 
+### Japanese cards
+Japanese cards work the same way, and the app recognises them by themselves:
+- **Reading:** the bottom-left corner shows a Japanese set code and number, e.g. `SV2a 100/165` (151), `SV4a`, `M1L` or `SV-P` for promos. When the app sees one, it also reads the card's name in Japanese (ビリリダマ). The first time, it downloads a small Japanese reading model (about 2 MB).
+- **Finding:** it looks the card up in TCGdex's Japanese card database, with its official Japanese picture. Its printings are included, such as 151's Poké Ball pattern reverse holos.
+- **Typing it in yourself:** enter the set code and number as printed (`SV2a` and `100/165`), or the name in Japanese (`ピカチュウ`).
+- **In your collection:** Japanese cards carry a black **JP** tag. Type `japanese` or `jp` in the search box to list only them.
+- **Prices** come from Cardmarket, which sells Japanese cards, shown in US dollars.
+- **No pull chance:** Japanese packs hold different numbers of cards and rarities, so there's no pull-chance estimate.
+- **Search page:** use the **Language** box (Any / English / Japanese).
+
 ### Tips for good photos
 - Use daylight or a bright room, and avoid glare on holo cards (tilt the card slightly).
 - Use a plain background that contrasts with the card's yellow border (dark wood works well).
@@ -305,6 +315,7 @@ The app runs on your computer, and your phone opens it in its browser.
 | A card shows "Not matched yet" | Open it (it tries automatically), or use **Find official card** and type the set code and number. |
 | No official picture | Click **Update prices**, or **Retry official image** on the card. Very new promos may need a PokemonPriceTracker key. |
 | No price | Some cards have no recent sales. Prices are refreshed daily. |
+| A Japanese card wasn't matched | Check the bottom-left code and number (e.g. `SV2a 100/165`) and type them in. The Japanese name can be typed too. |
 | A card was read wrong | Fix the name, set code or number, and pick the right match. Blurry or dark photos are the usual cause. |
 | `npm` errors about `package.json` | PowerShell is in the wrong folder: `cd` into the app folder first. |
 | Phone can't connect | See [section 12](#12-using-it-on-your-phone). |

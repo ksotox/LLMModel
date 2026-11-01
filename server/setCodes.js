@@ -49,6 +49,13 @@ export const SET_CODES = {
   CRZ: { id: 'swsh12.5', name: 'Crown Zenith', total: 159, tcgplayer: 17688 },
 };
 
+// Japanese cards print TCGdex's Japanese set id as their code: "SV2a", "SV4a", "M1L", "M2a", "SV-P"
+// (promos). English codes are three letters ("PAL"), so the two never overlap.
+const JAPANESE_CODE = /^(SV\d{1,2}[A-Z]?|SV-P|M\d{1,2}[A-Z]?|M-P|S\d{1,2}[A-Z]?|S-P|SM\d{1,2}[A-Z+]?|SM-P)$/i;
+export const isJapaneseCode = (code) => JAPANESE_CODE.test(String(code ?? '').trim());
+/** Hiragana, katakana or kanji in a name. */
+export const hasJapanese = (text) => /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(String(text ?? ''));
+
 export function setFromCode(code) {
   return SET_CODES[String(code ?? '').trim().toUpperCase()] ?? null;
 }

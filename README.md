@@ -9,6 +9,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Rarity, pull chance and price on every card.** Each card shows its rarity (● Common, ◆ Uncommon, ★ Rare, ★★ Double Rare…), an **estimated chance of pulling it from one booster pack**, and an **estimated market price**. The collection page adds up the total value. Prices refresh automatically when you open a card, or all at once with **Update prices**. That also links any card saved without its official card (typed in by hand, or added while offline) and downloads its official image, as long as the name, number and set point to exactly one card.
 - **eBay sold prices.** Open any card in your collection to see its **average sold price** on eBay (plus median and range), a **price trend chart** (weekly or monthly averages; the line is **green** where the price went up, **red** where it went down and **yellow** where it stayed about the same, within 2%), the overall direction and rate of change, and **every sold listing** behind those numbers (title with link, sold price, date, condition / grade). Filter by ungraded or graded sales, and remove any listing that isn't really your card.
 - **Price history and eBay graded sales.** Every card keeps its own **day-by-day price history** in the database, saved automatically while the app runs, so you build up long-term history for free. With a free [PokemonPriceTracker](https://www.pokemonpricetracker.com/) key, the card page also shows **eBay sales by grade** (PSA 10, CGC 9.5, raw…: count, average, median, range), recent price history from PokemonPriceTracker, and grading population when your plan includes it. The app keeps well inside the free 100 credits a day by itself.
+- **Japanese cards too.** Japanese cards are recognised from their printed code ("SV2a 100/165") and their name, read in Japanese. They're found in TCGdex's Japanese database with their official pictures, and tagged **JP** in your collection.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -46,6 +47,7 @@ npm start            # http://localhost:3000
 | `PORT` | `3000` | HTTP port |
 | `DATA_DIR` | `./data` | Where the database (`collection.db`) and images are stored. Back up this folder to back up your collection. |
 | `TCGDEX_URL` | `https://api.tcgdex.net/v2/en` | Main card database (cards, images, prices) |
+| `TCGDEX_JA_URL` | `https://api.tcgdex.net/v2/ja` | Japanese cards (cards, images, printings) |
 | `PTCG_DATA_URL` | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` | Second card source (cards, images, rarities) |
 | `TCGCSV_URL` | `https://tcgcsv.com/tcgplayer/3` | Backup price source and pictures (TCGplayer prices and product images) |
 | `EUR_USD_RATE` | `1.15` | Dollars per euro, used only when the exchange-rate service can't be reached |

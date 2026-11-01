@@ -296,6 +296,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 }
 .card-set { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; }
 .card-set > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.lang-tag { padding: 0 5px; border-radius: 4px; background: #1e293b; color: #fff; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.06em; line-height: 1.5; }
 .set-tag {
   padding: 0 5px;
   border-radius: 4px;

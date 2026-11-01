@@ -92,6 +92,10 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
+- **Japanese cards:** a second `TcgClient({ lang: 'ja' })` (ids `ja:SV2a-100`, the printed code = TCGdex set id).
+  `japaneseQuery` sends Japanese codes/names there. Identify compares names in the same script, and with no
+  Japanese reading it needs code + number + total. OCR loads the `jpn` model when a JP code is read. JP cards:
+  `language='ja'`, no pull chance, Cardmarket price → USD, no dataset/tcgcsv/PPT fallbacks, eBay matching weak.
 - Variant suggestion: `server/printings.js` (TCGdex `variants_detailed`/`variants`, price lines, rarity rules) →
   `/api/catalog/cards/:id/printings`; `public/js/foil.js` (one-photo art-vs-body texture at 360 px, calibrated on
   docs/reference; tilt scan = brightness change between angles) → hint + Use / Tilt scan in `add.js`. Never

@@ -23,6 +23,7 @@ const VENDOR = {
   '/vendor/tesseract': path.join(packageDir('tesseract.js'), 'dist'),
   '/vendor/tesseract-core': packageDir('tesseract.js-core'),
   '/vendor/tessdata': path.join(packageDir('@tesseract.js-data/eng'), '4.0.0_best_int'),
+  '/vendor/tessdata-jpn': path.join(packageDir('@tesseract.js-data/jpn'), '4.0.0_best_int'),
 };
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -330,9 +331,10 @@ export function createApp({
 
   app.get('/api/lookup', async (req, res) => {
     const { name, setCode, number } = req.query;
+    const lang = ['en', 'ja'].includes(req.query.lang) ? req.query.lang : undefined;
     if (!name && !setCode && !number) throw new HttpError(400, 'Give a name, set code or number to look up');
     try {
-      const results = await catalog.search({ name, setCode, number });
+      const results = await catalog.search({ name, setCode, number, lang });
       const owned = store.ownedCounts(results.map((r) => r.tcgId));
       res.json({ results: results.map((r) => ({ ...r, owned: owned[r.tcgId] ?? 0 })) });
     } catch (err) {

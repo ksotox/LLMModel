@@ -206,7 +206,7 @@ export async function findCards(img) {
   const imageArea = W * H;
   const minArea = imageArea * 0.03;
   const maxArea = (W + 2 * pad) * (H + 2 * pad) * 0.995;
-  const candidates = [];
+  let candidates = [];
   const k = Math.max(3, Math.round(Math.min(W, H) * 0.012)) | 1;
   const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(k, k));
 
@@ -234,13 +234,24 @@ export async function findCards(img) {
   for (let i = 0; i < grad.length; i++) grad[i] = Math.hypot(gx.data32F[i], gy.data32F[i]);
   for (const m of [src, gray, padded, blurred, bin, edges, kernel, smooth, gx, gy]) m.delete();
 
-  // Keep the best candidate wherever several overlap.
-  candidates.sort((a, b) => b.score * Math.sqrt(b.area) - a.score * Math.sqrt(a.area));
   const bbox = (q) => {
     const xs = q.map((p) => p.x);
     const ys = q.map((p) => p.y);
     return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
   };
+  // The dark frame added above can make the photo's own border look like one big card (on a
+  // lighter table). An outline along all four photo edges is the photo, not a card: drop it when
+  // real cards were found inside. (A card filling the whole photo is then the only candidate.)
+  const isPhotoFrame = (q) => {
+    const b = bbox(q);
+    const mx = img.naturalWidth * 0.02;
+    const my = img.naturalHeight * 0.02;
+    return b.x0 <= mx && b.y0 <= my && b.x1 >= img.naturalWidth - mx && b.y1 >= img.naturalHeight - my;
+  };
+  if (candidates.some((c) => !isPhotoFrame(c.quad))) candidates = candidates.filter((c) => !isPhotoFrame(c.quad));
+
+  // Keep the best candidate wherever several overlap.
+  candidates.sort((a, b) => b.score * Math.sqrt(b.area) - a.score * Math.sqrt(a.area));
   const overlap = (a, b) => {
     const A = bbox(a);
     const B = bbox(b);
