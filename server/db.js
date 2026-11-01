@@ -530,6 +530,15 @@ class Store {
       GROUP BY UPPER(set_code) ORDER BY code`).all(userId ?? null, userId ?? null);
   }
 
+  /** Values the collection filters can offer: the rarities, types and storage places in use. */
+  facets(userId) {
+    const where = 'deleted_at IS NULL AND (? IS NULL OR user_id = ?)';
+    const args = [userId ?? null, userId ?? null];
+    const col = (c) => this.db.prepare(`SELECT DISTINCT ${c} AS v FROM cards WHERE ${where} AND ${c} IS NOT NULL AND ${c} <> '' ORDER BY v`).all(...args).map((r) => r.v);
+    const types = new Set(col('types').flatMap((t) => String(t).split(',').map((x) => x.trim()).filter(Boolean)));
+    return { rarities: col('rarity'), types: [...types].sort(), storage: col('storage_location') };
+  }
+
   /** This user's copies in a set (by printed set code), for the set-completion checklist. */
   cardsInSet(userId, setCode) {
     return this.db.prepare(`SELECT id, name, number, variant, tcg_id, market_price, market_currency, official_image_path, photo_path FROM cards

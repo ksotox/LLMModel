@@ -10,6 +10,12 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **eBay sold prices.** Open any card in your collection to see its **average sold price** on eBay (plus median and range), a **price trend chart** (weekly or monthly averages; the line is **green** where the price went up, **red** where it went down and **yellow** where it stayed about the same, within 2%), the overall direction and rate of change, and **every sold listing** behind those numbers (title with link, sold price, date, condition / grade). Filter by ungraded or graded sales, and remove any listing that isn't really your card.
 - **Price history and eBay graded sales.** Every card keeps its own **day-by-day price history** in the database, saved automatically while the app runs, so you build up long-term history for free. With a free [PokemonPriceTracker](https://www.pokemonpricetracker.com/) key, the card page also shows **eBay sales by grade** (PSA 10, CGC 9.5, raw…: count, average, median, range), recent price history from PokemonPriceTracker, and grading population when your plan includes it. The app keeps well inside the free 100 credits a day by itself.
 - **Japanese cards too.** Japanese cards are recognised from their printed code ("SV2a 100/165") and their name, read in Japanese. They're found in TCGdex's Japanese database with their official pictures, and tagged **JP** in your collection.
+- **Profiles and sign-in.** The first start creates your profile (your existing cards become yours). Add a profile for each person: everyone gets their own collection and settings. Light mode by default, dark mode one click away.
+- **Duplicate check.** Before saving, the app tells you which cards you already have (or added twice) and asks **Yes / No** before adding another copy.
+- **Smarter recognition.** Each card is marked **Recognized**, **Review needed** or **Unrecognized**, with a progress bar while a batch is read, a "review uncertain cards" view, and **Read again** (which also tries the photo upside down). iPhone HEIC photos are converted automatically. What you type is never overwritten.
+- **Physical inventory.** Every copy keeps its own condition (NM–DMG), grade, price paid, storage place ("Binder 2, page 5") and plans (keep / trade / sell). Copies are grouped as ×2, ×3 in the gallery, and listed on the card's page.
+- **Gallery views, filters and bulk changes.** Compact, Detailed or sortable Table view; Compact / Comfortable / Large density; filters for rarity, type, variant, language, condition, value, date, graded and duplicates, all combined, plus one-click views (Most valuable, Missing prices, Grading candidates…). Select many cards to move, re-condition, mark for trade, export to CSV or delete (to a 30-day Trash, with Undo).
+- **Set completion.** The **Sets** page shows how complete each expansion is, with the full checklist (missing cards greyed out), the estimated cost of the missing cards, and Main / Master / Reverse holo goals.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -24,8 +30,12 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Search](docs/screenshots/10-search.png) | ![Search result](docs/screenshots/09-search-card.png) |
 | **eBay sold prices: average, trend chart, listings** | **A promo read from a photo** |
 | ![eBay sold prices](docs/screenshots/12-ebay-sold-prices.png) | ![Promo read](docs/screenshots/11-read-promo.png) |
-| **Price history & eBay graded sales** | |
-| ![Price history](docs/screenshots/13-price-history.png) | |
+| **Price history & eBay graded sales** | **Duplicate check before saving** |
+| ![Price history](docs/screenshots/13-price-history.png) | ![Duplicate check](docs/screenshots/15-duplicate-check.png) |
+| **Table view, sortable** | **Select cards and change them together** |
+| ![Table view](docs/screenshots/17-table-view.png) | ![Bulk changes](docs/screenshots/18-bulk-select.png) |
+| **Set completion checklist** | **Dark mode** |
+| ![Set checklist](docs/screenshots/19-set-checklist.png) | ![Dark mode](docs/screenshots/20-dark-mode.png) |
 
 > **New here? Read the [user guide](docs/USER_GUIDE.md)**: every feature, step by step.
 >
@@ -198,8 +208,10 @@ Real odds vary by product (booster packs, ETBs, bundles) and from box to box, so
 ```
 server/
   index.js      start-up (env config)
-  app.js        Express routes: cards, packs, lookup, uploads, media
-  db.js         SQLite schema + queries (search, filters, stats)
+  app.js        Express routes: cards, packs, lookup, uploads, media, profiles, bulk changes, sets
+  auth.js       profiles: password hashes, sign-in sessions, login throttle
+  db.js         SQLite schema + queries (search, filters, grouping of copies, trash, stats, users)
+  sets.js       set-completion checklists
   catalog.js    combines the sources: search, details, image fallback, market info
   tcg.js        TCGdex client: lookup by set code/number/name, details, prices, image download
   ptcgData.js   Pokémon TCG dataset client (second source, rarity counts per set)
@@ -221,8 +233,11 @@ public/         no-build frontend (vanilla ES modules)
   js/ocr.js     reads the name / set code / number off a card (Tesseract.js)
   js/ebay.js    eBay sold prices panel: trend chart, listings, reading pasted eBay results
   js/history.js price history chart + PokemonPriceTracker graded sales
-  js/views.js   collection, packs, pack page, card dialog
+  js/views.js   collection (views, filters, bulk bar, trash), packs, pack page, card dialog with copies
   js/search.js  search any card online
+  js/sets.js    Sets page and a set's checklist
+  js/account.js setup, sign-in, profile page, theme
+  js/foilAsync.js / foilWorker.js  foil measurements in a Web Worker
 tests/
   api.test.js     API tests (node:test) against mock sources
   market.test.js  pull chances, prices, second source, market API
@@ -230,6 +245,9 @@ tests/
   ebay.test.js    sold-price statistics, trend colours, listing matching, eBay API + routes
   pricetracker.test.js  PokemonPriceTracker client, caching, credit budget, price history, scheduler
   memory.test.js  keeps MEMORY.md within its size budget
+  auth.test.js    profiles, sign-in, sessions, throttling, who sees what
+  collection.test.js  duplicates, grouping, paging, filters, bulk changes, trash, CSV
+  sets.test.js    set checklists, goals, missing value
   desktop.test.js desktop launcher: install, update keeping the collection, rollback, server, update banner API
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
@@ -245,13 +263,19 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 
 | Method & path | Description |
 | --- | --- |
-| `GET /api/cards?q=&packId=&setCode=&sort=` | Search / list cards (`packId=none` for cards not from a pack; `sort` = `oldest`, `name`, `set`, `value` or `rarity`) |
+| `GET /api/auth/state` · `POST /api/auth/setup` · `POST /api/auth/login` · `POST /api/auth/logout` | Sign-in state · create the owner profile · sign in · sign out |
+| `GET/PATCH /api/auth/me` · `GET/POST /api/users` · `DELETE /api/users/:id` | Your profile and settings · list / add profiles (owner) · delete a profile (owner) |
+| `GET /api/cards?q=&packId=&setCode=&sort=` | Search / list cards (`packId=none` for cards not from a pack; `sort` = `oldest`, `name`, `set`, `value`, `rarity`, `quantity` or `condition`). Filters: `rarity`, `type`, `variant`, `language`, `condition`, `status`, `minValue`, `maxValue`, `addedFrom`, `addedTo`, `graded`, `duplicates`, `unmatched`, `missingPrice`, `gradingCandidates`, `trash`. With `page` (+ `pageSize`, `group=1`) it returns `{ cards, total }` |
+| `POST /api/cards/duplicates` | `{ cards }` → how many of each you already own |
+| `POST /api/cards/bulk` | `{ ids, action: 'set' \| 'trash' \| 'restore', set: { pack_id, condition, storage_location, status, … } }` |
+| `GET /api/cards/export?ids=` | CSV of the chosen cards |
+| `GET /api/sets` · `GET /api/sets/:lang/all` · `GET /api/sets/:lang/:id[?values=1]` | Your sets with completion · every set · one set's checklist (with missing value) |
 | `POST /api/cards` | Add one or more cards: multipart with `cards` (JSON array) and one image per card referenced by `photoField` |
 | `PATCH /api/cards/:id` | Edit a card. Changing `tcg_id` re-links it and fetches the official image |
 | `POST /api/cards/:id/refresh-official` | Retry downloading the official image |
 | `POST /api/cards/:id/refresh-market` · `POST /api/cards/refresh-market` | Refresh rarity, pull chance and price for one card · for every card |
 | `GET /api/catalog/cards/:id?variant=` | Any online card with its rarity, pull chance and price |
-| `POST /api/cards/:id/photo` · `DELETE /api/cards/:id` | Replace photo · delete |
+| `POST /api/cards/:id/photo` · `DELETE /api/cards/:id[?permanent=1]` | Replace photo · move to the trash (or delete for good) |
 | `GET /api/packs?q=` · `POST /api/packs` | List · add one or more packs (same multipart format, key `packs`) |
 | `PATCH /api/packs/:id` · `POST /api/packs/:id/photo` · `DELETE /api/packs/:id[?withCards=1]` | Edit · replace photo · delete (cards are kept unless `withCards=1`) |
 | `GET /api/lookup?name=&setCode=&number=` | Search the online card database |

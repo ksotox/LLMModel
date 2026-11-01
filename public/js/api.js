@@ -9,6 +9,7 @@ async function request(method, url, body) {
   const res = await fetch(url, init);
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.signIn) window.dispatchEvent(new CustomEvent('signin-needed'));
   if (!res.ok) {
     const err = new Error(data.error || `Request failed (${res.status})`);
     err.status = res.status;
@@ -38,6 +39,20 @@ function multipart(key, items) {
 export const api = {
   meta: () => request('GET', '/api/meta'),
   desktop: () => request('GET', '/api/desktop'),
+  authState: () => request('GET', '/api/auth/state'),
+  setup: (body) => request('POST', '/api/auth/setup', body),
+  login: (body) => request('POST', '/api/auth/login', body),
+  logout: () => request('POST', '/api/auth/logout'),
+  updateMe: (body) => request('PATCH', '/api/auth/me', body),
+  users: () => request('GET', '/api/users'),
+  addUser: (body) => request('POST', '/api/users', body),
+  deleteUser: (id) => request('DELETE', `/api/users/${id}`),
+  duplicates: (cards) => request('POST', '/api/cards/duplicates', { cards }),
+  bulk: (body) => request('POST', '/api/cards/bulk', body),
+  cardsPage: (params) => request('GET', `/api/cards${qs(params)}`),
+  sets: () => request('GET', '/api/sets'),
+  set: (lang, id, params = {}) => request('GET', `/api/sets/${lang}/${encodeURIComponent(id)}${qs(params)}`),
+  allSets: (lang) => request('GET', `/api/sets/${lang}/all`),
   printings: (tcgId) => request('GET', `/api/catalog/cards/${encodeURIComponent(tcgId)}/printings`),
   desktopRestart: () => request('POST', '/api/desktop/restart'),
   lookup: (params) => request('GET', `/api/lookup${qs(params)}`),
@@ -53,7 +68,7 @@ export const api = {
     form.append('photo', blob, blob.name || 'photo.jpg');
     return request('POST', `/api/cards/${id}/photo`, form);
   },
-  deleteCard: (id) => request('DELETE', `/api/cards/${id}`),
+  deleteCard: (id, { permanent = false } = {}) => request('DELETE', `/api/cards/${id}${permanent ? '?permanent=1' : ''}`),
   refreshMarket: (id) => request('POST', `/api/cards/${id}/refresh-market`),
   refreshAllMarket: () => request('POST', '/api/cards/refresh-market'),
   ebay: (id, condition) => request('GET', `/api/cards/${id}/ebay${qs({ condition })}`),

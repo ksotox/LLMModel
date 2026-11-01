@@ -4,19 +4,61 @@ import { findCards, warpCard } from './vision.js';
 
 const MAX_SAVE_EDGE = 1800;
 
-export function loadImage(file) {
+const isHeic = (file) => /\.(heic|heif)$/i.test(file.name ?? '') || /hei[cf]/i.test(file.type ?? '');
+
+// iPhone HEIC photos: converted to JPEG in the browser (heic2any, loaded only when one is uploaded).
+let heicLib = null;
+function heicConverter() {
+  heicLib ??= new Promise((resolve, reject) => {
+    if (window.heic2any) return resolve(window.heic2any);
+    const s = document.createElement('script');
+    s.src = '/vendor/heic2any/heic2any.min.js';
+    s.onload = () => (window.heic2any ? resolve(window.heic2any) : reject(new Error('HEIC converter unavailable')));
+    s.onerror = () => { heicLib = null; reject(new Error('HEIC converter unavailable')); };
+    document.head.append(s);
+  });
+  return heicLib;
+}
+
+/** A JPEG copy of an iPhone HEIC photo (the first picture, if it holds several). */
+export async function heicToJpeg(file) {
+  const convert = await heicConverter();
+  const out = await convert({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  const blob = Array.isArray(out) ? out[0] : out;
+  return new File([blob], String(file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg', { type: 'image/jpeg' });
+}
+
+function openImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => resolve(Object.assign(img, { objectUrl: url }));
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error(/\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type)
-        ? `"${file.name}" is an iPhone HEIC photo, which this browser can't open. On the iPhone, choose Settings → Camera → Formats → Most Compatible, or upload it from the phone itself (it converts automatically).`
-        : `Couldn't read "${file.name}". Try a JPEG or PNG photo.`));
+      reject(new Error(`Couldn't read "${file.name}". Try a JPEG or PNG photo.`));
     };
     img.src = url;
   });
+}
+
+/**
+ * Open a photo as an <img>. HEIC photos open directly where the browser can (Safari) and are
+ * converted to JPEG everywhere else, unless the user turned that off in their profile.
+ */
+export async function loadImage(file, { convertHeic = window.currentUser?.settings?.convertHeic !== false } = {}) {
+  try {
+    return await openImage(file);
+  } catch (err) {
+    if (!isHeic(file)) throw err;
+    if (!convertHeic) {
+      throw new Error(`"${file.name}" is an iPhone HEIC photo. Turn on "Convert iPhone HEIC photos" in your profile, or on the iPhone choose Settings → Camera → Formats → Most Compatible.`);
+    }
+    try {
+      return Object.assign(await openImage(await heicToJpeg(file)), { converted: true });
+    } catch {
+      throw new Error(`Couldn't convert the iPhone photo "${file.name}". On the iPhone, choose Settings → Camera → Formats → Most Compatible, or upload it from the phone itself.`);
+    }
+  }
 }
 
 /**

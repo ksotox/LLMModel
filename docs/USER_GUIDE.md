@@ -9,6 +9,7 @@ Contents:
 4. [Your collection](#4-your-collection)
 5. [A card's page](#5-a-cards-page)
 6. [Packs, tins, kits and bundles](#6-packs-tins-kits-and-bundles)
+6b. [Set completion](#6b-set-completion)
 7. [Searching any card](#7-searching-any-card)
 8. [Prices, rarity and pull chance explained](#8-prices-rarity-and-pull-chance-explained)
 9. [eBay sold prices](#9-ebay-sold-prices)
@@ -52,6 +53,14 @@ From then on:
 
 After setting a key, close the app and open it again. If it doesn't pick the key up, sign out of Windows and back in.
 
+### Your profile and signing in
+The first time the app opens, it asks you to **create your profile**: a username, a display name and a password (6+ characters). Any cards already in the app become yours.
+- **Signing in:** each browser stays signed in for 30 days. After 5 wrong passwords, wait 10 minutes.
+- **Your name (top right)** opens a menu: **Profile & settings**, **Dark mode / Light mode**, and **Sign out**.
+- **Profile & settings:** theme (Light, Dark or Match my computer), display name, password (changing it signs out your other devices), and iPhone photo conversion.
+- **More profiles:** as the owner (the first profile), you can add a profile for each person under **Profile & settings → Profiles**. Everyone has their own collection, packs and settings. Deleting a profile deletes its collection.
+- **Forgot the password?** There's no reset yet. Ask for help: the profile can be reset from the database without losing cards.
+
 ---
 
 ## 2. Finding your way around
@@ -62,6 +71,7 @@ The red bar at the top has four buttons:
 | --- | --- |
 | **Collection** | All your cards, with search, filters, sorting and the total value |
 | **Packs** | The packs, tins, kits and bundles you've recorded, and what came out of each |
+| **Sets** | How complete each expansion is, with every card you own and still need |
 | **Search** | Any Pokémon card, including ones you don't own yet |
 | **+ Add** | Add cards from photos (or packs) |
 
@@ -85,7 +95,18 @@ For each photo, the app:
 3. **Reads the card**: the name at the top, and the set code and number at the bottom left (for example `PAL 066/193`, or `MEP 060` on promos).
 4. **Matches the official card** and fills everything in. You'll see **"Read from the photo — please check it's the right card"** with the match underneath.
 
-All of this happens inside your browser: your photos aren't sent to any outside service.
+All of this happens inside your browser: your photos aren't sent to any outside service. **iPhone HEIC photos** are converted to JPEG first (this takes a few seconds; you can turn it off in your profile).
+
+**While cards are read,** a bar shows **Reading card N of M**. Each card then gets one of these labels:
+
+| Label | Meaning |
+| --- | --- |
+| **Recognized** (green) | Read and matched to its official card. |
+| **Review needed** (amber) | Probably right, or only partly read: check it's the right card. |
+| **Unrecognized** (red) | Couldn't be read. Type its details, or click **Read again**. |
+| **Checked** (green) | You picked the match or typed the details yourself. |
+
+After a batch, a summary shows how many cards are in each group. **Review N uncertain cards** shows only the ones to check; **Show all cards** brings the rest back. **Read again** (on a card, or for all unrecognized cards at once) reads the card a second time, also upside down in case it was photographed that way. It never replaces anything you typed: it only fills empty boxes, and if it finds a match after you typed, it offers it instead of choosing it.
 
 ### If something isn't right
 - **The outline is off.** Click **Adjust cards** (or **Crop / split**). In the editor:
@@ -113,7 +134,11 @@ It combines three things:
 3. **Tilt scan (most reliable).** Click **Tilt scan** and take 1–2 more photos of the same card in the same light, tilting it a little left or right each time. On a phone, the camera opens. Foil changes its shine as the card tilts, and ink doesn't, so this tells normal, reverse holo, holo and full art apart. **Add another angle** takes a third photo.
 
 ### Step 3: Save
-Click **Save N cards**. The date added is recorded automatically. Each card is saved with:
+Click **Save N cards**. **If a card is already in your collection** (same card, same variant), or appears twice in what you're adding, a popup lists them and asks **Would you like to add it anyway?**
+- **Yes, add anyway** saves everything, so you have another copy.
+- **No** saves nothing and outlines the duplicates in amber, so you can remove them and save again.
+
+The date added is recorded automatically. Each card is saved with:
 - your photo;
 - a local copy of the official picture;
 - its rarity, pull chance and price.
@@ -141,18 +166,39 @@ Japanese cards work the same way, and the app recognises them by themselves:
 
 The **Collection** page shows:
 - **Totals:** number of cards, unique cards, packs, and the **estimated value** of everything priced.
-- **Search box:** type anything, such as a name, set code, number (`066/193`), rarity, type, variant, pack name or notes. Every word must match.
-- **Filters:** one pack or bundle (or **Not from a pack**), and one set.
-- **Sort:** **Newest first**, **Oldest first**, **Name A–Z**, **Set & number**, **Highest value**, or **Hardest to pull**.
-- **Official / My photos:** shows the official picture or your own photo on each tile. The other one appears as a small inset.
+- **Quick views (chips):** **Most valuable**, **Recently added** (last 30 days), **Missing prices**, **Unmatched cards**, **Duplicates**, **Grading candidates** (raw cards worth $20 or more in near-mint or unknown condition) and **For trade or sale**. Click one again to turn it off.
+- **Search box:** type anything, such as a name, set code, number (`066/193`), rarity, type, variant, pack name, storage place or notes. Every word must match.
+- **Pack, set and sort:** one pack or bundle (or **Not from a pack**), one set, and **Newest first**, **Oldest first**, **Name A–Z**, **Set & number**, **Highest value**, **Hardest to pull**, **Most copies** or **Condition**.
+- **Filters:** rarity, type, variant, language, condition, plans (keeping / for trade / for sale), graded or raw, a price range, a date-added range, owned twice or more, not matched yet, and no price yet. All the filters you set apply together. **Clear filters** resets them.
 - **Update prices:** refreshes rarity, pull chance and price for every card. It also links cards that aren't matched yet and fetches missing official pictures.
+
+**Views** (your choice is remembered for your profile):
+- **Compact:** picture, name, number, rarity and price.
+- **Detailed:** also pull chance, date added, condition, grade, plans and pack.
+- **Table:** one row per card with name, set, number, rarity, variant, quantity, condition and value. Click a column heading to sort by it.
+- **Density:** **Compact**, **Comfortable** or **Large** tiles.
+- **Official / My photos:** shows the official picture or your own photo on each tile. The other one appears as a small inset.
+- **Group copies:** several copies of the same card and variant show as one tile with **×2**, **×3**…. Turn it off to see each copy.
+
+The collection loads 60 cards at a time and loads more as you scroll, so large collections stay fast.
 
 **Each tile shows:**
 - the card's name, then its set code (red tag) and number;
 - its rarity badge (for example ● Common, ◆ Uncommon, ★ Rare, ★★ Double Rare) and its **price**;
 - how hard it is to pull ("1 in 23 packs") and the date it was added;
-- the pack it came from, if any;
+- condition, grade and plans, if set, and the pack it came from;
 - **"Not matched yet"** if the card isn't linked to its official card. Open it to fix that.
+
+### Changing many cards at once
+Click **Select**, then click the cards you want (or **Select all shown**). A bar appears with:
+- **Move to pack…**, **Set condition…**, **Mark as…** (keeping, for trade, for sale) and **Storage…** (for example "Binder 2, page 5");
+- **Export CSV:** a spreadsheet of the chosen cards (opens in Excel);
+- **Delete:** asks first, then moves the cards to the **Trash**. An **Undo** button appears for a few seconds.
+
+Click **Done selecting** to finish.
+
+### Trash
+Deleted cards stay in the **Trash** (button at the top of the collection) for 30 days. There, select cards to **Restore** them, or **Delete for good** (with their photos).
 
 ---
 
@@ -164,12 +210,14 @@ Click a card to open its page:
   - the price shows the low–high range and its source;
   - hover over a converted price to see the original amount (for example "converted from €6.09");
   - **Refresh price** updates it now. Prices also refresh automatically when they're over a day old.
-- **Details:** set, number, variant, category, HP, type, pack, date added and notes.
-- **Edit:** change the name, set code, number, set name, variant, pack and notes.
+- **Details:** set, number, variant, category, HP, type, pack, condition, grade, price paid (and how its value compares now), storage place, plans, date added and notes.
+- **Edit:** change the name, set code, number, set name, variant, pack and notes, and under **This copy**: condition (NM, LP, MP, HP, DMG), grading company and grade, price paid, where it's stored, and your plans for it.
+- **Your copies:** if you own more than one of this card, a table lists every copy with its condition, storage place, plans, price paid and value. Click a row to open that copy.
+- **+ Add a copy:** adds another copy of the same card, then lets you set its condition.
 - **Find official card** or **Change official card:** search and pick the right official card.
 - **Retry official image:** appears if the official picture couldn't be downloaded earlier.
 - **Replace my photo** or **Add my photo:** a new photo is cut out automatically.
-- **Delete:** removes the card from your collection.
+- **Delete:** moves the card to the Trash (with **Undo**).
 - **Price history & graded sales:** see [section 10](#10-price-history-and-graded-sales-pokemonpricetracker).
 - **eBay sold prices:** see [section 9](#9-ebay-sold-prices).
 
@@ -184,6 +232,21 @@ When you open a card that isn't matched yet, the app tries to match it straight 
 - **Opening a pack** shows its cards, a search box for just that pack, and **Add cards from this pack**.
 - **Edit pack** lets you rename it, change its type or set, add notes, or **Replace photo**.
 - **Delete:** your cards are kept, and become "Not from a pack". You can choose to delete the pack's cards too.
+
+---
+
+## 6b. Set completion
+
+**Sets** shows each set you own cards from, with a progress bar and how many of its numbered cards you have. **Browse any set** opens any English or Japanese set, even ones you haven't started.
+
+A set's page shows:
+- **Cards owned, Total cards, Completion, Missing** and **Duplicate copies**;
+- **Est. value of missing:** click **Estimate** to price the cards you still need (it looks up each one, so it takes a moment);
+- **Goal:** **Main set** (the numbered cards, e.g. 1–193), **Master set** (also the secret rares numbered above that) or **Reverse holo set** (one reverse holo of every card that has one);
+- **Filters:** **All**, **Missing**, **Owned**, **Duplicates** and **Missing illustration rares**;
+- every card in the set: the ones you own in colour, the missing ones greyed out. Click a card you own to open it, or a missing one to see its price and **Add to my collection**.
+
+Rarities (for illustration rares and the reverse holo goal) are available for English sets.
 
 ---
 
@@ -301,7 +364,9 @@ The app runs on your computer, and your phone opens it in its browser.
 - Allow Node.js through the Windows Firewall on **Private** networks.
 - Make sure your Wi-Fi is set to **Private** (Settings → Network & internet → Wi-Fi → your network).
 
-**Away from home:** install **Tailscale** (free) on both the computer and the phone, and open `http://<computer-name>:3000`. Don't expose the app to the internet with port forwarding: it has no password.
+Sign in with your profile on the phone too.
+
+**Away from home:** install **Tailscale** (free) on both the computer and the phone, and open `http://<computer-name>:3000`. Don't expose the app to the internet with port forwarding, even with a password.
 
 ---
 
@@ -316,6 +381,9 @@ The app runs on your computer, and your phone opens it in its browser.
 | No official picture | Click **Update prices**, or **Retry official image** on the card. Very new promos may need a PokemonPriceTracker key. |
 | No price | Some cards have no recent sales. Prices are refreshed daily. |
 | A Japanese card wasn't matched | Check the bottom-left code and number (e.g. `SV2a 100/165`) and type them in. The Japanese name can be typed too. |
+| "You already have this card" when adding | The same card and variant is in your collection. Choose **Yes, add anyway** for another copy, or **No** to go back. |
+| An iPhone photo won't open | Turn on **Convert iPhone HEIC photos** in **Profile & settings**, or on the iPhone choose Settings → Camera → Formats → **Most Compatible**. |
+| Deleted a card by mistake | Open **Trash** at the top of the collection and **Restore** it (within 30 days). |
 | A card was read wrong | Fix the name, set code or number, and pick the right match. Blurry or dark photos are the usual cause. |
 | `npm` errors about `package.json` | PowerShell is in the wrong folder: `cd` into the app folder first. |
 | Phone can't connect | See [section 12](#12-using-it-on-your-phone). |

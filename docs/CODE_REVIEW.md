@@ -58,7 +58,7 @@ Tests were added for each fix. The credit-drain test was confirmed to fail witho
 
 | # | Severity | Problem | Suggested fix |
 | --- | --- | --- | --- |
-| S1 | Medium | **No password, and the server listens on every network interface.** Anyone on the same network (home Wi-Fi guests, a café if run on a laptop) can open, change or delete the collection. | Listen on `localhost` by default, and offer "Allow my phone" with a PIN. |
+| S1 | ~~Medium~~ Low | ~~No password.~~ **Fixed:** profiles with passwords and sign-in (scrypt, HttpOnly session cookie, login throttle). Still open: the server listens on every network interface, and there is no password reset. | Listen on `localhost` by default with an "Allow my phone" switch; add an owner-run reset. |
 | S2 | Low | The server downloads any `http(s)` address it's sent as an official picture, which could be used to probe the local network. | Accept only known image hosts (TCGdex, pokemontcg.io, Scrydex, TCGplayer CDN). |
 
 ### Data sources (risks)

@@ -35,9 +35,15 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Data lives in `DATA_DIR` (default `./data`): `collection.db` plus image folders. Back it up to keep the collection.
 
 ## Architecture (where to look)
-- `server/app.js`: Express 5 routes; `createApp({dataDir, catalog, ebay, priceTracker})` for DI in tests.
-- `server/db.js`: SQLite schema + migrations (`CARD_MIGRATIONS`). Tables: packs, cards, ebay_sales,
-  price_history, pricetracker_cache, api_usage.
+- `server/app.js`: Express 5 routes; `createApp({dataDir, catalog, ebay, priceTracker, requireLogin})` (tests pass
+  `requireLogin: false` → a built-in local user). `server/auth.js`: scrypt passwords, HttpOnly session cookie
+  (sha256 in `sessions`), 5 failures/10 min throttle. First profile = owner (claims old `user_id IS NULL` rows,
+  manages profiles). Public: `/api/meta`, `/api/desktop` (old launchers poll them), `/api/auth/*`.
+- `server/db.js`: SQLite schema + migrations (`CARD_MIGRATIONS`). Tables: users, sessions, packs, cards,
+  ebay_sales, price_history, pricetracker_cache, api_usage. **One row per physical copy** (condition, grade,
+  purchase_price, storage_location, status keep/trade/sell, deleted_at = trash, purged after 30 days);
+  copies group by `keyOf()` = tcg_id (or name|set|number) + variant. `queryCards` pages/groups, `#cardFilters`
+  ANDs every filter. `server/sets.js`: set checklists (TCGdex set cards, rarities from the dataset).
 - `server/catalog.js`: combines sources. TCGdex (`tcg.js`) first, then the PokemonTCG dataset
   (`ptcgData.js`, ids prefixed `ptcg:`), with prices from `prices.js` (TCGdex → tcgcsv backup).
 - `server/identify.js` + `setCodes.js`: turn OCR readings into a card (voting, misread fixes, name check).
@@ -45,9 +51,11 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - `server/ebay.js` + `soldStats.js`: Marketplace Insights client, sold stats, weekly/monthly trend.
 - `server/priceTracker.js` (client, tolerant parser) + `priceTrackerService.js` (credit budget, cache)
   + `scheduler.js` (hourly: daily price snapshot, then tracker top-ups).
-- `public/js/`: vanilla ES modules, no build step, hash routing. `vision.js` (OpenCV.js card finding
-  and warp), `ocr.js` (Tesseract.js), `ebay.js` (panel + `trendChart`), `history.js` (price history).
-  OpenCV and Tesseract are served from node_modules at `/vendor/*`, not a CDN.
+- `public/js/`: vanilla ES modules, no build step, hash routing. `views.js` (collection: Compact/Detailed/Table,
+  density, filters + presets, select + bulk bar, trash; card page with copies), `add.js` (read statuses,
+  progress, retry incl. 180°, duplicate Yes/No), `sets.js`, `account.js` (sign-in, profile, theme),
+  `vision.js` (OpenCV.js), `ocr.js` (Tesseract.js), `foilAsync.js` (foil maths in a Worker), `ebay.js`, `history.js`.
+  OpenCV, Tesseract and heic2any are served from node_modules at `/vendor/*`, not a CDN.
 - Tests: `tests/*.test.js`, mocks in `tests/helpers/mock-sources.js`, real dataset fixtures in
   `tests/fixtures/ptcg`, e2e in `tests/e2e/run.js` using the photos in `docs/reference/`.
 
@@ -86,27 +94,23 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - The GitHub repo's default branch was a `claude/...` branch instead of `main`, which made CodeRabbit
   skip PRs. PRs target `main`.
 
-## Current state (2026-10-30)
-- `main` holds everything through PR #4 (photo reading/cropping, eBay sold prices, price history +
-  PokemonPriceTracker). 81 unit tests + e2e pass.
+## Current state (2026-11-01)
+- `main` holds PRs #1–#9. PR #10 (open): Japanese cards + profiles/sign-in, inventory per copy, gallery views,
+  filters/bulk/trash/CSV, set completion, smarter recognition. 146 unit tests + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
-- **Japanese cards:** a second `TcgClient({ lang: 'ja' })` (ids `ja:SV2a-100`, the printed code = TCGdex set id).
-  `japaneseQuery` sends Japanese codes/names there. Identify compares names in the same script, and with no
-  Japanese reading it needs code + number + total. OCR loads the `jpn` model when a JP code is read. JP cards:
-  `language='ja'`, no pull chance, Cardmarket price → USD, no dataset/tcgcsv/PPT fallbacks, eBay matching weak.
-- Variant suggestion: `server/printings.js` (TCGdex `variants_detailed`/`variants`, price lines, rarity rules) →
-  `/api/catalog/cards/:id/printings`; `public/js/foil.js` (one-photo art-vs-body texture at 360 px, calibrated on
-  docs/reference; tilt scan = brightness change between angles) → hint + Use / Tilt scan in `add.js`. Never
-  auto-applied unless certain. Tilt thresholds are synthetic-tested only: tune with real tilt photos.
+- Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
+- Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
+  thresholds are synthetic-tested only: tune with real tilt photos.
+- Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
 - **See `docs/CODE_REVIEW.md`** for the prioritised list (bugs B1–B6 now fixed, desktop D1–D3, perf P1–P3, security S1–S2,
   data-source risks R1–R3, tech debt T1–T9). Biggest: R1 dataset is legacy (pull-chance rarity counts depend on it),
-  T1 no CI, S1 no password + listens on all interfaces, P1 sequential lookups. Users read `docs/USER_GUIDE.md`.
+  T1 no CI, S1 (now: sign-in added; still listens on all interfaces), P1 sequential lookups. Users read `docs/USER_GUIDE.md`.
 - Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`. Fix any parser gaps
   using their real responses.
 - Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.
-- No auth: the app is meant for a home network only.
+- Forgotten owner password: no reset flow yet (delete the `users`/`sessions` rows to rerun setup).
 
 ## Conventions
 - Plain, friendly UI text. The README is written for a non-developer.

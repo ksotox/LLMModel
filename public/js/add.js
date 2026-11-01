@@ -3,11 +3,12 @@
 
 import { api } from './api.js';
 import { editQuads } from './cropper.js';
-import { analyseCard, compareAngles, suggestVariant, VARIANT_NAMES } from './foil.js';
-import { biggestCardCanvas, cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
+import { suggestVariant, VARIANT_NAMES } from './foil.js';
+import { analyseCardAsync, compareAnglesAsync } from './foilAsync.js';
+import { biggestCardCanvas, canvasToBlob, cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
 import { describeBrief, lookupPanel } from './lookup.js';
 import { readCardText } from './ocr.js';
-import { clear, debounce, dropZone, h, KIND_LABELS, toast, VARIANT_LABELS } from './ui.js';
+import { clear, debounce, dropZone, h, KIND_LABELS, modal, toast, VARIANT_LABELS } from './ui.js';
 
 let keySeq = 0;
 const nextKey = () => `k${++keySeq}`;
@@ -166,6 +167,34 @@ function printingsOf(tcgId) {
 
 const pixels = (canvas) => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
 
+/** The same canvas turned upside down (for a card photographed the wrong way round). */
+function rotated180(canvas) {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width, out.height);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+// How good a reading is, to compare a second attempt with the first.
+const readScore = (r) => (r.match ? { high: 3, medium: 2, low: 1 }[r.confidence] ?? 1 : (r.read?.name ? 0.5 : 0) + (r.read?.number ? 0.4 : 0));
+
+// The three outcomes of reading a card, plus the states around them.
+const STATUS = {
+  queued: ['Waiting', 'Waiting to be read'],
+  reading: ['Reading…', 'Reading the card'],
+  recognized: ['Recognized', 'Matched to its official card'],
+  review: ['Review needed', 'Probably right: check it is the right card'],
+  unrecognized: ['Unrecognized', 'Couldn’t be read: type its details or read it again'],
+  confirmed: ['Checked', 'Checked or filled in by you'],
+};
+
+// Same grouping as the server's: the official card (or name + set + number) and the printing.
+const dupKey = (c) => `${c.tcg_id ?? `${String(c.name ?? '').trim().toLowerCase()}|${String(c.set_code ?? '').toUpperCase()}|${String(c.number ?? '').replace(/^0+/, '')}`}#${c.variant ?? 'normal'}`;
+
 export async function renderAddCards(root, meta, navigate, { packId } = {}) {
   const existingPacks = await api.packs();
   const codeList = setCodeList(meta);
@@ -215,6 +244,67 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
 
   // Cards are read one at a time: OCR is heavy and shares one worker.
   let readQueue = Promise.resolve();
+  const progress = { total: 0, done: 0 };
+  const progressBar = h('progress', { max: 1, value: 0 });
+  const progressText = h('span');
+  const progressEl = h('div.read-progress', { hidden: true, role: 'status', 'aria-live': 'polite' }, progressText, progressBar);
+  const batchSummary = h('div.batch-summary', { hidden: true });
+  let reviewOnly = false;
+
+  function drawProgress() {
+    const busy = progress.done < progress.total;
+    progressEl.hidden = !busy;
+    if (busy) {
+      progressText.textContent = `Reading card ${progress.done + 1} of ${progress.total}…`;
+      progressBar.max = progress.total;
+      progressBar.value = progress.done;
+    } else {
+      progress.total = progress.done = 0;
+    }
+  }
+
+  function queueRead(card, job) {
+    progress.total++;
+    drawProgress();
+    readQueue = readQueue.then(async () => {
+      if (allCards().includes(card)) await job().catch((err) => console.warn('Reading failed:', err));
+      progress.done++;
+      drawProgress();
+      drawSummary();
+    });
+  }
+
+  // After a batch: how many were recognized, need a look, or couldn't be read.
+  function drawSummary() {
+    const cards = allCards();
+    const busy = progress.done < progress.total;
+    const count = (...st) => cards.filter((c) => st.includes(c.status)).length;
+    const ok = count('recognized', 'confirmed');
+    const review = count('review');
+    const failed = count('unrecognized');
+    batchSummary.hidden = !cards.length || busy;
+    if (batchSummary.hidden) return;
+    if (!review && !failed && reviewOnly) setReviewOnly(false);
+    clear(batchSummary,
+      h('div.summary-counts',
+        h('span.read-status.recognized', `${ok} recognized`),
+        review > 0 && h('span.read-status.review', `${review} need${review === 1 ? 's' : ''} review`),
+        failed > 0 && h('span.read-status.unrecognized', `${failed} unrecognized`)),
+      h('div.actions.left',
+        (review || failed) > 0 && h('button.btn.small', { type: 'button', class: reviewOnly ? 'active' : '', onclick: () => setReviewOnly(!reviewOnly) },
+          reviewOnly ? 'Show all cards' : `Review ${review + failed} uncertain card${review + failed === 1 ? '' : 's'}`),
+        failed > 0 && h('button.btn.small.ghost', { type: 'button', onclick: () => { for (const c of cards.filter((x) => x.status === 'unrecognized')) c.retry(); } },
+          `Read ${failed === 1 ? 'it' : `all ${failed}`} again`)));
+  }
+
+  function setReviewOnly(on) {
+    reviewOnly = on;
+    sourceList.classList.toggle('review-only', on);
+    drawSummary();
+    if (on) sourceList.querySelector('.card-item.status-review, .card-item.status-unrecognized')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  const onStatusChange = debounce(() => { drawSummary(); updateSave(); }, 50);
 
   function makeCard(source, blob, previous = {}, canvas = null) {
     // After re-cropping, keep what the user typed; anything read automatically is read again.
@@ -232,6 +322,20 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       packRef: previous.packTouched ? previous.packRef : defaultPack(),
       packTouched: previous.packTouched ?? false,
       match: typed.match ?? null,
+      status: typed.touched ? 'confirmed' : 'queued',
+    };
+    const statusBadge = h('span.read-status', { role: 'status' });
+    const retryButton = h('button.btn.small.ghost', { type: 'button', hidden: true, onclick: () => card.retry() }, 'Read again');
+    card.setStatus = (status) => {
+      card.status = status;
+      const [label, title] = STATUS[status];
+      statusBadge.className = `read-status ${status}`;
+      statusBadge.textContent = label;
+      statusBadge.title = title;
+      card.el?.classList.remove(...Object.keys(STATUS).map((k) => `status-${k}`));
+      card.el?.classList.add(`status-${status}`);
+      retryButton.hidden = !canvas || !['review', 'unrecognized'].includes(status);
+      onStatusChange();
     };
     const nameIn = h('input', { type: 'text', value: card.name, placeholder: 'e.g. Voltorb', autocomplete: 'off' });
     const codeIn = h('input.code', { type: 'text', value: card.set_code, placeholder: 'PAL', list: codeList, maxLength: 6, autocomplete: 'off' });
@@ -275,12 +379,12 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       if (!canvas) return;
       const seq = ++hintSeq;
       try {
-        photoFoil ??= analyseCard(pixels(canvas));
+        photoFoil ??= await analyseCardAsync(pixels(canvas));
         const printings = card.match?.tcgId ? await printingsOf(card.match.tcgId) : null;
         let angles = null;
         if (tiltFrames.length) {
           try {
-            angles = compareAngles([canvas, ...tiltFrames].map(pixels));
+            angles = await compareAnglesAsync([canvas, ...tiltFrames].map(pixels));
           } catch (err) {
             toast(err.message, 'error');
           }
@@ -320,6 +424,8 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       onSelect: (brief) => {
         card.touched = true;
         card.match = brief;
+        card.setStatus(brief ? 'confirmed' : card.status);
+        card.el.classList.remove('duplicate');
         if (brief) {
           nameIn.value = card.name = brief.name;
           if (brief.setCode) codeIn.value = card.set_code = brief.setCode;
@@ -333,6 +439,8 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const runSearch = debounce(() => panel.search({ name: card.name, setCode: card.set_code, number: card.number }), 500);
     const onField = () => {
       card.touched = true;
+      if (card.status !== 'reading') card.setStatus('confirmed');
+      card.el.classList.remove('duplicate');
       card.name = nameIn.value;
       card.set_code = codeIn.value.toUpperCase();
       card.number = numIn.value;
@@ -345,50 +453,85 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     };
     for (const input of [nameIn, codeIn, numIn]) input.addEventListener('input', onField);
 
-    // Read the name, set code and number off the photo and fill them in (unless the user got there first),
-    // then suggest the variant.
+    // Read the name, set code and number off the photo and fill them in, then suggest the variant.
+    // Automatic reading never overwrites what the user typed: a field they filled stays as it is,
+    // and a match found after they started typing is offered in the list rather than picked.
     card.autoRead = async () => {
-      await readCard();
+      if (card.touched || card.match) {
+        if (card.status === 'queued') card.setStatus('confirmed');
+      } else {
+        await readCard();
+      }
       await card.updateVariantHint();
     };
-    const readCard = async () => {
-      if (!canvas || card.touched || card.match) return;
+    card.retry = () => {
+      card.setStatus('queued');
+      queueRead(card, () => readCard({ retry: true }));
+    };
+    const readCard = async ({ retry = false } = {}) => {
+      if (!canvas) return;
+      card.setStatus('reading');
       readNote.className = 'read-note busy';
-      readNote.textContent = 'Reading the card…';
+      readNote.textContent = retry ? 'Reading the card again…' : 'Reading the card…';
       try {
-        const texts = await readCardText(canvas);
-        const result = await api.identify(texts);
-        if (card.touched || card.match) {
-          readNote.textContent = '';
-          return;
+        let result = await api.identify(await readCardText(canvas));
+        // A second try also reads the card upside down, in case it was photographed that way.
+        if (retry && readScore(result) < 3) {
+          const flipped = rotated180(canvas);
+          const other = await api.identify(await readCardText(flipped)).catch(() => null);
+          if (other && readScore(other) > readScore(result)) {
+            result = other;
+            canvas = flipped;
+            photoFoil = null;
+            card.blob = await canvasToBlob(flipped, 'card', { transparent: true });
+            URL.revokeObjectURL(card.preview);
+            card.preview = URL.createObjectURL(card.blob);
+            card.el.querySelector('.card-item-photo img').src = card.preview;
+          }
         }
+        const typed = card.touched;
         const fill = (name, code, number) => {
-          if (name) nameIn.value = card.name = name;
-          if (code) codeIn.value = card.set_code = code;
-          if (number) numIn.value = card.number = number;
+          // Only empty fields are filled once the user has typed something.
+          if (name && (!typed || !nameIn.value.trim())) nameIn.value = card.name = name;
+          if (code && (!typed || !codeIn.value.trim())) codeIn.value = card.set_code = code;
+          if (number && (!typed || !numIn.value.trim())) numIn.value = card.number = number;
         };
-        if (result.match) {
+        if (result.match && !card.match) {
           const m = result.match;
-          fill(m.name, m.setCode, m.setTotal ? `${m.number}/${m.setTotal}` : m.number);
-          card.match = m;
-          panel.show(result.candidates, m.tcgId);
-          readNote.className = `read-note ${result.confidence}`;
-          readNote.textContent = result.confidence === 'high' ? '✓ Read from the photo' : 'Read from the photo — please check it’s the right card';
-        } else {
+          if (typed) {
+            panel.show(result.candidates, null);
+            readNote.className = 'read-note medium';
+            readNote.textContent = `Read from the photo: ${m.name} · ${describeBrief(m)}. Pick it below if it’s right (your details were kept).`;
+            card.setStatus('review');
+          } else {
+            fill(m.name, m.setCode, m.setTotal ? `${m.number}/${m.setTotal}` : m.number);
+            card.match = m;
+            panel.show(result.candidates, m.tcgId);
+            readNote.className = `read-note ${result.confidence}`;
+            readNote.textContent = result.confidence === 'high' ? '✓ Read from the photo' : 'Read from the photo — please check it’s the right card';
+            card.setStatus(result.confidence === 'high' ? 'recognized' : 'review');
+          }
+        } else if (!card.match) {
           const r = result.read;
           fill(r.name, r.setCode, r.number && (r.total ? `${r.number}/${r.total}` : r.number));
           if (result.candidates.length) panel.show(result.candidates, null);
           else if (card.name || card.number) panel.search({ name: card.name, setCode: card.set_code, number: card.number });
+          const partly = card.name || card.number;
           readNote.className = 'read-note low';
-          readNote.textContent = card.name || card.number
+          readNote.textContent = partly
             ? 'Partly read from the photo — pick the right card below or fix the details'
-            : 'Couldn’t read this card — type its name, or the set code and number';
+            : 'Couldn’t read this card — type its name, or the set code and number, or read it again';
+          card.setStatus(typed ? 'confirmed' : partly ? 'review' : 'unrecognized');
+        } else {
+          readNote.textContent = '';
+          card.setStatus('confirmed');
         }
         showMatch();
         updateSave();
       } catch (err) {
         readNote.className = 'read-note low';
-        readNote.textContent = `Couldn’t read this card automatically (${err.message}). Type its details instead.`;
+        readNote.textContent = `Couldn’t read this card automatically (${err.message}). Type its details or read it again.`;
+        card.setStatus(card.touched ? 'confirmed' : 'unrecognized');
       }
     };
 
@@ -407,7 +550,10 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         matchNote,
         panel.el),
       h('div.item-actions',
+        statusBadge,
+        retryButton,
         h('button.btn.small.ghost', { type: 'button', onclick: () => removeCard(source, card) }, 'Remove')));
+    card.setStatus(card.status);
     card.nameInput = nameIn;
     showMatch();
     if (card.name || (card.set_code && card.number)) panel.search({ name: card.name, setCode: card.set_code, number: card.number });
@@ -420,12 +566,14 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     if (!source.cards.length) removeSource(source);
     renderSourceHead(source);
     updateSave();
+    drawSummary();
   }
 
   function removeSource(source) {
     sources.splice(sources.indexOf(source), 1);
     source.el.remove();
     updateSave();
+    drawSummary();
   }
 
   function renderSourceHead(source) {
@@ -452,7 +600,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     clear(source.body, cards.map((c) => c.el));
     renderSourceHead(source);
     updateSave();
-    for (const card of cards) readQueue = readQueue.then(() => card.autoRead());
+    for (const card of cards) queueRead(card, () => card.autoRead());
   }
 
   async function adjustSource(source) {
@@ -465,6 +613,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
   async function addPhotos(files) {
     for (const file of files) {
       try {
+        if (/\.(heic|heif)$/i.test(file.name ?? '') || /hei[cf]/i.test(file.type ?? '')) toast(`Opening the iPhone photo “${file.name}”…`, 'info');
         const img = await loadImage(file);
         const { quads } = await cardQuads(img);
         const source = { key: nextKey(), img, name: file.name || 'Photo', cards: [], quads: [] };
@@ -488,7 +637,62 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const matched = cards.filter((c) => c.match).length;
     save.disabled = !cards.length;
     save.textContent = cards.length ? `Save ${cards.length} card${cards.length === 1 ? '' : 's'}` : 'Save cards';
-    summary.textContent = cards.length ? `${matched} of ${cards.length} matched to an official card` : 'Upload card photos to get started';
+    const review = cards.filter((c) => c.status === 'review' || c.status === 'unrecognized').length;
+    summary.textContent = cards.length
+      ? `${matched} of ${cards.length} matched to an official card${review ? ` · ${review} to review` : ''}`
+      : 'Upload card photos to get started';
+  }
+
+  const describe = (c) => {
+    const d = details(c);
+    return [d.name, [d.set_code, d.number && (d.set_total ? `${d.number}/${d.set_total}` : d.number)].filter(Boolean).join(' '), d.variant !== 'normal' && (VARIANT_LABELS[d.variant] ?? d.variant)].filter(Boolean).join(' · ');
+  };
+  const details = (c) => ({
+    name: c.name.trim() || c.match?.name, set_code: c.set_code.trim() || c.match?.setCode || null, ...splitNumber(c.number),
+    variant: c.variant, tcg_id: c.match?.tcgId ?? null,
+  });
+
+  /**
+   * Before saving: warn about cards already in the collection (or twice in this batch) and ask
+   * whether to add them anyway. Returns true to go ahead.
+   */
+  async function duplicateCheck(cards) {
+    let owned = [];
+    try {
+      ({ owned } = await api.duplicates(cards.map(details)));
+    } catch {
+      return true; // the check is a convenience: never block saving on it
+    }
+    const seen = new Map();
+    const hits = [];
+    cards.forEach((c, i) => {
+      const key = dupKey(details(c));
+      const before = seen.get(key) ?? 0;
+      seen.set(key, before + 1);
+      if (owned[i] > 0 || before > 0) hits.push({ card: c, owned: owned[i] ?? 0, earlier: before });
+    });
+    for (const c of cards) c.el.classList.remove('duplicate');
+    if (!hits.length) return true;
+    const yes = await new Promise((resolve) => {
+      let answer = false;
+      modal((close) => h('div.confirm.duplicate-check',
+        h('h2', hits.length === 1 ? 'You already have this card' : `You already have ${hits.length} of these cards`),
+        h('ul.duplicate-list', hits.map(({ card, owned: n, earlier }) => h('li',
+          h('img', { src: card.preview, alt: '' }),
+          h('span', h('strong', describe(card)), h('br'),
+            h('span.muted', [n > 0 && `${n} already in your collection`, earlier > 0 && 'also earlier in this batch'].filter(Boolean).join(' · ')))))),
+        h('p', `Would you like to add ${hits.length === 1 ? 'it' : 'them'} anyway?`),
+        h('div.actions',
+          h('button.btn', { type: 'button', onclick: close }, 'No'),
+          h('button.btn.primary', { type: 'button', onclick: () => { answer = true; close(); } }, 'Yes, add anyway'))),
+      { onClose: () => resolve(answer) });
+    });
+    if (!yes) {
+      for (const { card } of hits) card.el.classList.add('duplicate');
+      hits[0].card.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      toast('Nothing saved. Duplicates are marked — remove the ones you don’t want, then save.', 'info');
+    }
+    return yes;
   }
 
   save.addEventListener('click', async () => {
@@ -501,6 +705,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       }
       const usedNew = new Set(cards.filter((c) => c.packRef.startsWith('n:')).map((c) => c.packRef.slice(2)));
       if (packChoice.value === 'new') newPacks.validate();
+      if (!(await duplicateCheck(cards))) return;
       save.disabled = true;
       save.textContent = 'Saving…';
 
@@ -550,7 +755,9 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       newPackWrap),
     h('section.panel',
       h('h2.step', h('span.step-num', '2'), 'Card photos'),
-      dropZone({ label: 'Drop card photos here', hint: 'Single cards or several cards per photo. JPEG or PNG.', onFiles: addPhotos }),
+      dropZone({ label: 'Drop card photos here', hint: 'Single cards or several cards per photo. JPEG, PNG or iPhone HEIC.', onFiles: addPhotos }),
+      progressEl,
+      batchSummary,
       sourceList),
     h('div.save-bar', summary, save));
 

@@ -100,6 +100,13 @@ describe('collection management', () => {
     assert.equal((await call('GET', `/api/cards/${ids[2]}`)).body.condition, null, 'unknown conditions are cleared, not stored');
   });
 
+  test('the filter choices offered are the rarities, types and storage places in use', async () => {
+    const { facets } = (await call('GET', '/api/meta')).body;
+    assert.ok(facets.rarities.includes('Common'));
+    assert.ok(facets.types.includes('Lightning'), `types split from "Lightning, …" lists: ${facets.types}`);
+    assert.ok(facets.storage.includes('Binder 1, page 3'));
+  });
+
   test('deleting goes to the trash, with undo; the trash can be listed', async () => {
     const r = await call('POST', '/api/cards/bulk', { ids: [ids[0], ids[1]], action: 'trash' });
     assert.deepEqual([r.body.changed, r.body.stats.cards, r.body.stats.in_trash], [2, 3, 2]);

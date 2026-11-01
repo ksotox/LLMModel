@@ -24,7 +24,7 @@ function marketBlock(market) {
         : h('span.muted', 'No price found right now')));
 }
 
-async function openCatalogCard(brief, meta, onAdded) {
+export async function openCatalogCard(brief, meta, onAdded) {
   const body = h('div.card-detail', h('p.muted', 'Loading card details…'));
   const { dialog } = modal(body, { wide: true });
   const packs = await api.packs();
