@@ -7,7 +7,7 @@ Everything the app calls at run time is **free**. Only PokemonPriceTracker needs
 
 | Service | Base URL (env override) | Used for | Code | Key? |
 | --- | --- | --- | --- | --- |
-| **TCGdex** REST API v2 | `https://api.tcgdex.net/v2/en` (`TCGDEX_URL`) | Main card database: sets, cards, name search, rarity, TCGplayer/Cardmarket prices, TCGplayer product id | `server/tcg.js` | No |
+| **TCGdex** REST API v2 | `https://api.tcgdex.net/v2/en` (`TCGDEX_URL`) | Main card database: sets, cards, name search, rarity, TCGplayer/Cardmarket prices, TCGplayer product id, and each card's printings (`variants_detailed`: normal / reverse / holo, pattern foils, stamps) for the variant suggestion | `server/tcg.js` | No |
 | **TCGdex assets** | `https://assets.tcgdex.net/en/<series>/<set>/<number>/high.png` | Official card images (a local copy is saved) | `server/tcg.js` | No |
 | **Pokémon TCG dataset** (GitHub, PokemonTCG/pokemon-tcg-data) | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` (`PTCG_DATA_URL`) | Second card source and images when TCGdex has no match; rarity counts per set for pull chances | `server/ptcgData.js` | No |
 | **pokemontcg.io image CDN** (`images.pokemontcg.io`) | URLs come from the dataset above | Card images for cards found in the dataset | `server/ptcgData.js` | No |

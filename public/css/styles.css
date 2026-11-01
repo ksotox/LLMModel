@@ -610,6 +610,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 
 /* ---------- Reading cards from photos ---------- */
 
+.variant-hint:empty { display: none; }
+.variant-hint { margin: -2px 0 8px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 0.86rem; }
+.variant-suggestion { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.variant-reasons { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.8rem; }
+.variant-reasons:empty { display: none; }
+.variant-hint p { margin: 4px 0 0; }
 .read-note { font-size: 0.85rem; font-weight: 600; }
 .read-note:empty { display: none; }
 .read-note.busy { color: var(--muted); }

@@ -24,7 +24,7 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
 | 2026-10-30 | PR #7 merged | Promo pictures from TCGplayer; all prices in US dollars |
 | 2026-10-30 | PR #8 merged | tcgcsv 401: app User-Agent, promo pictures via PokemonPriceTracker; desktop app that updates itself |
-| 2026-11-01 | PR #9 | User guide, code review; fixes: updater data safety, credit drain, cross-site requests |
+| 2026-11-01 | PR #9 | User guide, code review; fixes: updater data safety, credit drain, cross-site requests; bugs B1–B6; variant suggestion (printings, foil in photo, tilt scan) |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -278,6 +278,29 @@ The owner chose "find a free way".
 - **F4:** the hourly job skipped unmatched cards with no set code.
 
 Tests cover each fix, and the credit-drain test fails without its fix. 102 tests pass.
+
+## Phase 13: remaining bugs and variant detection
+
+**Asked:**
+- fix the remaining bugs;
+- suggest each card's variant with a confidence level the user confirms, using three methods:
+  - a region comparison (art box vs body);
+  - a tilt scan;
+  - TCGdex's printing data.
+
+**Fixed:** bugs B1–B6 and P3 from the code review (overlapping refreshes, re-matching after a number change, HEIC message, set sort, image extensions, a stats count, the `tcg_id` index). Each has a test that fails without its fix.
+
+**Built:**
+- **`server/printings.js` + `GET /api/catalog/cards/:id/printings`:** the allowed printings come from TCGdex `variants_detailed` / `variants`, then from TCGplayer price lines. Rarity rules make some answers certain: Illustration, Special Illustration, Ultra and Hyper rares, and secret rares (number above the set total), are full art; Double Rares (ex) are holo; promos are Promo. Pattern foils and stamps are reported as notes.
+- **`public/js/foil.js`:**
+  - normalises every card to 360 px wide;
+  - measures fine texture in 8×8 background blocks of the art box and the body, skipping ink and glare;
+  - calibrated on the reference photos: normal bodies ≈ 0.004 (body ÷ art ≈ 0.25–0.44), reverse holo ≈ 0.012 (≈ 0.95), full foil ≈ 0.033 (≈ 1.9);
+  - single-photo confidence is capped at 85%;
+  - the tilt scan compares brightness-evened, slightly blurred cut-outs from 2–3 angles.
+- **Add cards:** a suggestion line under Variant with **Use** and **Tilt scan** / **Add another angle**, the reasons, and pattern-foil notes. Only a certain printing is filled in automatically.
+- **Results on real photos:** the normal Voltorb, Punk Helmet and Linoone came out Normal (body foil chance 6–12%); the Voltorb close-up came out Reverse holo (88%).
+- **Limits:** the tilt-scan thresholds are only tested on synthetic cards and need real tilt photos to tune. Pattern foils and stamps aren't detected from the image.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

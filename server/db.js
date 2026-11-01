@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS cards (
 
 CREATE INDEX IF NOT EXISTS idx_cards_pack ON cards(pack_id);
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at);
+CREATE INDEX IF NOT EXISTS idx_cards_tcg ON cards(tcg_id);
 
 -- eBay sold listings found for a card (from eBay's API or pasted from eBay.com).
 CREATE TABLE IF NOT EXISTS ebay_sales (
@@ -220,7 +221,8 @@ class Store {
     const order = {
       oldest: 'c.created_at ASC, c.id ASC',
       name: 'c.name COLLATE NOCASE ASC, c.id DESC',
-      set: "c.set_code COLLATE NOCASE ASC, CAST(c.number AS INTEGER) ASC, c.id DESC",
+      // "TG05", "GG12" and "SV001" sort by their prefix, then their digits.
+      set: "c.set_code COLLATE NOCASE ASC, RTRIM(c.number, '0123456789') COLLATE NOCASE ASC, CAST(LTRIM(c.number, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') AS INTEGER) ASC, c.id DESC",
       value: 'c.market_price IS NULL, c.market_price DESC, c.id DESC',
       rarity: 'c.pull_chance IS NULL, c.pull_chance ASC, c.id DESC',
     }[sort] ?? 'c.created_at DESC, c.id DESC';
@@ -368,7 +370,7 @@ class Store {
         (SELECT COUNT(*) FROM cards) AS cards,
         (SELECT COUNT(DISTINCT IFNULL(tcg_id, LOWER(name) || '|' || IFNULL(set_code, '') || '|' || IFNULL(number, ''))) FROM cards) AS unique_cards,
         (SELECT COUNT(*) FROM packs) AS packs,
-        (SELECT COUNT(*) FROM cards WHERE official_image_url IS NOT NULL) AS with_official,
+        (SELECT COUNT(*) FROM cards WHERE official_image_path IS NOT NULL) AS with_official,
         (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'USD') AS value_usd,
         (SELECT ROUND(IFNULL(SUM(market_price), 0), 2) FROM cards WHERE market_currency = 'EUR') AS value_eur,
         (SELECT COUNT(*) FROM cards WHERE market_price IS NOT NULL) AS priced`).get();

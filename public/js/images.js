@@ -11,7 +11,9 @@ export function loadImage(file) {
     img.onload = () => resolve(Object.assign(img, { objectUrl: url }));
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error(`Couldn't read "${file.name}". Try a JPEG or PNG photo.`));
+      reject(new Error(/\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type)
+        ? `"${file.name}" is an iPhone HEIC photo, which this browser can't open. On the iPhone, choose Settings → Camera → Formats → Most Compatible, or upload it from the phone itself (it converts automatically).`
+        : `Couldn't read "${file.name}". Try a JPEG or PNG photo.`));
     };
     img.src = url;
   });
@@ -79,6 +81,14 @@ export async function cutCard(img, quad, name = 'card') {
   const width = Math.min(1100, Math.max(734, (side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2));
   const canvas = await warpCard(img, quad, { width });
   return { canvas, blob: await canvasToBlob(canvas, name, { transparent: true }) };
+}
+
+/** The biggest card in a photo, straightened onto a canvas `width` wide (for a tilt scan). */
+export async function biggestCardCanvas(img, width) {
+  const { quads } = await cardQuads(img);
+  const area = (q) => Math.abs((q[2].x - q[0].x) * (q[2].y - q[0].y));
+  const quad = [...quads].sort((a, b) => area(b) - area(a))[0];
+  return warpCard(img, quad, { width });
 }
 
 /** Cut any rectangle-ish region (e.g. a pack) out along its quad, keeping its own proportions. */

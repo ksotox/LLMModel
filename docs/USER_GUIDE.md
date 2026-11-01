@@ -95,7 +95,22 @@ All of this happens inside your browser: your photos aren't sent to any outside 
 
   Three buttons help too: **Auto-detect cards** tries again, **Split evenly: N × N** splits a neat grid of cards, and **Whole photo** treats the photo as one card. Click **Apply** when you're done.
 - **The wrong card was matched, or none was.** Type the **set code** and **number** from the bottom-left corner of the card (for example `PAL` and `066/193`), or just the name. Pick the right card from the matches that appear. Anything you type is never overwritten by the automatic reading.
-- **Variant.** Set it if the card is a **reverse holo**, **holo**, **full art** or **promo**. It changes the price and pull chance.
+- **Variant.** Normal, **reverse holo**, **holo**, **full art** or **promo**. It changes the price and pull chance. The app suggests it (see below).
+
+### The variant suggestion
+Under each card's **Variant** box you'll see something like **✨ Suggested: Reverse holo · 85% sure**, with the reasons. Click **Use** to accept it. The app never changes the variant on its own unless the answer is certain.
+
+It combines three things:
+1. **Which printings exist.** The online card database lists the printings each card was made in. For example, a common Voltorb exists only as normal or reverse holo. Some answers are certain and filled in for you, marked **certain**:
+   - **Full art:** ex Illustration Rares, Special Illustration Rares and Hyper Rares.
+   - **Full art:** any card whose number is above the set total (e.g. `190/182`), which makes it a secret rare.
+   - **Holo:** "Double Rare" ex cards.
+   - **Promo:** promo cards.
+   - **Only one printing:** filled in as that printing.
+
+   If a card also exists with a special **Poké Ball or Master Ball pattern** foil, or with a stamp, the suggestion says so. Those you check by eye.
+2. **The foil in your photo.** Foil has a fine sparkle texture that printed ink doesn't, so the app compares the area around the attacks with the artwork. A sparkly body next to the art means **reverse holo**; a smooth one means **normal** (or **holo** for rares). Glare on a glossy card can fool a single photo, so it's never more than 85% sure.
+3. **Tilt scan (most reliable).** Click **Tilt scan** and take 1–2 more photos of the same card in the same light, tilting it a little left or right each time. On a phone, the camera opens. Foil changes its shine as the card tilts, and ink doesn't, so this tells normal, reverse holo, holo and full art apart. **Add another angle** takes a third photo.
 
 ### Step 3: Save
 Click **Save N cards**. The date added is recorded automatically. Each card is saved with:

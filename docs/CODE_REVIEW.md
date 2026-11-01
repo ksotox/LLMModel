@@ -13,18 +13,30 @@ A review of the whole codebase as of 2026-11-01 (after PR #8). Severity: **Criti
 
 Tests were added for each fix. The credit-drain test was confirmed to fail without the fix: `npm test` has 102 tests, all passing, and `npm run test:e2e` passes.
 
+## Fixed in the follow-up (bugs B1–B6, P3)
+
+| # | Fix |
+| --- | --- |
+| B1 | `refreshCardMarket` shares one lookup per card while it runs (the hourly job, Update prices and opening a card no longer double up). Test: two simultaneous updates make one lookup. |
+| B2 | Changing a linked card's set code or number re-matches it (`findOfficialCard`) instead of keeping the old link. Older saves with a `/000` total aren't treated as changed. |
+| B3 | A HEIC photo the browser can't open gets an explanation and how to fix it on the iPhone. |
+| B4 | "Set & number" sorts by prefix, then digits (`9, 10, TG05, TG12`). |
+| B5 | Official images use the right extension for every image type, and the "already saved" check knows them all. |
+| B6 | `with_official` counts saved pictures. |
+| P3 | Index on `cards.tcg_id`. |
+
 ## Open findings
 
 ### Bugs
 
 | # | Severity | Problem | Suggested fix |
 | --- | --- | --- | --- |
-| B1 | Medium | **Overlapping refreshes.** The hourly job, **Update prices** and opening a card can all run `refreshCardMarket` on the same card at once. That means duplicate network calls, possibly duplicate PokemonPriceTracker searches, and the last write wins. | Give `refreshCardMarket` the same per-card "in flight" sharing that `PriceTrackerService.refresh` already has, and let **Update prices** skip cards already checked in the last hour. |
-| B2 | Low | **Editing the set code or number of a linked card keeps the old link.** `PATCH /api/cards/:id` re-prices, but `tcg_id`, the official picture and the details still point at the old card. | When `set_code`/`number` change on a linked card, unlink it and run `findOfficialCard` again (or ask the user). |
-| B3 | Low | **HEIC photos** (iPhone files copied to a PC) are accepted by the server, but Chrome/Edge on Windows can't decode them, so cutting out the card fails. | Say so in the error message. Or convert on the server, which would need an image library (e.g. `sharp`, a native dependency). |
-| B4 | Low | **"Set & number" sort** casts numbers to integers, so `TG05`, `GG12` and `SV001` sort as 0. | Sort by the leading letters, then the digits. |
-| B5 | Low | **Official images download with a fixed extension list.** A GIF is saved as `.png`, and the "already downloaded" check only looks for `.png`/`.jpg`/`.webp`. | Map every image type, and check by base name. |
-| B6 | Low | `stats.with_official` counts cards with an official *URL*, not a saved picture. It isn't shown anywhere. | Count `official_image_path`, or remove it. |
+| B1 | ~~Medium~~ fixed | **Overlapping refreshes.** The hourly job, **Update prices** and opening a card can all run `refreshCardMarket` on the same card at once. That means duplicate network calls, possibly duplicate PokemonPriceTracker searches, and the last write wins. | Give `refreshCardMarket` the same per-card "in flight" sharing that `PriceTrackerService.refresh` already has, and let **Update prices** skip cards already checked in the last hour. |
+| B2 | ~~Low~~ fixed | **Editing the set code or number of a linked card keeps the old link.** `PATCH /api/cards/:id` re-prices, but `tcg_id`, the official picture and the details still point at the old card. | When `set_code`/`number` change on a linked card, unlink it and run `findOfficialCard` again (or ask the user). |
+| B3 | ~~Low~~ fixed | **HEIC photos** (iPhone files copied to a PC) are accepted by the server, but Chrome/Edge on Windows can't decode them, so cutting out the card fails. | Say so in the error message. Or convert on the server, which would need an image library (e.g. `sharp`, a native dependency). |
+| B4 | ~~Low~~ fixed | **"Set & number" sort** casts numbers to integers, so `TG05`, `GG12` and `SV001` sort as 0. | Sort by the leading letters, then the digits. |
+| B5 | ~~Low~~ fixed | **Official images download with a fixed extension list.** A GIF is saved as `.png`, and the "already downloaded" check only looks for `.png`/`.jpg`/`.webp`. | Map every image type, and check by base name. |
+| B6 | ~~Low~~ fixed | `stats.with_official` counts cards with an official *URL*, not a saved picture. It isn't shown anywhere. | Count `official_image_path`, or remove it. |
 
 ### Desktop app
 
@@ -40,7 +52,7 @@ Tests were added for each fix. The credit-drain test was confirmed to fail witho
 | --- | --- | --- | --- |
 | P1 | Medium | **Everything is one card at a time.** Saving 10 cards looks each one up in turn, and **Update prices** walks the whole collection in one request with no progress shown. With a few hundred cards that's minutes of waiting. | Do lookups 4 at a time, and run **Update prices** as a background job the page can follow ("Updating 37 of 212…"). |
 | P2 | Low | **In-memory caches never shrink.** TCGdex, tcgcsv (several MB of products per set) and exchange-rate caches only expire entries when they're read again. | Cap them (small LRU) or sweep expired entries. |
-| P3 | Low | **No index on `cards.tcg_id`**, which is used to show "Owned ×N" on search results. | `CREATE INDEX idx_cards_tcg ON cards(tcg_id)`. |
+| P3 | ~~Low~~ fixed | **No index on `cards.tcg_id`**, which is used to show "Owned ×N" on search results. | `CREATE INDEX idx_cards_tcg ON cards(tcg_id)`. |
 
 ### Security
 

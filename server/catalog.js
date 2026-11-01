@@ -1,5 +1,6 @@
 import { ExchangeRates } from './fx.js';
 import { priceFromTcgdex, TcgCsvClient } from './prices.js';
+import { printingsFor } from './printings.js';
 import { PtcgDataClient } from './ptcgData.js';
 import { pullChance } from './pullRates.js';
 import { TcgClient } from './tcg.js';
@@ -94,6 +95,38 @@ export class CardCatalog {
     const raw = await this.tcgdex.card(id).catch(() => null);
     const line = Object.values(raw?.pricing?.tcgplayer ?? {}).find((l) => l && typeof l === 'object' && l.productId);
     return line ? String(line.productId) : null;
+  }
+
+  /**
+   * Which printings (variants) a card exists in, so impossible ones can be ruled out:
+   * { allowed, fixed, reason, notes, source }, or null when the card isn't found.
+   */
+  async printings(id) {
+    let details;
+    let raw = null;
+    if (isPtcg(id)) {
+      details = await this.ptcg.details(id);
+      // The dataset has no printing list: use the same card on TCGdex when there is one.
+      if (details?.set_code && details.number) {
+        const [twin] = await this.tcgdex.search({ setCode: details.set_code, number: details.number }).catch(() => []);
+        if (twin) raw = await this.tcgdex.card(twin.tcgId).catch(() => null);
+      }
+    } else {
+      raw = await this.tcgdex.card(id);
+      details = raw ? await this.details(id) : null;
+    }
+    if (!details) return null;
+    const lines = raw?.pricing?.tcgplayer ?? {};
+    return printingsFor({
+      variantsDetailed: raw?.variants_detailed,
+      variants: raw?.variants,
+      priceLines: Object.keys(lines).filter((k) => lines[k] && typeof lines[k] === 'object'),
+      rarity: details.rarity,
+      number: details.number,
+      setTotal: details.set_total,
+      setName: details.set_name,
+      setId: details.set_id,
+    });
   }
 
   /** Download an image; returns { buffer, contentType } or null when unavailable. */

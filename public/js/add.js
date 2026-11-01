@@ -3,7 +3,8 @@
 
 import { api } from './api.js';
 import { editQuads } from './cropper.js';
-import { cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
+import { analyseCard, compareAngles, suggestVariant, VARIANT_NAMES } from './foil.js';
+import { biggestCardCanvas, cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
 import { describeBrief, lookupPanel } from './lookup.js';
 import { readCardText } from './ocr.js';
 import { clear, debounce, dropZone, h, KIND_LABELS, toast, VARIANT_LABELS } from './ui.js';
@@ -151,6 +152,20 @@ export function renderAddPacks(root, meta, navigate) {
 // ---------------------------------------------------------------------------
 // Card flow
 
+// Which printings each official card exists in (asked once per card id).
+const printingsCache = new Map();
+function printingsOf(tcgId) {
+  if (!printingsCache.has(tcgId)) {
+    printingsCache.set(tcgId, api.printings(tcgId).catch(() => {
+      printingsCache.delete(tcgId);
+      return null;
+    }));
+  }
+  return printingsCache.get(tcgId);
+}
+
+const pixels = (canvas) => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+
 export async function renderAddCards(root, meta, navigate, { packId } = {}) {
   const existingPacks = await api.packs();
   const codeList = setCodeList(meta);
@@ -213,6 +228,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       set_code: typed.set_code ?? '',
       number: typed.number ?? '',
       variant: previous.variant ?? 'normal',
+      variantTouched: previous.variantTouched ?? false,
       packRef: previous.packTouched ? previous.packRef : defaultPack(),
       packTouched: previous.packTouched ?? false,
       match: typed.match ?? null,
@@ -220,7 +236,76 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const nameIn = h('input', { type: 'text', value: card.name, placeholder: 'e.g. Voltorb', autocomplete: 'off' });
     const codeIn = h('input.code', { type: 'text', value: card.set_code, placeholder: 'PAL', list: codeList, maxLength: 6, autocomplete: 'off' });
     const numIn = h('input.num', { type: 'text', value: card.number, placeholder: '066/193', autocomplete: 'off', inputMode: 'text' });
-    const variant = select(meta.variants.map((v) => [v, VARIANT_LABELS[v] ?? v]), card.variant, { onchange: () => { card.variant = variant.value; } });
+    const variant = select(meta.variants.map((v) => [v, VARIANT_LABELS[v] ?? v]), card.variant, {
+      onchange: () => {
+        card.variant = variant.value;
+        card.variantTouched = true;
+        card.updateVariantHint();
+      },
+    });
+
+    // Variant suggestion: which printings exist (TCGdex), the foil texture in this photo, and an
+    // optional tilt scan. A certain answer is filled in; anything else waits for "Use".
+    const variantHint = h('div.variant-hint', { 'aria-live': 'polite' });
+    const tiltFrames = [];
+    let photoFoil = null;
+    let hintSeq = 0;
+    const setVariant = (value, byUser) => {
+      if (!meta.variants.includes(value)) return;
+      variant.value = card.variant = value;
+      if (byUser) card.variantTouched = true;
+    };
+    const tiltInput = h('input', { type: 'file', accept: 'image/*', multiple: true, capture: 'environment', hidden: true });
+    tiltInput.addEventListener('change', async () => {
+      const files = [...tiltInput.files];
+      tiltInput.value = '';
+      for (const file of files) {
+        try {
+          const img = await loadImage(file);
+          tiltFrames.push(await biggestCardCanvas(img, canvas.width));
+          URL.revokeObjectURL(img.objectUrl);
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      }
+      tiltFrames.splice(0, Math.max(0, tiltFrames.length - 3)); // the latest three angles
+      card.updateVariantHint();
+    });
+    card.updateVariantHint = async () => {
+      if (!canvas) return;
+      const seq = ++hintSeq;
+      try {
+        photoFoil ??= analyseCard(pixels(canvas));
+        const printings = card.match?.tcgId ? await printingsOf(card.match.tcgId) : null;
+        let angles = null;
+        if (tiltFrames.length) {
+          try {
+            angles = compareAngles([canvas, ...tiltFrames].map(pixels));
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        }
+        if (seq !== hintSeq) return;
+        const tip = suggestVariant({ printings, photo: photoFoil, angles });
+        if (!tip) return clear(variantHint);
+        if (tip.method === 'printings' && !card.variantTouched) setVariant(tip.variant, false);
+        const certain = tip.method === 'printings';
+        clear(variantHint,
+          h('div.variant-suggestion',
+            h('span', '✨ Suggested: ', h('strong', VARIANT_NAMES[tip.variant] ?? tip.variant),
+              certain ? ' · certain' : ` · ${Math.round(tip.confidence * 100)}% sure${tip.method === 'tilt' ? ' (tilt scan)' : ''}`),
+            tip.variant !== card.variant && h('button.btn.small', { type: 'button', onclick: () => { setVariant(tip.variant, true); card.updateVariantHint(); } }, 'Use'),
+            !certain && h('button.btn.small.ghost', { type: 'button', onclick: () => tiltInput.click() },
+              tiltFrames.length ? `Add another angle (${tiltFrames.length + 1} photos)` : 'Tilt scan')),
+          h('ul.variant-reasons', tip.reasons.map((r) => h('li', r)), (printings?.notes ?? []).map((n) => h('li', n))),
+          !certain && !tiltFrames.length && tip.needsTilt && h('p.small.muted',
+            'For a surer answer, use Tilt scan: take 1–2 more photos of this card in the same light, tilted a little left or right each time.'),
+          tiltInput);
+      } catch (err) {
+        console.warn('Variant suggestion unavailable:', err);
+        clear(variantHint);
+      }
+    };
     card.packSelect = select(packOptions(), card.packRef, {
       onchange: () => { card.packRef = card.packSelect.value; card.packTouched = true; updateSave(); },
     });
@@ -242,6 +327,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         }
         showMatch();
         updateSave();
+        card.updateVariantHint();
       },
     });
     const runSearch = debounce(() => panel.search({ name: card.name, setCode: card.set_code, number: card.number }), 500);
@@ -259,8 +345,13 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     };
     for (const input of [nameIn, codeIn, numIn]) input.addEventListener('input', onField);
 
-    // Read the name, set code and number off the photo and fill them in (unless the user got there first).
+    // Read the name, set code and number off the photo and fill them in (unless the user got there first),
+    // then suggest the variant.
     card.autoRead = async () => {
+      await readCard();
+      await card.updateVariantHint();
+    };
+    const readCard = async () => {
       if (!canvas || card.touched || card.match) return;
       readNote.className = 'read-note busy';
       readNote.textContent = 'Reading the card…';
@@ -311,6 +402,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         h('div.field-row',
           field('Variant', variant),
           field('Pulled from', card.packSelect)),
+        variantHint,
         readNote,
         matchNote,
         panel.el),
