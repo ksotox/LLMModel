@@ -123,7 +123,7 @@ export function debounce(fn, ms) {
 
 /** A drop zone + file input that hands back image Files. */
 export function dropZone({ label, hint, multiple = true, onFiles, camera = true }) {
-  const input = h('input', { type: 'file', accept: 'image/*', multiple, hidden: true });
+  const input = h('input', { type: 'file', accept: 'image/*,.heic,.heif', multiple, hidden: true });
   const cameraInput = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
   const take = (list) => {
     const files = [...list].filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));

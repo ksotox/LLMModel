@@ -24,7 +24,8 @@ All work was done by Claude Code (cloud sessions) for the repo owner, on branch
 | 2026-10-30 | PR #6 merged | Link unmatched cards automatically (missing official images); cleaner card tiles |
 | 2026-10-30 | PR #7 merged | Promo pictures from TCGplayer; all prices in US dollars |
 | 2026-10-30 | PR #8 merged | tcgcsv 401: app User-Agent, promo pictures via PokemonPriceTracker; desktop app that updates itself |
-| 2026-11-01 | PR #9 | User guide, code review; fixes: updater data safety, credit drain, cross-site requests; bugs B1–B6; variant suggestion (printings, foil in photo, tilt scan) |
+| 2026-11-01 | PR #9 merged | User guide, code review; fixes: updater data safety, credit drain, cross-site requests; bugs B1–B6; variant suggestion (printings, foil in photo, tilt scan) |
+| 2026-11-02 | PR #10 | Japanese cards: recognised, found and pictured from TCGdex's Japanese database; card-detection fix |
 
 ## Phase 1: the catalog (PR #2)
 
@@ -301,6 +302,40 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Add cards:** a suggestion line under Variant with **Use** and **Tilt scan** / **Add another angle**, the reasons, and pattern-foil notes. Only a certain printing is filled in automatically.
 - **Results on real photos:** the normal Voltorb, Punk Helmet and Linoone came out Normal (body foil chance 6–12%); the Voltorb close-up came out Reverse holo (88%).
 - **Limits:** the tilt-scan thresholds are only tested on synthetic cards and need real tilt photos to tune. Pattern foils and stamps aren't detected from the image.
+
+## Phase 14: Japanese cards
+
+**Asked:** recognise, find and get pictures for Japanese cards.
+
+**Built:**
+- **TCGdex's Japanese database** (`/v2/ja`) through a second `TcgClient`. Ids are prefixed `ja:`, and the printed code (`SV2a`, `M1L`, `SV-P`) is the TCGdex set id, matched case-insensitively.
+- **Catalog routing:** Japanese-looking lookups (a Japanese code, a Japanese name, or `lang=ja`) go there first. Japanese cards skip the English-only sources. Prices come from Cardmarket and are converted to USD; there's no pull chance.
+- **Identification:**
+  - Japanese set codes are read, including OCR's "5V" for "SV".
+  - Names are compared in the same script (NFKC, kana/kanji kept).
+  - With no Japanese reading, code + number + total must all agree.
+  - A Japanese code searches only Japanese, because the English 151 is also /165.
+- **OCR:** the bottom line now allows lowercase (`SV2a`). The Japanese model (`@tesseract.js-data/jpn`, 2 MB) reads the name strip when a Japanese code is seen.
+- **App:**
+  - `language` column, a **JP** tag on tiles, search results and lookups;
+  - "japanese"/"jp" in collection search;
+  - a Language box on the Search page;
+  - Japanese promo sets count as promos.
+- **Also fixed a card-detection bug:** on a lighter background, the photo's own border (from the dark frame added to catch cards touching the edge) outscored the real card. Outlines along all four photo edges are now dropped when a card was found inside.
+- **Tested** on a realistic synthetic Japanese card photo (`tests/fixtures/photos/japanese-voltorb.jpg`). The real browser pipeline read `SV2a 100/165` and ビリリダマ and matched `ja:SV2a-100` at high confidence. A 7-test unit suite and an e2e step cover it.
+- **Limits:** eBay listing matching for Japanese cards is weak, because listing titles are in English and the card's name is Japanese. There's no TCGplayer or PokemonPriceTracker data for Japanese cards.
+
+## Phase 15: Profiles, inventory, gallery, bulk changes, set completion, smarter recognition
+
+- **Profiles and sign-in:** first start shows a setup screen that creates the owner profile, which takes over the existing collection. The owner can add and remove profiles; each has its own collection, packs, theme and gallery settings. Passwords are scrypt hashes; the browser holds a 30-day HttpOnly session cookie (only its SHA-256 is stored). Five wrong passwords per username or address in 10 minutes → wait. Changing the password signs out other devices. `/api/meta` and `/api/desktop` stay public because older desktop launchers check them to see the server is up.
+- **Physical inventory:** each copy is its own row with condition (NM/LP/MP/HP/DMG), grading company and grade, price paid, storage place and plans (keep / trade / sell). Copies of the same card and printing are grouped by a key (official card id, or name + set + number, plus variant). This was chosen over a catalog/items table split, which would have meant migrating price history, eBay sales and tracker data. The card page lists every copy and has "+ Add a copy".
+- **Duplicate check:** before saving new cards, the app asks the server how many of each the user already owns (`POST /api/cards/duplicates`) and also spots the same card twice in one batch. A Yes/No popup lists them; "No" saves nothing and marks the duplicates.
+- **Gallery:** Compact, Detailed and a sortable Table view (name, set, number, rarity, variant, quantity, condition, value); Compact / Comfortable / Large density; copies grouped as ×N; light mode by default with dark mode in the account menu or profile. The collection loads 60 at a time from the server (`GET /api/cards?page=…&group=1`) and loads more as you scroll.
+- **Filters and bulk changes:** rarity, type, variant, language, condition, plans, graded, value range, date added, duplicates, unmatched, missing price, all combined. Presets: Most valuable, Recently added, Missing prices, Unmatched, Duplicates, Grading candidates (≥ $20, raw, NM or unset), For trade or sale. Select mode with a bulk bar: move to pack, condition, plans, storage place, export CSV (`GET /api/cards/export`, formula-safe), delete. Deleting moves cards to a trash for 30 days, with Undo; the trash can restore or delete for good.
+- **Set completion (`#/sets`):** your sets with progress bars, and any English or Japanese set to browse. A set's page has owned / total / completion / missing / duplicates, an on-demand estimate of the missing cards' value, three goals (main set, master set with secret rares, reverse holo set), filters (missing, owned, duplicates, missing illustration rares), and muted tiles for missing cards.
+- **Smarter recognition:** each card shows Recognized / Review needed / Unrecognized (or Checked, once the user fixed it); a progress bar ("Reading card N of M"); after a batch, a summary with "Review uncertain cards" (shows only those) and "Read again". Reading again also tries the photo upside down and keeps the better reading (turning the saved photo too). Typed fields are never overwritten: after the user types, a later reading only fills empty fields and offers its match instead of picking it.
+- **iPhone HEIC photos** are converted to JPEG in the browser with heic2any (loaded only when needed; can be turned off in the profile). **Foil measurements** run in a Web Worker (`foilAsync.js`), falling back to the main thread.
+- **Tests:** auth (6), collection management (8), set completion (4); the e2e now starts with setup and covers the duplicate popup, grouping, compact/table views, presets, filters, bulk condition + trash + undo, per-copy fields, a set checklist, dark mode, and signing out and in.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

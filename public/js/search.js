@@ -24,7 +24,7 @@ function marketBlock(market) {
         : h('span.muted', 'No price found right now')));
 }
 
-async function openCatalogCard(brief, meta, onAdded) {
+export async function openCatalogCard(brief, meta, onAdded) {
   const body = h('div.card-detail', h('p.muted', 'Loading card details…'));
   const { dialog } = modal(body, { wide: true });
   const packs = await api.packs();
@@ -97,6 +97,9 @@ export function renderSearch(root, meta, navigate, params) {
   const name = h('input', { type: 'search', placeholder: 'e.g. Charizard', value: params.get('name') ?? '', autocomplete: 'off' });
   const code = h('input.code', { type: 'text', placeholder: 'PAL', list: codeList, value: params.get('code') ?? '', maxLength: 6, autocomplete: 'off' });
   const num = h('input.num', { type: 'text', placeholder: '066/193', value: params.get('number') ?? '', autocomplete: 'off' });
+  const lang = h('select', { 'aria-label': 'Language' },
+    h('option', { value: '' }, 'Any language'), h('option', { value: 'en' }, 'English'), h('option', { value: 'ja' }, 'Japanese'));
+  lang.value = params.get('lang') ?? '';
   const status = h('p.muted.search-status');
   const grid = h('div');
   let seq = 0;
@@ -109,6 +112,7 @@ export function renderSearch(root, meta, navigate, params) {
       h('strong.card-name', { title: b.name }, b.name),
       h('span.card-set',
         b.setCode && h('span.set-tag', b.setCode),
+        b.language === 'ja' && h('span.lang-tag', { title: 'Japanese card' }, 'JP'),
         h('span', b.number ? cardNumber({ number: b.number, set_total: b.setTotal }) : '')),
       b.setName && h('span.card-setname', { title: b.setName }, b.setName),
       b.rarity && h('div.card-meta', h('div.card-market', rarityBadge(b.rarity)))));
@@ -118,13 +122,13 @@ export function renderSearch(root, meta, navigate, params) {
 
   const search = async () => {
     if (!form.isConnected) return; // the user has left the search page
-    const q = { name: name.value.trim(), setCode: code.value.trim().toUpperCase(), number: num.value.trim() };
-    history.replaceState(null, '', `#/search?${new URLSearchParams(Object.entries({ name: q.name, code: q.setCode, number: q.number }).filter(([, v]) => v))}`);
+    const q = { name: name.value.trim(), setCode: code.value.trim().toUpperCase(), number: num.value.trim(), lang: lang.value };
+    history.replaceState(null, '', `#/search?${new URLSearchParams(Object.entries({ name: q.name, code: q.setCode, number: q.number, lang: q.lang }).filter(([, v]) => v))}`);
     const id = ++seq;
     if (q.name.length < 2 && !q.setCode && !q.number) {
       results = [];
       render(results);
-      status.textContent = 'Search by name, or by the set code and number printed at the bottom-left of the card.';
+      status.textContent = 'Search by name, or by the set code and number printed at the bottom-left of the card. Japanese cards: their code and number (SV2a 100/165), or the name in Japanese (ピカチュウ).';
       return;
     }
     status.textContent = 'Searching…';
@@ -134,7 +138,7 @@ export function renderSearch(root, meta, navigate, params) {
       results = found;
       status.textContent = found.length
         ? `${found.length} card${found.length === 1 ? '' : 's'} found${found.length >= 48 ? ' (showing the first 48 — add a set code to narrow it down)' : ''}. Tap one for rarity, pull chance and price.`
-        : 'No cards found. Check the spelling, set code or number.';
+        : q.lang === 'ja' && q.name && !q.setCode ? 'No Japanese cards found. Japanese cards are found by their name in Japanese, or by their code and number (SV2a 100/165).' : 'No cards found. Check the spelling, set code or number.';
       render(results);
     } catch (err) {
       if (id !== seq) return;
@@ -144,11 +148,13 @@ export function renderSearch(root, meta, navigate, params) {
   };
   const later = debounce(search, 450);
   for (const input of [name, code, num]) input.addEventListener('input', later);
+  lang.addEventListener('change', search);
   const form = h('form.search-form', { onsubmit: (e) => { e.preventDefault(); search(); } },
     h('div.field-row.card-fields',
       h('label.field', h('span', 'Card name'), name),
       h('label.field', h('span', 'Set code'), code),
-      h('label.field', h('span', 'Number'), num)),
+      h('label.field', h('span', 'Number'), num),
+      h('label.field', h('span', 'Language'), lang)),
     h('button.btn.primary', { type: 'submit' }, 'Search'));
 
   clear(root,

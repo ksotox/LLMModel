@@ -1,6 +1,8 @@
 // End-to-end walkthrough in a real browser, using the reference photos in docs/reference:
-// add a pack, upload a photo of three cards (auto-split) plus a single card, match them to their
-// official versions, save, search, open a card, and confirm everything survives a server restart.
+// create the owner profile, add a pack, upload a photo of three cards (auto-split) plus a single
+// card, match them to their official versions, save, search, open a card, catch a duplicate, use
+// the gallery views, filters and bulk changes, check a set, and confirm everything survives a
+// server restart.
 //
 //   npm run test:e2e            (set SCREENSHOTS=1 to refresh docs/screenshots)
 
@@ -48,14 +50,25 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+// Tesseract's Japanese model logs "Parameter not found" for settings its engine doesn't use: harmless.
+page.on('console', (m) => m.type() === 'error' && !/^Warning: Parameter not found/.test(m.text()) && errors.push(m.text()));
 const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
 try {
-  step('empty collection');
+  step('first start: create the owner profile');
   await page.goto(base);
+  await page.getByRole('heading', { name: 'Welcome!' }).waitFor();
+  assert.ok(await page.locator('.nav').isHidden(), 'nothing but the setup until signed in');
+  await page.getByLabel('Username').fill('kevin');
+  await page.getByLabel('Display name').fill('Kevin');
+  await page.getByLabel('Password (6+ characters)').fill('pikachu-123');
+  await shot('00-setup');
+  await page.getByRole('button', { name: 'Create my profile' }).click();
+
+  step('empty collection');
   await page.getByText('Your Pokédex is empty').waitFor();
+  await page.locator('.account-name', { hasText: 'Kevin' }).waitFor();
   await shot('01-empty');
 
   step('choose a new pack and upload its photo');
@@ -81,7 +94,9 @@ try {
   for (const [i, name] of ['Voltorb', 'Punk Helmet', 'Linoone'].entries()) {
     await item(i).locator('.match-note', { hasText: `Official card: ${name}` }).waitFor({ timeout: 90000 });
     await item(i).locator('.read-note', { hasText: 'Read from the photo' }).waitFor();
+    await item(i).locator('.read-status.recognized', { hasText: 'Recognized' }).waitFor();
   }
+  await page.locator('.batch-summary', { hasText: '3 recognized' }).waitFor();
   assert.equal(await item(0).getByLabel('Set code').inputValue(), 'PAL');
   assert.equal(await item(0).getByLabel('Number').inputValue(), '066/193');
   assert.equal(await item(1).getByLabel('Number').inputValue(), '092/094');
@@ -264,6 +279,27 @@ try {
   assert.equal(await page.locator('.card-item').getByLabel('Variant').inputValue(), 'promo', 'a certain printing is filled in');
   await shot('11-read-promo');
 
+  step('a Japanese card is read (Japanese name + "SV2a 100/165"), matched and saved with its picture');
+  await page.goto(`${base}/#/add`);
+  await page.reload(); // a fresh Add page, without the promo from the step before
+  await page.getByRole('heading', { name: 'Add cards' }).waitFor();
+  await page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])')
+    .setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'photos', 'japanese-voltorb.jpg'));
+  const jp = page.locator('.card-item');
+  await jp.locator('.match-note', { hasText: 'Official card: ビリリダマ · JP · SV2a · 100/165' }).waitFor({ timeout: 120000 });
+  await jp.locator('.read-note', { hasText: 'Read from the photo' }).waitFor();
+  assert.equal(await jp.getByLabel('Name').inputValue(), 'ビリリダマ');
+  await jp.locator('.variant-reasons', { hasText: 'Poké Ball pattern' }).waitFor({ timeout: 30000 });
+  await shot('14-japanese-card');
+  await page.getByRole('button', { name: 'Save 1 card' }).click();
+  await page.getByRole('heading', { name: 'My collection' }).waitFor();
+  const jpTile = page.locator('.card-tile', { hasText: 'ビリリダマ' });
+  await jpTile.locator('.lang-tag', { hasText: 'JP' }).waitFor();
+  assert.equal(await jpTile.locator('.price').textContent(), '$0.36', 'Cardmarket €0.30 shown in dollars');
+  await page.getByLabel('Search cards').fill('japanese');
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 1);
+  await page.getByLabel('Search cards').fill('');
+
   step('add packs on their own: several at once');
   await page.goto(`${base}/#/add-packs`);
   await page.getByRole('heading', { name: 'Add packs' }).waitFor();
@@ -278,12 +314,118 @@ try {
   assert.equal(await page.locator('.pack-tile').count(), 3);
   await shot('07-packs');
 
+  step('a card that is already in the collection: the duplicate check asks first');
+  await page.goto(`${base}/#/add`);
+  await page.reload();
+  await page.getByRole('heading', { name: 'Add cards' }).waitFor();
+  await page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])').setInputFiles(REF('voltorb-reverse-holo.jpg'));
+  await page.locator('.card-item .match-note', { hasText: 'Official card: Voltorb · PAL' }).waitFor({ timeout: 90000 });
+  await page.getByRole('button', { name: 'Save 1 card' }).click();
+  const dup = page.locator('dialog.modal .duplicate-check');
+  await dup.getByRole('heading', { name: 'You already have this card' }).waitFor();
+  await dup.getByText('1 already in your collection').waitFor();
+  await shot('15-duplicate-check');
+  await dup.getByRole('button', { name: 'No' }).click();
+  await page.locator('.card-item.duplicate').waitFor();
+  await page.getByRole('button', { name: 'Save 1 card' }).click();
+  await dup.getByRole('button', { name: 'Yes, add anyway' }).click();
+  await page.getByRole('heading', { name: 'My collection' }).waitFor();
+
+  step('gallery: copies grouped (×2), compact and table views, and the duplicates preset');
+  await page.locator('.card-tile .badge.qty', { hasText: '×2' }).waitFor();
+  assert.equal(await page.locator('.card-tile').count(), 6, 'two Voltorbs in one tile');
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Compact' }).click();
+  await page.locator('.card-tile.compact').first().waitFor();
+  await page.getByRole('group', { name: 'Density' }).getByRole('button', { name: 'Compact' }).click();
+  await page.locator('.card-grid.density-compact').waitFor();
+  await shot('16-compact-gallery');
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Table' }).click();
+  await page.locator('.collection-table tbody tr').nth(5).waitFor();
+  await page.locator('.collection-table').getByRole('button', { name: 'Value' }).click();
+  await page.waitForFunction(() => document.querySelector('.collection-table tbody tr td.num:last-child')?.textContent === '$0.36');
+  await shot('17-table-view');
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Detailed' }).click();
+  await page.getByRole('button', { name: 'Duplicates', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 1);
+  await page.getByRole('button', { name: 'Duplicates', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6);
+  await page.getByRole('button', { name: /^Filters/ }).click();
+  await page.getByLabel('Language').selectOption('ja');
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 1);
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6);
+
+  step('bulk changes: select cards, set their condition, move them to the trash and undo');
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.locator('.card-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.card-tile', { hasText: 'Punk Helmet' }).click();
+  await page.locator('.bulk-bar', { hasText: '2 selected' }).waitFor();
+  await shot('18-bulk-select');
+  await page.locator('.bulk-bar select').nth(1).selectOption('LP');
+  await page.getByText('Condition updated').waitFor();
+  await page.locator('.card-tile', { hasText: 'Linoone' }).locator('.chip', { hasText: 'LP' }).waitFor();
+  await page.locator('.card-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bulk-bar').getByRole('button', { name: 'Delete' }).click();
+  await page.locator('dialog.modal').getByRole('button', { name: 'Move to trash' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 5);
+  await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6);
+  await page.getByRole('button', { name: 'Done selecting' }).click();
+
+  step('the card page keeps each copy: condition, cost, storage');
+  await page.locator('.card-tile', { hasText: 'Linoone' }).click();
+  const cardDialog = page.locator('dialog.modal');
+  await cardDialog.locator('dd', { hasText: 'LP — Lightly Played' }).waitFor();
+  await cardDialog.getByRole('button', { name: 'Edit' }).click();
+  await cardDialog.getByLabel('Paid (USD)').fill('1.50');
+  await cardDialog.getByLabel('Stored in').fill('Binder 1, page 3');
+  await cardDialog.getByRole('button', { name: 'Save changes' }).click();
+  await cardDialog.locator('dd', { hasText: 'Binder 1, page 3' }).waitFor();
+  await page.keyboard.press('Escape');
+
+  step('sets: completion of each set and its full checklist');
+  await page.getByRole('link', { name: 'Sets', exact: true }).click();
+  const palTile = page.locator('.set-tile', { hasText: 'PAL' });
+  await palTile.waitFor();
+  await palTile.click();
+  await page.locator('.metric', { hasText: 'Cards owned' }).waitFor();
+  await page.locator('.check-tile.missing').first().waitFor();
+  await page.locator('.check-tile.owned', { hasText: 'Voltorb' }).waitFor();
+  await shot('19-set-checklist');
+  await page.getByRole('button', { name: 'Missing', exact: true }).click();
+  assert.equal(await page.locator('.check-tile.owned').count(), 0);
+
+  step('dark mode from the account menu');
+  await page.locator('.account-button').click();
+  await page.getByRole('button', { name: /Dark mode/ }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+  await page.goto(base);
+  await page.locator('.card-tile').first().waitFor();
+  await shot('20-dark-mode');
+  await page.locator('.account-button').click();
+  await page.getByRole('button', { name: /Light mode/ }).click();
+
   step('restart the server: everything is still there');
   await srv.stop();
   srv = await startServer(dataDir, mock, srv.port);
   await page.goto(base);
-  await page.locator('.card-tile').nth(4).waitFor();
-  assert.equal(await page.locator('.card-tile').count(), 5);
+  await page.locator('.card-tile').nth(5).waitFor();
+  assert.equal(await page.locator('.card-tile').count(), 6, 'four from the first photos, one from Search, one Japanese (the second Voltorb is grouped)');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light', 'still signed in, with the saved theme');
+
+  step('sign out and back in');
+  await page.locator('.account-button').click();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('heading', { name: 'Sign in' }).waitFor();
+  await page.getByLabel('Username').fill('kevin');
+  await page.getByLabel('Password').fill('wrong-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Wrong username or password.').waitFor();
+  // The browser logs the expected 401 of a wrong password as a console error: not a bug.
+  errors.splice(0, errors.length, ...errors.filter((e) => !/status of 401/.test(e)));
+  await page.getByLabel('Password').fill('pikachu-123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.locator('.card-tile').nth(5).waitFor();
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
 
@@ -297,6 +439,11 @@ try {
 
   assert.deepEqual(errors, [], 'no browser errors');
   console.log('\nE2E passed');
+} catch (err) {
+  // FAIL_SHOT=path.png keeps a picture of the page at the moment a step failed.
+  if (process.env.FAIL_SHOT) await page.screenshot({ path: process.env.FAIL_SHOT, fullPage: true }).catch(() => {});
+  console.error('Browser errors so far:', errors);
+  throw err;
 } finally {
   await browser.close();
   await srv.stop();

@@ -192,7 +192,23 @@ export function solidPng(width, height, [r, g, b]) {
   ]);
 }
 
-const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer: [148, 163, 184], Water: [56, 189, 248] };
+// TCGdex's Japanese database: Japanese names, the printed set id as the set code ("SV2a").
+const CARDS_JA = {
+  SV2a: {
+    name: 'ポケモンカード151', series: 'SV', official: 165,
+    cards: [
+      ['025', 'ピカチュウ', { hp: 60, types: ['Lightning'], rarity: 'Common', variants: [{ type: 'normal' }, { type: 'reverse', foil: 'pokeball' }] }],
+      ['100', 'ビリリダマ', {
+        hp: 60, types: ['Lightning'], rarity: 'Common', variants: [{ type: 'normal' }, { type: 'reverse', foil: 'pokeball' }],
+        pricing: { tcgplayer: null, cardmarket: { unit: 'EUR', updated: '2026-10-30T00:00:00.000Z', avg: 0.25, low: 0.1, trend: 0.3, 'trend-holo': 0.9 } },
+      }],
+      ['205', 'ミュウex', { hp: 180, types: ['Psychic'], rarity: 'Special Illustration Rare', variants: [{ type: 'holo' }] }],
+    ],
+  },
+  'SV-P': { name: 'スカーレット&バイオレット プロモカード', series: 'SV', official: 0, cards: [['001', 'ピカチュウ', { hp: 60, types: ['Lightning'], rarity: 'Promo' }]] },
+};
+
+const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer: [148, 163, 184], Water: [56, 189, 248], Psychic: [192, 132, 252] };
 
 export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {}) {
   const requests = [];
@@ -209,29 +225,32 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       res.writeHead(200, { 'content-type': 'image/png' });
       res.end(solidPng(63, 88, color));
     };
-    const image = (setId, localId) => `${base}/assets/en/${CARDS[setId].series}/${setId}/${localId}`;
+    // TCGdex, in English (/v2/en) and Japanese (/v2/ja).
+    const lang = url.pathname.match(/^\/(?:v2|assets)\/(en|ja)\//)?.[1] ?? 'en';
+    const DB = lang === 'ja' ? CARDS_JA : CARDS;
+    const image = (setId, localId) => `${base}/assets/${lang}/${DB[setId].series}/${setId}/${localId}`;
     const brief = (setId, [localId, name, extra]) => ({ id: `${setId}-${localId}`, localId, name, image: extra.noImage ? undefined : image(setId, localId) });
 
     let m;
     if (url.pathname.startsWith('/v2/') && state.tcgdexDown) return json(503, { error: 'down' });
-    if (url.pathname === '/v2/en/sets') {
-      return json(200, Object.entries(CARDS).map(([id, s]) => ({ id, name: s.name, cardCount: { total: s.official + 20, official: s.official } })));
+    if (url.pathname === `/v2/${lang}/sets`) {
+      return json(200, Object.entries(DB).map(([id, s]) => ({ id, name: s.name, cardCount: { total: s.official + 20, official: s.official } })));
     }
-    if ((m = url.pathname.match(/^\/v2\/en\/sets\/([^/]+)$/))) {
-      const s = CARDS[decodeURIComponent(m[1])];
+    if ((m = url.pathname.match(/^\/v2\/\w+\/sets\/([^/]+)$/))) {
+      const s = DB[decodeURIComponent(m[1])];
       if (!s) return json(404, { error: 'not found' });
       const id = decodeURIComponent(m[1]);
       return json(200, { id, name: s.name, cardCount: { total: s.official + 20, official: s.official }, cards: s.cards.map((c) => brief(id, c)) });
     }
-    if (url.pathname === '/v2/en/cards') {
+    if (url.pathname === `/v2/${lang}/cards`) {
       const q = (url.searchParams.get('name') ?? '').toLowerCase();
       const out = [];
-      for (const [id, s] of Object.entries(CARDS)) for (const c of s.cards) if (c[1].toLowerCase().includes(q)) out.push(brief(id, c));
+      for (const [id, s] of Object.entries(DB)) for (const c of s.cards) if (c[1].toLowerCase().includes(q)) out.push(brief(id, c));
       return json(200, out);
     }
-    if ((m = url.pathname.match(/^\/v2\/en\/cards\/([^/]+)-([^/-]+)$/))) {
+    if ((m = url.pathname.match(/^\/v2\/\w+\/cards\/(.+)-([^/-]+)$/))) {
       const setId = decodeURIComponent(m[1]);
-      const s = CARDS[setId];
+      const s = DB[setId];
       const c = s?.cards.find((x) => x[0] === m[2]);
       if (!c) return json(404, { error: 'not found' });
       const [localId, name, extra] = c;
@@ -243,8 +262,8 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         ...(extra.variants ? { variants_detailed: extra.variants } : {}),
       });
     }
-    if ((m = url.pathname.match(/^\/assets\/en\/\w+\/([^/]+)\/([^/]+)\/high\.png$/))) {
-      const c = CARDS[m[1]]?.cards.find((x) => x[0] === m[2]);
+    if ((m = url.pathname.match(/^\/assets\/\w+\/\w+\/([^/]+)\/([^/]+)\/high\.png$/))) {
+      const c = DB[decodeURIComponent(m[1])]?.cards.find((x) => x[0] === m[2]);
       if (!c || c[2].noImage) return json(404, { error: 'not found' });
       return png(COLORS[c[2].category ?? c[2].types?.[0]] ?? [200, 200, 200]);
     }
@@ -321,6 +340,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       resolve({
         base,
         tcgdexUrl: `${base}/v2/en`,
+        tcgdexJaUrl: `${base}/v2/ja`,
         ptcgUrl: `${base}/ptcg`,
         tcgcsvUrl: `${base}/tcgcsv/tcgplayer/3`,
         fxUrl: `${base}/fx/v1`,
@@ -338,6 +358,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
 export function mockCatalog(mock, { timeoutMs = 3000 } = {}) {
   return new CardCatalog({
     tcgdex: new TcgClient({ baseUrl: mock.tcgdexUrl, timeoutMs }),
+    tcgdexJa: new TcgClient({ baseUrl: mock.tcgdexJaUrl, lang: 'ja', timeoutMs }),
     ptcg: new PtcgDataClient({ baseUrl: mock.ptcgUrl, timeoutMs }),
     tcgcsv: new TcgCsvClient({ baseUrl: mock.tcgcsvUrl, timeoutMs }),
     fx: new ExchangeRates({ baseUrl: mock.fxUrl, timeoutMs }),

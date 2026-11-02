@@ -19,7 +19,7 @@ function listen(app) {
 }
 
 async function start(dataDir, catalog) {
-  const app = createApp({ dataDir, catalog });
+  const app = createApp({ requireLogin: false, dataDir, catalog });
   const { server, base } = await listen(app);
   return {
     base,

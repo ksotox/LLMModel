@@ -3,9 +3,15 @@ import { priceFromTcgdex, TcgCsvClient } from './prices.js';
 import { printingsFor } from './printings.js';
 import { PtcgDataClient } from './ptcgData.js';
 import { pullChance } from './pullRates.js';
+import { hasJapanese, isJapaneseCode } from './setCodes.js';
 import { TcgClient } from './tcg.js';
 
 const isPtcg = (id) => String(id ?? '').startsWith(PtcgDataClient.PREFIX);
+const isJapanese = (cardOrId) => (typeof cardOrId === 'string' ? cardOrId : cardOrId?.tcg_id ?? '').startsWith('ja:')
+  || (typeof cardOrId === 'object' && cardOrId?.language === 'ja');
+
+/** A lookup for a Japanese card: a Japanese set code ("SV2a"), a name in Japanese, or lang=ja. */
+export const japaneseQuery = (q = {}) => q.lang === 'ja' || (q.lang !== 'en' && (isJapaneseCode(q.setCode) || hasJapanese(q.name)));
 
 /**
  * Where the Pokémon TCG dataset's image hosts would keep a card's picture, worked out from its
@@ -15,7 +21,7 @@ const isPtcg = (id) => String(id ?? '').startsWith(PtcgDataClient.PREFIX);
 function datasetImageGuesses(card) {
   const setId = card.set_id ?? String(card.tcg_id ?? '').replace(/-[^-]+$/, '');
   const n = String(card.number ?? '').match(/^\D*0*(\d+)$/)?.[1];
-  if (!setId || !n || isPtcg(card.tcg_id)) return [];
+  if (!setId || !n || isPtcg(card.tcg_id) || isJapanese(card)) return [];
   const id = setId.replace(/0+(\d)/, '$1').replace(/\.5$/, 'pt5');
   return [`https://images.scrydex.com/pokemon/${id}-${n}/large`, `https://images.pokemontcg.io/${id}/${n}_hires.png`];
 }
@@ -25,17 +31,25 @@ function datasetImageGuesses(card) {
  * when TCGdex has no match or no image, and also supplies the rarity counts behind pull-rate
  * estimates. Prices are always in US dollars: TCGplayer via TCGdex, then TCGplayer via tcgcsv.com,
  * then Cardmarket (euros) converted to dollars. Pictures fall back to TCGplayer's product images.
+ * Japanese cards come from TCGdex's Japanese database (ids "ja:SV2a-100"), with its pictures.
  */
 export class CardCatalog {
-  constructor({ tcgdex = new TcgClient(), ptcg = new PtcgDataClient(), tcgcsv = new TcgCsvClient(), fx = new ExchangeRates() } = {}) {
+  constructor({
+    tcgdex = new TcgClient(), tcgdexJa = new TcgClient({ lang: 'ja' }), ptcg = new PtcgDataClient(), tcgcsv = new TcgCsvClient(), fx = new ExchangeRates(),
+  } = {}) {
     this.tcgdex = tcgdex;
+    this.tcgdexJa = tcgdexJa;
     this.ptcg = ptcg;
     this.tcgcsv = tcgcsv;
     this.fx = fx;
   }
 
-  /** Search both sources. Throws only when every source failed. */
+  /** Search both sources (Japanese cards: TCGdex's Japanese database). Throws only when every source failed. */
   async search(query) {
+    if (japaneseQuery(query)) {
+      const ja = await this.tcgdexJa.search(query).catch((err) => (query.lang === 'ja' ? Promise.reject(err) : []));
+      if (ja.length || query.lang === 'ja') return ja.map((r) => ({ source: 'tcgdex', ...r }));
+    }
     let results = [];
     let primaryError = null;
     try {
@@ -72,6 +86,7 @@ export class CardCatalog {
    */
   async details(id) {
     if (isPtcg(id)) return this.ptcg.details(id);
+    if (isJapanese(id)) return this.tcgdexJa.details(id);
     const card = await this.tcgdex.details(id);
     if (!card) return null;
     if (!card.official_image_url || !card.rarity) {
@@ -86,6 +101,7 @@ export class CardCatalog {
 
   /** The card's TCGplayer product id, taken from TCGdex's price data (no extra request when cached). */
   async tcgPlayerId(card) {
+    if (isJapanese(card)) return null; // TCGplayer's English catalogue: no Japanese printings
     let id = card.tcg_id && !isPtcg(card.tcg_id) ? card.tcg_id : null;
     if (!id && card.set_code && card.number) {
       const [twin] = await this.tcgdex.search({ setCode: card.set_code, number: card.number }).catch(() => []);
@@ -104,7 +120,10 @@ export class CardCatalog {
   async printings(id) {
     let details;
     let raw = null;
-    if (isPtcg(id)) {
+    if (isJapanese(id)) {
+      raw = await this.tcgdexJa.card(id);
+      details = raw ? await this.tcgdexJa.details(id) : null;
+    } else if (isPtcg(id)) {
       details = await this.ptcg.details(id);
       // The dataset has no printing list: use the same card on TCGdex when there is one.
       if (details?.set_code && details.number) {
@@ -140,6 +159,7 @@ export class CardCatalog {
    * promos the other two have no picture for, then the dataset image hosts' usual addresses.
    */
   async fallbackImages(card) {
+    if (isJapanese(card)) return []; // the other picture sources only have English printings
     const urls = [];
     if (!isPtcg(card.tcg_id)) {
       const twin = await this.ptcg.findCard({ setCode: card.set_code, setName: card.set_name, number: card.number, name: card.name }).catch(() => null);
@@ -157,6 +177,14 @@ export class CardCatalog {
    */
   async market(card) {
     const out = { rarity: card.rarity ?? null, pull: null, price: null };
+    if (isJapanese(card)) {
+      // Japanese packs hold different cards and rarities: no pull-chance estimate. Prices come from
+      // TCGdex's Japanese card (Cardmarket sells Japanese cards), shown in dollars.
+      const raw = card.tcg_id ? await this.tcgdexJa.card(card.tcg_id).catch(() => null) : null;
+      out.price = priceFromTcgdex(raw?.pricing, card.variant, { sources: ['tcgplayer'] })
+        ?? await this.fx.toUsd(priceFromTcgdex(raw?.pricing, card.variant, { sources: ['cardmarket'] })).catch(() => null);
+      return out;
+    }
 
     if (!out.rarity && card.set_code && card.number) {
       const twin = await this.ptcg.findCard({ setCode: card.set_code, setName: card.set_name, number: card.number, name: card.name }).catch(() => null);

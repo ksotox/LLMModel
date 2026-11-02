@@ -2,7 +2,7 @@
 // client sends several readings of each area; this module votes on the set code and number, then
 // checks candidates against the card database and ranks them by how close their name is.
 
-import { SET_CODES, sameNumber } from './setCodes.js';
+import { SET_CODES, hasJapanese, isJapaneseCode, sameNumber } from './setCodes.js';
 
 const DIGIT_TO_LETTER = { 0: 'O', 1: 'I', 2: 'Z', 5: 'S', 6: 'G', 8: 'B' };
 
@@ -20,7 +20,10 @@ export function editDistance(a, b) {
   return prev[b.length];
 }
 
-const letters = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '');
+// Latin letters without accents, plus Japanese (kana, kanji, the long-vowel mark), for comparing names.
+const letters = (s) => String(s ?? '').normalize('NFKC').toLowerCase()
+  .replace(/[\u00c0-\u024f]/g, (c) => c.normalize('NFD')[0])
+  .replace(/[^a-z\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー]/gu, '');
 
 /** 0..1: how alike two card names are, ignoring case, accents and punctuation. */
 export function nameSimilarity(a, b) {
@@ -56,6 +59,20 @@ export function findSetCode(texts) {
   }
   const [winner] = [...votes.entries()].sort((a, b) => b[1] - a[1]);
   return winner && winner[1] >= 2 ? winner[0] : null;
+}
+
+/** Vote for a Japanese set code ("SV2a", "SV4a", "M1L", "SV-P") across readings of the bottom-left line. */
+export function findJapaneseSetCode(texts) {
+  const votes = new Map();
+  for (const text of texts) {
+    for (const raw of String(text ?? '').toUpperCase().split(/[^A-Z0-9-]+/)) {
+      // OCR often reads the S of "SV" as a 5.
+      const t = raw.replace(/^5(?=V?\d)/, 'S').replace(/^-+|-+$/g, '');
+      if (t.length >= 2 && isJapaneseCode(t) && !/^S\d{3,}$/.test(t)) votes.set(t, (votes.get(t) ?? 0) + 1);
+    }
+  }
+  const [winner] = [...votes.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+  return winner?.[0] ?? null;
 }
 
 /**
@@ -114,6 +131,10 @@ export function nameCandidates(texts) {
     if (letters(v).length >= 4 && !out.some((o) => letters(o) === letters(v))) out.push(v);
   };
   for (const text of texts) {
+    // Japanese names: runs of kana / kanji (ピカチュウ, ビリリダマ, ミュウ).
+    for (const run of String(text ?? '').normalize('NFKC').match(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー]{2,}/gu) ?? []) {
+      if (!out.includes(run)) out.push(run);
+    }
     const words = String(text ?? '').replace(/[^A-Za-zÀ-ÿ'’.\- ]+/g, ' ').split(/\s+/)
       .map((w) => w.replace(/^[^A-Za-zÀ-ÿ]+|[^A-Za-zÀ-ÿ.]+$/g, ''))
       .filter((w) => w && !LABELS.test(w));
@@ -135,15 +156,19 @@ export function nameCandidates(texts) {
  * Returns { match, candidates, read, confidence } where confidence is 'high', 'medium' or 'low'.
  */
 export async function identifyCard(catalog, { names = [], lines = [] }) {
-  const setCode = findSetCode(lines);
+  // A Japanese code ("SV2a": letters + digits) is unmistakable, so it wins over an English code
+  // guessed from a fragment (a lone "SV" read off the corner can look like "SVI").
+  const setCode = findJapaneseSetCode(lines) ?? findSetCode(lines);
   const { number, total } = findNumber(lines, setCode);
   const guesses = nameCandidates(names);
-  const read = { name: guesses[0] ?? null, setCode, number, total };
+  const read = { name: guesses.find((g) => hasJapanese(g)) ?? guesses[0] ?? null, setCode, number, total };
 
+  // A Japanese code means a Japanese card: search only Japanese (the English 151 is also /165).
+  const japaneseCode = isJapaneseCode(setCode);
   const attempts = [];
   if (setCode && number) attempts.push({ setCode, number: total ? `${number}/${total}` : number });
-  if (number && total) attempts.push({ number: `${number}/${total}` });
-  for (const name of guesses.slice(0, 5)) {
+  if (number && total && !japaneseCode) attempts.push({ number: `${number}/${total}` });
+  for (const name of guesses.filter((g) => !japaneseCode || hasJapanese(g)).slice(0, 5)) {
     attempts.push({ name, ...(number ? { number } : {}) });
     // The number may be misread: also look for the name within the set.
     if (setCode) attempts.push({ name, setCode });
@@ -164,12 +189,16 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
   }
 
   const scored = [...found.values()].map((card) => {
-    const sim = guesses.length ? Math.max(...guesses.map((g) => nameSimilarity(g, card.name))) : null;
+    // Compare names in the same script: a Japanese card against what was read in Japanese. Latin
+    // OCR of a Japanese name is noise, so with no Japanese reading there is no name evidence.
+    const japanese = hasJapanese(card.name);
+    const sameScript = guesses.filter((g) => hasJapanese(g) === japanese);
+    const sim = sameScript.length ? Math.max(...sameScript.map((g) => nameSimilarity(g, card.name))) : null;
     const numberOk = Boolean(number && sameNumber(card.number, number));
-    const setOk = Boolean(setCode && card.setCode === setCode);
+    const setOk = Boolean(setCode && String(card.setCode ?? '').toUpperCase() === setCode.toUpperCase());
     const totalOk = Boolean(total && card.setTotal && Number(card.setTotal) === Number(total));
     const score = (sim ?? 0) * 4 + (numberOk ? 2 : 0) + (setOk ? 1.5 : 0) + (totalOk ? 1 : 0);
-    return { card, score, sim, numberOk, setOk, totalOk };
+    return { card, score, sim, numberOk, setOk, totalOk, japanese };
   }).sort((a, b) => b.score - a.score);
 
   const best = scored[0];
@@ -179,7 +208,9 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
   // The name is the best cross-check: a name that clearly disagrees blocks an automatic match.
   const nameAgrees = best.sim == null || best.sim >= 0.6;
   let confidence = 'low';
-  if (clearWinner && nameAgrees && best.numberOk && (best.setOk || best.totalOk || (best.sim ?? 0) >= 0.75)) confidence = 'high';
+  // Without a name to check, a Japanese card needs its code, number and set total to all agree.
+  const japaneseUnchecked = best.japanese && best.sim == null && !(best.setOk && best.totalOk);
+  if (clearWinner && nameAgrees && best.numberOk && !japaneseUnchecked && (best.setOk || best.totalOk || (best.sim ?? 0) >= 0.75)) confidence = 'high';
   else if (clearWinner && (best.sim ?? 0) >= 0.8 && (best.setOk || best.totalOk || best.numberOk)) confidence = 'medium';
   else if (clearWinner && best.sim == null && best.numberOk && best.setOk) confidence = 'medium';
   return {

@@ -4,6 +4,7 @@
 // (/api/identify) votes across the readings and checks them against the card database.
 
 let workerPromise = null;
+let japaneseWorker = null;
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,27 @@ function ocrWorker() {
   });
   return workerPromise;
 }
+
+/** A second worker for Japanese names, loaded only when a Japanese card turns up (~2 MB model). */
+function japaneseOcr() {
+  japaneseWorker ??= (async () => {
+    if (!window.Tesseract) await loadScript('/vendor/tesseract/tesseract.min.js');
+    return window.Tesseract.createWorker('jpn', 1, {
+      workerPath: '/vendor/tesseract/worker.min.js',
+      corePath: '/vendor/tesseract-core',
+      langPath: '/vendor/tessdata-jpn',
+      gzip: true,
+    });
+  })().catch((err) => {
+    japaneseWorker = null;
+    throw err;
+  });
+  return japaneseWorker;
+}
+
+// Japanese cards print TCGdex's Japanese set id at the bottom left ("SV2a", "SV4a", "M1L", "SV-P").
+const JAPANESE_CODE = /(?:^|[^A-Z0-9])[S5]V\d{1,2}[A-Z]?(?![A-Z0-9])|(?:^|[^A-Z0-9])M\d{1,2}[A-Z]?(?![A-Z0-9])|SV-P/i;
+export const looksJapanese = (lines) => lines.some((l) => JAPANESE_CODE.test(l));
 
 /**
  * Cut an area (fractions of the card) out, enlarge it and stretch its contrast; optionally invert
@@ -107,7 +129,7 @@ export async function readCardText(card) {
     const { data } = await worker.recognize(canvas);
     return data.text.trim();
   };
-  const line = `${UPPER}0123456789/ `;
+  const line = `${UPPER}${UPPER.toLowerCase()}0123456789/- `;
   const lines = [
     await read(area(card, SET_LINE, { scale: 2 }), line),
     await read(area(card, SET_LINE, { scale: 3 }), line),
@@ -121,5 +143,18 @@ export async function readCardText(card) {
     await read(area(card, NAME_TIGHT, { scale: 2 })),
     await read(area(card, TRAINER_NAME, { scale: 1.5 })),
   ];
+  // A Japanese card: read its name with the Japanese model too (the English readings are noise).
+  if (looksJapanese(lines)) {
+    try {
+      const jp = await japaneseOcr();
+      for (const opts of [{ scale: 2 }, { scale: 3, binary: true }]) {
+        await jp.setParameters({ tessedit_pageseg_mode: '7' });
+        const { data } = await jp.recognize(area(card, NAME_LINE, opts));
+        names.unshift(data.text.replace(/\s+/g, '').trim());
+      }
+    } catch (err) {
+      console.warn('Japanese reading unavailable:', err);
+    }
+  }
   return { names: names.filter(Boolean), lines: lines.filter(Boolean) };
 }

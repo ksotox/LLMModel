@@ -208,7 +208,7 @@ describe('market API', () => {
     mock = await startMockSources();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-market-'));
     appCatalog = mockCatalog(mock);
-    app = createApp({ dataDir, catalog: appCatalog });
+    app = createApp({ requireLogin: false, dataDir, catalog: appCatalog });
     server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${server.address().port}`;
   });

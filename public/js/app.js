@@ -1,11 +1,15 @@
+import { accountMenu, applyTheme, renderLogin, renderProfile, renderSetup } from './account.js';
 import { renderAddCards, renderAddPacks } from './add.js';
 import { api } from './api.js';
 import { renderSearch } from './search.js';
 import { clear, h } from './ui.js';
+import { renderSet, renderSets } from './sets.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
 
 const main = document.getElementById('view');
 let renderSeq = 0;
+let currentUser = null;
+let loginRequired = true;
 
 function navigate(hash) {
   if (location.hash === hash) route();
@@ -17,6 +21,7 @@ function setActiveNav(name) {
 }
 
 async function route() {
+  if (loginRequired && !currentUser) return;
   const seq = ++renderSeq;
   const [path, query = ''] = location.hash.replace(/^#/, '').split('?');
   const params = new URLSearchParams(query);
@@ -29,7 +34,16 @@ async function route() {
     const meta = await api.meta();
     if (seq !== renderSeq) return;
     main.replaceChildren(root);
-    if (parts[0] === 'add') {
+    if (parts[0] === 'profile') {
+      setActiveNav('');
+      await renderProfile(root, { user: currentUser, onUserChange: (u) => signedIn(u, { reroute: false }) });
+    } else if (parts[0] === 'sets' && parts[1] && parts[2]) {
+      setActiveNav('sets');
+      await renderSet(root, meta, navigate, parts[1], decodeURIComponent(parts[2]), params);
+    } else if (parts[0] === 'sets') {
+      setActiveNav('sets');
+      await renderSets(root, meta, navigate);
+    } else if (parts[0] === 'add') {
       setActiveNav('add');
       await renderAddCards(root, meta, navigate, { packId: params.get('pack') });
     } else if (parts[0] === 'search') {
@@ -56,7 +70,47 @@ async function route() {
 }
 
 window.addEventListener('hashchange', route);
-route();
+
+// ---- signing in ----
+const account = document.getElementById('account');
+
+function signedIn(user, { reroute = true } = {}) {
+  currentUser = user;
+  window.currentUser = user;
+  document.body.classList.remove('signed-out');
+  applyTheme(user?.settings?.theme);
+  if (loginRequired) accountMenu(account, user, { onSignOut: () => signedOut(), onUserChange: (u) => { currentUser = u; window.currentUser = u; } });
+  if (reroute) route();
+}
+
+function signedOut() {
+  currentUser = null;
+  document.body.classList.add('signed-out');
+  clear(account);
+  renderLogin(main, (user) => signedIn(user));
+}
+
+window.addEventListener('signin-needed', () => {
+  if (currentUser) signedOut();
+});
+
+(async () => {
+  let state;
+  try {
+    state = await api.authState();
+  } catch {
+    state = { requireLogin: false, user: null };
+  }
+  loginRequired = state.requireLogin;
+  if (state.setupNeeded) {
+    document.body.classList.add('signed-out');
+    renderSetup(main, (user) => signedIn(user));
+  } else if (loginRequired && !state.user) {
+    signedOut();
+  } else {
+    signedIn(state.user);
+  }
+})();
 
 // Desktop app: when a newer version has been merged, offer to restart into it.
 const banner = h('div.update-banner', { hidden: true, role: 'status' });

@@ -12,13 +12,35 @@ function printedTotal(localId, official) {
 /**
  * Small client for the free TCGdex API (https://tcgdex.dev), used to find the official
  * artwork and details for a card from what is printed on it: name, set code, number.
+ * One client per language: English ids are TCGdex's own ("sv02-066"); other languages get a
+ * prefix ("ja:SV2a-100") so the same id never means two different cards.
  */
 export class TcgClient {
-  constructor({ baseUrl = 'https://api.tcgdex.net/v2/en', fetchImpl = globalThis.fetch, timeoutMs = 10000 } = {}) {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
+  constructor({ baseUrl, lang = 'en', fetchImpl = globalThis.fetch, timeoutMs = 10000 } = {}) {
+    this.lang = lang;
+    this.prefix = lang === 'en' ? '' : `${lang}:`;
+    this.baseUrl = (baseUrl ?? `https://api.tcgdex.net/v2/${lang}`).replace(/\/$/, '');
     this.fetch = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.cache = new Map();
+  }
+
+  /** Our id for a TCGdex card id, and back. */
+  ownId(tcgdexId) {
+    return `${this.prefix}${tcgdexId}`;
+  }
+
+  owns(id) {
+    return this.prefix ? String(id ?? '').startsWith(this.prefix) : !/^[a-z]+:/.test(String(id ?? ''));
+  }
+
+  #tcgdexId(id) {
+    return this.prefix && String(id).startsWith(this.prefix) ? String(id).slice(this.prefix.length) : String(id);
+  }
+
+  /** The set code printed on the card: "PAL" for English sets; Japanese cards print TCGdex's set id ("SV2a"). */
+  #printedCode(setId) {
+    return this.lang === 'en' ? codeFromSetId(setId) : setId ?? null;
   }
 
   async #get(path, ttl = DAY) {
@@ -41,15 +63,23 @@ export class TcgClient {
   }
 
   card(tcgId) {
-    return this.#get(`/cards/${encodeURIComponent(tcgId)}`);
+    return this.#get(`/cards/${encodeURIComponent(this.#tcgdexId(tcgId))}`);
   }
 
   /** Set ids to try for a set code and/or printed set total. */
   async #candidateSets(setCode, total) {
-    const known = setFromCode(setCode);
-    if (known) return [known.id];
-    if (!total) return [];
+    if (this.lang === 'en') {
+      const known = setFromCode(setCode);
+      if (known) return [known.id];
+    }
+    if (!setCode && !total) return [];
     const sets = (await this.sets()) ?? [];
+    if (setCode && this.lang !== 'en') {
+      // Japanese cards print the set id itself; OCR may read "SV2A" for "SV2a".
+      const byCode = sets.filter((s) => String(s.id).toLowerCase() === String(setCode).toLowerCase());
+      if (byCode.length) return byCode.map((s) => s.id);
+    }
+    if (!total) return [];
     return sets.filter((s) => String(s.cardCount?.official) === String(Number(total))).map((s) => s.id);
   }
 
@@ -94,12 +124,13 @@ export class TcgClient {
 
   #brief(card, set) {
     return {
-      tcgId: card.id,
+      tcgId: this.ownId(card.id),
+      language: this.lang,
       name: card.name,
       number: card.localId,
       setId: set.id,
       setName: set.name ?? null,
-      setCode: codeFromSetId(set.id),
+      setCode: this.#printedCode(set.id),
       setTotal: printedTotal(card.localId, set.cardCount?.official),
       image: card.image ? `${card.image}/high.png` : null,
       thumb: card.image ? `${card.image}/low.webp` : null,
@@ -110,14 +141,15 @@ export class TcgClient {
   async details(tcgId) {
     const card = await this.card(tcgId);
     if (!card) return null;
-    const setId = card.set?.id ?? tcgId.slice(0, tcgId.lastIndexOf('-'));
+    const setId = card.set?.id ?? this.#tcgdexId(tcgId).slice(0, this.#tcgdexId(tcgId).lastIndexOf('-'));
     return {
-      tcg_id: card.id,
+      tcg_id: this.ownId(card.id),
+      language: this.lang,
       name: card.name,
       number: card.localId,
       set_id: setId,
       set_name: card.set?.name ?? null,
-      set_code: codeFromSetId(setId),
+      set_code: this.#printedCode(setId),
       set_total: printedTotal(card.localId, card.set?.cardCount?.official),
       rarity: card.rarity ?? null,
       category: card.category ?? null,

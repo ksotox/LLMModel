@@ -11,8 +11,9 @@ export const POKEMON_SINGLES_CATEGORY = '183454'; // CCG Individual Cards
 /** What to search eBay for: the name and printed number ("Voltorb 066/193"), or "promo" for promos. */
 export function searchQuery(card) {
   const number = card.number ? (card.set_total ? `${card.number}/${card.set_total}` : card.number) : '';
-  const promo = !card.set_total && /promo/i.test(card.set_name ?? '') ? 'promo' : '';
-  return [card.name, number, promo].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  const promo = !card.set_total && /promo|プロモ/i.test(card.set_name ?? '') ? 'promo' : '';
+  const japanese = card.language === 'ja' ? [card.set_code, 'japanese'] : [];
+  return [card.name, number, promo, ...japanese].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /** The eBay.com "Sold items" search for a card, for opening in the browser. */

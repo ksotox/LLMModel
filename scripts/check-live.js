@@ -129,6 +129,23 @@ if (!process.env.POKEMONPRICETRACKER_API_KEY) {
   }
 }
 
+// Japanese cards: TCGdex's Japanese database and pictures (151's Voltorb, SV2a 100/165).
+console.log('\nビリリダマ SV2a 100/165 (Japanese)');
+try {
+  const tcgdexJa = new TcgClient({ lang: 'ja' });
+  const [hit] = await tcgdexJa.search({ setCode: 'SV2a', number: '100/165' });
+  if (!hit) fail('TCGdex Japanese lookup', 'no match');
+  else {
+    ok('TCGdex Japanese lookup', `${hit.tcgId} ${hit.name} ${hit.image ?? '(no picture)'}`);
+    const img = hit.image ? await tcgdexJa.download(hit.image).catch(() => null) : null;
+    img ? ok('Japanese picture download', `${img.buffer.length} bytes, ${img.contentType}`) : fail('Japanese picture download', 'not found');
+    const details = await tcgdexJa.card(hit.tcgId);
+    ok('Japanese printings', JSON.stringify(details?.variants_detailed?.map((v) => [v.type, v.foil].filter(Boolean).join(' ')) ?? details?.variants ?? 'none listed'));
+  }
+} catch (err) {
+  fail('TCGdex Japanese', err.cause ?? err);
+}
+
 console.log('\nExchange rate');
 try {
   const rate = await catalog.fx.usdRate('EUR');
