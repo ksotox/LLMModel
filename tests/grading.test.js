@@ -15,6 +15,15 @@ import { mockCatalog, startMockSources } from './helpers/mock-sources.js';
 const JPEG = fs.readFileSync(new URL('../docs/reference/voltorb-reverse-holo.jpg', import.meta.url));
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const OVERLAY = `data:image/png;base64,${PNG_1PX.toString('base64')}`;
+const JPEG_URI = `data:image/jpeg;base64,${JPEG.toString('base64')}`;
+const region = (key, extra = {}) => ({ key, fraction: 0.02, grade: 8, severity: 'minor', white: 0.015, dark: 0.005, image: JPEG_URI, mask: OVERLAY, ...extra });
+const precisionSide = () => ({
+  flat: JPEG_URI,
+  surface_map: OVERLAY,
+  corners: [region('tl'), region('tr', { grade: 5, severity: 'heavy', fraction: 0.3 }), region('bl'), region('br'),
+    region('../../evil', { image: JPEG_URI })], // unknown key: dropped, never becomes a file name
+  edges: [region('top'), region('bottom', { mask: 'data:image/png;base64,PGh0bWw+' }), region('left', { image: OVERLAY }), region('right')],
+});
 
 const engineAnswer = (overrides = {}) => ({
   ok: true, engine: 'viridian-cv', status: 'complete', experimental_overall: 8,
@@ -24,6 +33,9 @@ const engineAnswer = (overrides = {}) => ({
   reference_used: false,
   warnings: ['Reference alignment unavailable.'],
   front_overlay: OVERLAY, back_overlay: OVERLAY,
+  precision: { front: precisionSide(), back: precisionSide() },
+  findings: [{ side: 'front', area: 'Top-right corner', kind: 'possible whitening', severity: 'heavy', grade: 5, detail: '30% bright', extra: '<script>' },
+    { side: 'sideways', area: 'x', kind: 'y', severity: 'heavy' }],
   ...overrides,
 });
 
@@ -119,10 +131,20 @@ describe('experimental pre-grading', () => {
     assert.equal(report.screening_only, true);
     assert.equal(report.front.centering.left_right, '55/45');
     assert.equal(report.back.centering.note, 'Couldn’t align the back to the reference.');
-    assert.deepEqual(Object.keys(report.media).sort(), ['back', 'back_overlay', 'front', 'front_overlay']);
+    const sideFiles = (side) => [side, `${side}_overlay`, `${side}_flat`, `${side}_surface_map`,
+      ...['tl', 'tr', 'bl', 'br'].flatMap((k) => [`${side}_corner_${k}`, `${side}_corner_${k}_map`]),
+      // bottom edge's map isn't a real PNG, left edge's "JPEG" is a PNG: both dropped
+      ...['top', 'bottom', 'left', 'right'].flatMap((k) => [k !== 'left' && `${side}_edge_${k}`, k !== 'bottom' && `${side}_edge_${k}_map`]).filter(Boolean)];
+    assert.deepEqual(Object.keys(report.media).sort(), [...sideFiles('front'), ...sideFiles('back')].sort());
+    assert.ok(!Object.keys(report.media).some((k) => k.includes('evil')));
+    // The measurements, cleaned: fixed labels, numbers only, unknown keys and sides dropped.
+    assert.deepEqual(report.precision.front.corners.map((c) => [c.key, c.label, c.grade, c.severity]),
+      [['tl', 'Top-left corner', 8, 'minor'], ['tr', 'Top-right corner', 5, 'heavy'], ['bl', 'Bottom-left corner', 8, 'minor'], ['br', 'Bottom-right corner', 8, 'minor']]);
+    assert.equal(report.precision.front.corners[0].image, undefined, 'pictures are files, not data in the report');
+    assert.deepEqual(report.findings, [{ side: 'front', area: 'Top-right corner', kind: 'possible whitening', severity: 'heavy', grade: 5, detail: '30% bright' }]);
     assert.deepEqual(state.calls[0].parts, ['front', 'back', 'reference']);
     for (const url of Object.values(report.media)) {
-      assert.match(url, /^\/media\/uploads\/grading\/[0-9a-f-]{36}\/(front|back)(_overlay)?\.(jpg|png)$/);
+      assert.match(url, /^\/media\/uploads\/grading\/[0-9a-f-]{36}\/(front|back)(_[a-z_]+)?\.(jpg|png)$/);
       assert.equal((await fetch(base + url)).status, 200, url);
     }
     // The original photo is stored byte for byte, apart from the collection's card picture.

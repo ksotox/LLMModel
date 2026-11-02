@@ -47,6 +47,13 @@ const mock = await startMockSources();
 // A stand-in for the local Python grading service (the real one is optional and not needed here).
 const grader = { online: false };
 const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const TINY_JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAOAAoDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDfooor4U9k/9k=';
+const scanSide = () => {
+  const jpg = `data:image/jpeg;base64,${TINY_JPEG}`;
+  const png = `data:image/png;base64,${PNG_1PX}`;
+  const reg = (key, grade) => ({ key, grade, fraction: grade < 8 ? 0.12 : 0.01, severity: grade >= 9 ? 'none' : grade >= 8 ? 'minor' : 'moderate', white: grade < 8 ? 0.1 : 0.01, dark: 0.004, image: jpg, mask: png });
+  return { flat: jpg, surface_map: png, corners: [reg('tl', 9), reg('tr', 7), reg('bl', 10), reg('br', 8)], edges: [reg('top', 10), reg('bottom', 8), reg('left', 9), reg('right', 10)] };
+};
 const graderServer = http.createServer((req, res) => {
   req.resume();
   req.on('end', () => {
@@ -58,6 +65,8 @@ const graderServer = http.createServer((req, res) => {
       capture: { front: { ok: true, warnings: [] }, back: { ok: true, warnings: [] } }, reference_used: true,
       warnings: ['Corners, edges, and surface are unvalidated visual heuristics.'],
       front_overlay: `data:image/png;base64,${PNG_1PX}`, back_overlay: `data:image/png;base64,${PNG_1PX}`,
+      precision: { front: scanSide(), back: scanSide() },
+      findings: [{ side: 'front', area: 'Top-right corner', kind: 'possible whitening', severity: 'moderate', grade: 7, detail: '10.0% of the measured corner area is bright and colourless' }],
     }));
   });
 });
@@ -443,10 +452,28 @@ try {
   await gr.getByLabel('Front photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await gr.getByLabel('Back photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await gr.getByRole('button', { name: 'Analyze both photos' }).click();
-  await gr.locator('.gr-report .gr-estimate', { hasText: '~8/10' }).waitFor();
+  await gr.locator('.gr-report .gr-big', { hasText: '~8' }).waitFor();
   await gr.locator('.gr-report .gr-notice', { hasText: 'Experimental CV estimate — not professional grading.' }).waitFor();
-  await gr.locator('.gr-metric', { hasText: 'L/R 55/45' }).waitFor();
-  assert.equal(await gr.locator('.gr-report img').count(), 4, 'front, back and both overlays');
+  // The virtual slab: card name, estimate and the "not a pro grade" stamp, flips to the back.
+  const slab = gr.locator('.slab-wrap');
+  await slab.locator('.slab-face.front .slab-title', { hasText: 'Linoone' }).waitFor();
+  await slab.locator('.slab-face.front .slab-grade', { hasText: '~8' }).waitFor();
+  await slab.locator('.slab-face.front .slab-stamp', { hasText: 'EXPERIMENTAL' }).waitFor();
+  await slab.getByRole('button', { name: '↻ Flip' }).click();
+  await slab.locator('.slab-inner.flipped').waitFor();
+  await slab.getByRole('button', { name: 'Original photo' }).click();
+  assert.match(await slab.locator('.slab-face.front .slab-window img').getAttribute('src'), /\/front\.jpg$/);
+  // Breakdown, precision scan with close-ups and view modes, and the list of findings.
+  await gr.locator('.gr-cat', { hasText: 'Centering' }).locator('.gr-analysis', { hasText: 'L/R 55/45' }).waitFor();
+  await gr.locator('.gr-cat', { hasText: 'Corners' }).locator('.gr-tag', { hasText: 'Screening only' }).waitFor();
+  assert.equal(await gr.locator('.gr-corner-grid .gr-closeup').count(), 4);
+  assert.equal(await gr.locator('.gr-edge-list .gr-closeup').count(), 4);
+  const tr = gr.locator('.gr-closeup', { hasText: 'Top-right corner' });
+  await tr.getByRole('button', { name: 'Map' }).click();
+  await tr.locator('.gr-zoom.v-map').waitFor();
+  await gr.getByRole('tab', { name: 'Back' }).click();
+  await gr.locator('.gr-sub', { hasText: 'Back corners' }).waitFor();
+  await gr.locator('.gr-findings tr', { hasText: 'possible whitening' }).waitFor();
   await gr.locator('.gr-history-item').first().waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('link', { name: 'Collection' }).click();

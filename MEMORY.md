@@ -88,7 +88,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
 ## Current state (2026-11-02)
-- `main` holds PRs #1–#10. Branch work: experimental pre-grading (below). 161 unit + 7 Python tests + e2e pass.
+- `main` holds PRs #1–#11 (#11 = pre-grading). Branch: detailed report + slab. 161 unit + 9 Python tests + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -99,7 +99,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Pre-grading (experimental):** `server/grading/` (Express router, `card_grading_reports` table, photos in
   `data/uploads/grading/<uuid>/`, orphan sweep after any card delete) → optional Python FastAPI
   `services/grading/app.py` on 127.0.0.1:8765 using MIT Viridian (`third_party/viridian`, gitignored, pinned in
-  `scripts/grading-setup.*`). Label every result "Experimental CV estimate — not professional grading.";
+  `scripts/grading-setup.*`). `precision.py`: flattened sides, corner/edge close-ups + masks matching upstream's
+  regions, surface map, findings; `gradingReport.js`: slab (flip/tilt/PNG), breakdown, scan. Label every result "Experimental CV estimate — not professional grading.";
   no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
 - **See `docs/CODE_REVIEW.md`** for the prioritised list (bugs B1–B6 now fixed, desktop D1–D3, perf P1–P3, security S1–S2,

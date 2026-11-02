@@ -358,6 +358,27 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - it stops the service before swapping folders and when the window closes.
 - **Verified:** a real run of the pinned Viridian commit on the reference Voltorb photo through the browser (upload, report with overlays, reopen from the card, delete) and a fresh install of the pinned commit. Tests: 9 Node integration tests with a mock service, the kit's 3 sanitising tests, 3 launcher tests, 7 Python adapter tests, and an e2e step.
 
+## Phase 17: A detailed pre-grading report with a virtual slab
+
+- **Asked for:** a report as detailed as TCGrader's graded-card page, with the card shown in a sleeve/slab. The owner supplied a saved copy of a TCGrader page; the live site wasn't reachable from the build environment, so its layout was taken from that page's markup: a flippable 3D slab with a label, a breakdown per category with front/back scores and flagged issues, and a "precision scan" of every corner and edge.
+- **Precision scan (`services/grading/precision.py`):**
+  - each side is cut out and straightened at 800×1120 from the detected outline;
+  - close-ups of the 4 corners and 4 edges come with a transparent map of the pixels Viridian's test counted, in exactly the regions it measures. The front and back use different upstream rules, and both are reproduced; tests check the maps add up to Viridian's own numbers;
+  - per-corner and per-edge scores use Viridian's own fraction-to-grade tables, and a surface map marks its scratch/scuff features;
+  - findings are built only from those measurements, worst first;
+  - when the card was aligned to its official picture, Viridian's reference-difference map is kept too.
+- **What it showed:** on a pack-fresh card, Viridian's blind corner test counts printed text and symbols ("BASIC", the energy symbol) as whitening, because its corner box reaches into the print. That's why upstream excludes these readings from the grade. The report now says so beside them, labels them "Screening only", and lets you see the counted pixels on the **Map** view.
+- **Report UI (`public/js/gradingReport.js`):**
+  - **virtual slab:** label, estimate badge and an "experimental · not a pro grade" stamp; flip; tilt with the pointer; flattened or original photo; save as a PNG that keeps the label;
+  - **breakdown cards:** front/back bars, generated analysis text, flagged issues, and "Counts toward estimate" or "Screening only";
+  - **precision scan:** each close-up has Original / Contrast / Inverted / Detail / Map views; plus a surface map and a findings table;
+  - **graded eBay prices:** saved PokemonPriceTracker data, shown for reference with no advice.
+  - Older reports still open, with their original photos and overlays.
+- **Tests:**
+  - Python: 2 new, against the real Viridian code;
+  - Node integration: precision data and images, including that unknown keys never become file names and that images whose content doesn't match their declared type are dropped;
+  - e2e: the slab, flip, close-ups, Map view, back tab and findings.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

@@ -271,6 +271,13 @@ The **experimental estimate** (for example "~8/10") comes from centering and sur
 
 Reports go with the card: moving the card to the Trash keeps them, deleting it for good deletes them.
 
+### Reading the report
+- **The slab:** your card in a virtual graded case, with its name, set, number and the experimental estimate on the label, and a condition word (for example "Near Mint–Mint"). **↻ Flip** turns it over to the back; moving the pointer over it tilts it like a real case. **Flattened** shows your card cut out and straightened; **Original photo** shows the photo as you took it. **Save as image** downloads it as a picture. The label always says it's an experimental estimate and not a professional grade.
+- **Grade breakdown:** centering, corners, edges and surface, each with a front and a back score, what was measured, and the areas flagged. **Counts toward estimate** or **Screening only** says whether that category is part of the overall number.
+- **Precision scan:** a close-up of every corner and edge, front and back, with its own score. The buttons under each one change the view: **Contrast**, **Inverted** and **Detail** make wear easier to see; **Map** marks the pixels the measurement counted (pink = bright and colourless, possible whitening; cyan = dark spots; white box = the area measured). If the marked pixels are printing (text, symbols, holo) rather than wear, that's a false alarm: the blind corner and edge test can't tell them apart, which is why it doesn't count toward the estimate. **Surface** shows the card with small scratch- or scuff-like features marked in amber (holo patterns show up too).
+- **Everything flagged:** one list of every flagged area, worst first, with what was measured.
+- **Sold prices by grade:** if you've used PokemonPriceTracker for this card, its saved graded eBay sales are listed next to the raw price, for reference only.
+
 ### Setting it up (once, optional)
 Pre-grading runs a small separate program on your computer. Without it, the rest of the app works as usual and Pre-grade shows "Grading service offline".
 

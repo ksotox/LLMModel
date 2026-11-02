@@ -16,7 +16,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Physical inventory.** Every copy keeps its own condition (NM–DMG), grade, price paid, storage place ("Binder 2, page 5") and plans (keep / trade / sell). Copies are grouped as ×2, ×3 in the gallery, and listed on the card's page.
 - **Gallery views, filters and bulk changes.** Compact, Detailed or sortable Table view; Compact / Comfortable / Large density; filters for rarity, type, variant, language, condition, value, date, graded and duplicates, all combined, plus one-click views (Most valuable, Missing prices, Grading candidates…). Select many cards to move, re-condition, mark for trade, export to CSV or delete (to a 30-day Trash, with Undo).
 - **Set completion.** The **Sets** page shows how complete each expansion is, with the full checklist (missing cards greyed out), the estimated cost of the missing cards, and Main / Master / Reverse holo goals.
-- **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface, with overlays and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
+- **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface. The report shows the card in a virtual slab (flip, tilt, save as image), a front/back breakdown per category, close-ups of every corner and edge with the pixels that were counted, a surface map, and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -37,8 +37,10 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Table view](docs/screenshots/17-table-view.png) | ![Bulk changes](docs/screenshots/18-bulk-select.png) |
 | **Set completion checklist** | **Dark mode** |
 | ![Set checklist](docs/screenshots/19-set-checklist.png) | ![Dark mode](docs/screenshots/20-dark-mode.png) |
-| **Pre-grade: pick a card** | **Pre-grade report (experimental, real Viridian run)** |
-| ![Pre-grade page](docs/screenshots/22-pre-grade-page.png) | ![Pre-grade report](docs/screenshots/21-pre-grade-report.png) |
+| **Pre-grade: the card in a virtual slab** | **Precision scan: every corner and edge up close** |
+| ![Pre-grade slab](docs/screenshots/23-pre-grade-slab.png) | ![Precision scan](docs/screenshots/24-pre-grade-precision-scan.png) |
+| **Pre-grade report (experimental, real Viridian run)** | **Saved slab image** |
+| ![Pre-grade report](docs/screenshots/21-pre-grade-report.png) | ![Slab image](docs/screenshots/25-pre-grade-slab-image.png) |
 
 > **New here? Read the [user guide](docs/USER_GUIDE.md)**: every feature, step by step.
 >
@@ -243,7 +245,8 @@ public/         no-build frontend (vanilla ES modules)
   js/search.js  search any card online
   js/sets.js    Sets page and a set's checklist
   js/account.js setup, sign-in, profile page, theme
-  js/grading.js Pre-grade page and dialog, reports
+  js/grading.js Pre-grade page and dialog
+  js/gradingReport.js the report: virtual slab, breakdown, precision scan, findings
   js/foilAsync.js / foilWorker.js  foil measurements in a Web Worker
 tests/
   api.test.js     API tests (node:test) against mock sources

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
-import { mimeFromMagic, normalizeAnalysis, pngDataUriToBuffer } from './normalize.js';
+import { analysisImages, mimeFromMagic, normalizeAnalysis } from './normalize.js';
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_REPORTS = 50;
@@ -52,7 +52,7 @@ async function requestService(url, options = {}, timeout = 120_000) {
   } catch {
     throw routeError(503, 'The local grading service isn’t running. Start it with scripts/grading-start.ps1 (see the user guide).');
   }
-  if (raw.length > 13_000_000) throw routeError(502, 'The grading service’s answer was too large');
+  if (raw.length > 30_000_000) throw routeError(502, 'The grading service’s answer was too large');
   let result;
   try { result = JSON.parse(raw); } catch { throw routeError(502, 'The grading service returned an invalid answer'); }
   if (!res.ok) {
@@ -189,12 +189,10 @@ export function createGradingRouter({ store, dataDir }) {
           fs.writeFileSync(path.join(folder, filename), file.buffer, { flag: 'wx' });
           media[name] = imageUrl(`${IMG_ROOT}/${reportId}/${filename}`);
         }
-        for (const name of ['front_overlay', 'back_overlay']) {
-          const img = pngDataUriToBuffer(answer[name]);
-          if (img) {
-            fs.writeFileSync(path.join(folder, `${name}.png`), img, { flag: 'wx' });
-            media[name] = imageUrl(`${IMG_ROOT}/${reportId}/${name}.png`);
-          }
+        // Overlays, the flattened sides, close-ups and screening maps: fixed names only.
+        for (const [filename, buf] of analysisImages(answer)) {
+          fs.writeFileSync(path.join(folder, filename), buf, { flag: 'wx' });
+          media[filename.replace(/\.(png|jpg)$/, '')] = imageUrl(`${IMG_ROOT}/${reportId}/${filename}`);
         }
         const stored = { ...result, media };
         const created_at = new Date().toISOString();
