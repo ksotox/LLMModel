@@ -16,6 +16,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Physical inventory.** Every copy keeps its own condition (NM–DMG), grade, price paid, storage place ("Binder 2, page 5") and plans (keep / trade / sell). Copies are grouped as ×2, ×3 in the gallery, and listed on the card's page.
 - **Gallery views, filters and bulk changes.** Compact, Detailed or sortable Table view; Compact / Comfortable / Large density; filters for rarity, type, variant, language, condition, value, date, graded and duplicates, all combined, plus one-click views (Most valuable, Missing prices, Grading candidates…). Select many cards to move, re-condition, mark for trade, export to CSV or delete (to a 30-day Trash, with Undo).
 - **Set completion.** The **Sets** page shows how complete each expansion is, with the full checklist (missing cards greyed out), the estimated cost of the missing cards, and Main / Master / Reverse holo goals.
+- **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface, with overlays and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -36,6 +37,8 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Table view](docs/screenshots/17-table-view.png) | ![Bulk changes](docs/screenshots/18-bulk-select.png) |
 | **Set completion checklist** | **Dark mode** |
 | ![Set checklist](docs/screenshots/19-set-checklist.png) | ![Dark mode](docs/screenshots/20-dark-mode.png) |
+| **Pre-grade: pick a card** | **Pre-grade report (experimental, real Viridian run)** |
+| ![Pre-grade page](docs/screenshots/22-pre-grade-page.png) | ![Pre-grade report](docs/screenshots/21-pre-grade-report.png) |
 
 > **New here? Read the [user guide](docs/USER_GUIDE.md)**: every feature, step by step.
 >
@@ -212,6 +215,9 @@ server/
   auth.js       profiles: password hashes, sign-in sessions, login throttle
   db.js         SQLite schema + queries (search, filters, grouping of copies, trash, stats, users)
   sets.js       set-completion checklists
+  grading/      experimental pre-grading: router (uploads, reports, cleanup) + normalize (answer sanitising)
+services/grading/  optional local Python (FastAPI) adapter around Viridian, 127.0.0.1:8765
+scripts/grading-*.ps1|.sh  set up (pinned Viridian commit) / start the pre-grading service
   catalog.js    combines the sources: search, details, image fallback, market info
   tcg.js        TCGdex client: lookup by set code/number/name, details, prices, image download
   ptcgData.js   Pokémon TCG dataset client (second source, rarity counts per set)
@@ -237,6 +243,7 @@ public/         no-build frontend (vanilla ES modules)
   js/search.js  search any card online
   js/sets.js    Sets page and a set's checklist
   js/account.js setup, sign-in, profile page, theme
+  js/grading.js Pre-grade page and dialog, reports
   js/foilAsync.js / foilWorker.js  foil measurements in a Web Worker
 tests/
   api.test.js     API tests (node:test) against mock sources
@@ -248,6 +255,8 @@ tests/
   auth.test.js    profiles, sign-in, sessions, throttling, who sees what
   collection.test.js  duplicates, grouping, paging, filters, bulk changes, trash, CSV
   sets.test.js    set checklists, goals, missing value
+  grading.test.js pre-grading with a mock service: uploads, limits, access, history, cleanup on delete
+  grading-utils.test.js  sanitising of the grading service's answers
   desktop.test.js desktop launcher: install, update keeping the collection, rollback, server, update banner API
   fixtures/ptcg   real Pokémon TCG dataset files for a few sets
   e2e/run.js    browser walkthrough with Playwright using docs/reference photos
@@ -269,6 +278,7 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 | `POST /api/cards/duplicates` | `{ cards }` → how many of each you already own |
 | `POST /api/cards/bulk` | `{ ids, action: 'set' \| 'trash' \| 'restore', set: { pack_id, condition, storage_location, status, … } }` |
 | `GET /api/cards/export?ids=` | CSV of the chosen cards |
+| `GET /api/grading/health` · `GET /api/grading/cards/:id` · `POST /api/grading/cards/:id` · `DELETE /api/grading/cards/:id/reports/:reportId` | Pre-grading service status · a card's reports · new report (multipart `front` + `back`, JPEG/PNG/WebP ≤ 8 MB) · delete a report and its photos |
 | `GET /api/sets` · `GET /api/sets/:lang/all` · `GET /api/sets/:lang/:id[?values=1]` | Your sets with completion · every set · one set's checklist (with missing value) |
 | `POST /api/cards` | Add one or more cards: multipart with `cards` (JSON array) and one image per card referenced by `photoField` |
 | `PATCH /api/cards/:id` | Edit a card. Changing `tcg_id` re-links it and fetches the official image |
@@ -293,5 +303,7 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 npm test             # API tests
 npm run test:e2e     # browser walkthrough (needs Playwright + Chromium); SCREENSHOTS=1 refreshes docs/screenshots
 ```
+
+The pre-grading adapter has its own Python tests: `.venv-grading/bin/python -m unittest services.grading.test_adapter` (Windows: `.venv-grading\Scripts\python.exe`).
 
 Both suites use local mocks of the online sources (`tests/helpers/mock-sources.js`), so they don't need internet access. The Pokémon TCG dataset mock serves real data files.

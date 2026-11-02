@@ -8,6 +8,7 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -43,6 +44,25 @@ async function startServer(dataDir, mock, port = 0) {
 const step = (msg) => console.log(`• ${msg}`);
 
 const mock = await startMockSources();
+// A stand-in for the local Python grading service (the real one is optional and not needed here).
+const grader = { online: false };
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const graderServer = http.createServer((req, res) => {
+  req.resume();
+  req.on('end', () => {
+    if (!grader.online) { res.statusCode = 503; return res.end(JSON.stringify({ detail: 'down' })); }
+    if (req.url === '/health') return res.end(JSON.stringify({ ready: true, engine: 'viridian-cv' }));
+    const side = (lr) => ({ centering: { ok: true, grade: 9, left_right: lr, top_bottom: '52/48', confidence: 'medium', axis_note: 'L/R is the reliable axis; T/B is approximate on modern layouts' }, corners: { grade: 7, confidence: 'low' }, edges: { grade: 8, confidence: 'low' }, surface: { grade: 8, confidence: 'low' }, experimental_overall: 8 });
+    res.end(JSON.stringify({
+      ok: true, engine: 'viridian-cv', status: 'complete', experimental_overall: 8, front: side('55/45'), back: side('51/49'),
+      capture: { front: { ok: true, warnings: [] }, back: { ok: true, warnings: [] } }, reference_used: true,
+      warnings: ['Corners, edges, and surface are unvalidated visual heuristics.'],
+      front_overlay: `data:image/png;base64,${PNG_1PX}`, back_overlay: `data:image/png;base64,${PNG_1PX}`,
+    }));
+  });
+});
+await new Promise((r) => graderServer.listen(0, '127.0.0.1', r));
+process.env.GRADER_SERVICE_URL = `http://127.0.0.1:${graderServer.address().port}`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-e2e-'));
 let srv = await startServer(dataDir, mock);
 const base = `http://127.0.0.1:${srv.port}`;
@@ -405,6 +425,42 @@ try {
   await page.locator('.account-button').click();
   await page.getByRole('button', { name: /Light mode/ }).click();
 
+  step('pre-grade: offline service is shown calmly; with it running, a report is saved, reopened and deleted');
+  await page.getByRole('link', { name: 'Pre-grade' }).click();
+  await page.getByRole('heading', { name: 'Pre-grade' }).waitFor();
+  await page.locator('.gr-notice', { hasText: 'Experimental CV estimate — not professional grading.' }).waitFor();
+  await page.getByLabel('Search cards to pre-grade').fill('linoone');
+  await page.locator('.gr-card-option').first().getByRole('button', { name: 'Pre-grade' }).click();
+  let gr = page.locator('dialog.modal');
+  await gr.locator('.gr-connection', { hasText: 'Grading service offline' }).waitFor();
+  assert.ok(await gr.getByRole('button', { name: 'Analyze both photos' }).isDisabled(), 'no analysis while offline');
+  await page.keyboard.press('Escape');
+  grader.online = true;
+  await page.locator('.card-tile, .gr-card-option').first().waitFor();
+  await page.locator('.gr-card-option').first().getByRole('button', { name: 'Pre-grade' }).click();
+  gr = page.locator('dialog.modal');
+  await gr.locator('.gr-connection.gr-ready').waitFor();
+  await gr.getByLabel('Front photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
+  await gr.getByLabel('Back photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
+  await gr.getByRole('button', { name: 'Analyze both photos' }).click();
+  await gr.locator('.gr-report .gr-estimate', { hasText: '~8/10' }).waitFor();
+  await gr.locator('.gr-report .gr-notice', { hasText: 'Experimental CV estimate — not professional grading.' }).waitFor();
+  await gr.locator('.gr-metric', { hasText: 'L/R 55/45' }).waitFor();
+  assert.equal(await gr.locator('.gr-report img').count(), 4, 'front, back and both overlays');
+  await gr.locator('.gr-history-item').first().waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Collection' }).click();
+  await page.locator('.card-tile', { hasText: 'Linoone' }).click();
+  await page.locator('dialog.modal').getByRole('button', { name: 'Pre-grade card' }).click();
+  gr = page.locator('dialog.modal');
+  await gr.locator('.gr-history-item').first().getByRole('button', { name: 'View' }).click();
+  await gr.locator('.gr-report').waitFor();
+  await gr.locator('.gr-history-item').first().getByRole('button', { name: 'Delete' }).click();
+  await page.locator('dialog.modal').last().getByRole('button', { name: 'Delete' }).click();
+  await gr.getByText('No inspections saved for this card yet.').waitFor();
+  await page.keyboard.press('Escape');
+  grader.online = false;
+
   step('restart the server: everything is still there');
   await srv.stop();
   srv = await startServer(dataDir, mock, srv.port);
@@ -448,5 +504,6 @@ try {
   await browser.close();
   await srv.stop();
   await mock.close();
+  graderServer.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 }

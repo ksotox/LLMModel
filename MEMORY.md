@@ -20,17 +20,11 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
 - `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough.
   `SCREENSHOTS=1` refreshes `docs/screenshots/`. Both use local mocks, so no network is needed.
-- **Desktop app (Windows):** `desktop/install.ps1` (`irm …/desktop/install.ps1 | iex`) builds `Pokedex.exe` from
-  `desktop/Pokedex.cs` with Windows' csc.exe into `%LOCALAPPDATA%\Pokedex`; the exe runs `launcher.mjs` (copied
-  there, self-updating). The launcher reads the newest commit from `github.com/<repo>.git/info/refs` (the API is
-  rate-limited to 60/h, used only for the message), downloads `codeload` zip, swaps `LLMModel-main` (keeps
-  `.previous`, moves `data/`, copies `node_modules` if the lock file is unchanged, rolls back if the server won't
-  start), starts the server with IPC (`POKEDEX_DESKTOP`, `/api/desktop`, restart/shutdown), opens an Edge
-  `--app` window and stops when it closes. `.pokedex-version` in the app folder holds the installed commit.
-- Windows one-click start (older): `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`). It installs on first
-  run and runs `npm start -- --open`. `--open` opens the browser; if the app is already running, it
-  just reopens the browser. The desktop shortcut and the user-level env var for the key are set up
-  by a PowerShell snippet in the README. Icon: `public/pokedex.ico`.
+- **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (`desktop/Pokedex.cs`, csc.exe) into
+  `%LOCALAPPDATA%\Pokedex`; it runs `launcher.mjs` (self-updating): newest commit via `<repo>.git/info/refs`, codeload
+  zip, swap `LLMModel-main` (keeps `.previous`, moves `data/` and the grading setup, reuses `node_modules` if the lock
+  is unchanged, rolls back if the server won't start), server over IPC (`/api/desktop`), Edge `--app` window.
+- Older one-click start: `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`) runs `npm start -- --open`.
 - `npm run check:live`: looks up the 3 reference cards in every real source (run on a networked machine).
 - Data lives in `DATA_DIR` (default `./data`): `collection.db` plus image folders. Back it up to keep the collection.
 
@@ -91,12 +85,10 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   history and sales. Not yet verified against the live API.
 - The cloud sandbox used so far could only reach GitHub and npm. TCGdex, eBay, PokemonPriceTracker and
   tcgcsv were blocked, so live behaviour is verified by the owner running `npm run check:live`.
-- The GitHub repo's default branch was a `claude/...` branch instead of `main`, which made CodeRabbit
-  skip PRs. PRs target `main`.
+- PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
-## Current state (2026-11-01)
-- `main` holds PRs #1–#9. PR #10 (open): Japanese cards + profiles/sign-in, inventory per copy, gallery views,
-  filters/bulk/trash/CSV, set completion, smarter recognition. 146 unit tests + e2e pass.
+## Current state (2026-11-02)
+- `main` holds PRs #1–#10. Branch work: experimental pre-grading (below). 161 unit + 7 Python tests + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -104,6 +96,12 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
+- **Pre-grading (experimental):** `server/grading/` (Express router, `card_grading_reports` table, photos in
+  `data/uploads/grading/<uuid>/`, orphan sweep after any card delete) → optional Python FastAPI
+  `services/grading/app.py` on 127.0.0.1:8765 using MIT Viridian (`third_party/viridian`, gitignored, pinned in
+  `scripts/grading-setup.*`). Label every result "Experimental CV estimate — not professional grading.";
+  no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
+  `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
 - **See `docs/CODE_REVIEW.md`** for the prioritised list (bugs B1–B6 now fixed, desktop D1–D3, perf P1–P3, security S1–S2,
   data-source risks R1–R3, tech debt T1–T9). Biggest: R1 dataset is legacy (pull-chance rarity counts depend on it),
   T1 no CI, S1 (now: sign-in added; still listens on all interfaces), P1 sequential lookups. Users read `docs/USER_GUIDE.md`.

@@ -337,6 +337,27 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **iPhone HEIC photos** are converted to JPEG in the browser with heic2any (loaded only when needed; can be turned off in the profile). **Foil measurements** run in a Web Worker (`foilAsync.js`), falling back to the main thread.
 - **Tests:** auth (6), collection management (8), set completion (4); the e2e now starts with setup and covers the duplicate popup, grouping, compact/table views, presets, filters, bulk condition + trash + undo, per-copy fields, a set checklist, dark mode, and signing out and in.
 
+## Phase 16: Experimental pre-grading (Viridian computer vision)
+
+- **Source:** the owner supplied the "My Pokédex — Viridian Pre-Grading Integration Kit v0.1" (installer, Express router, FastAPI adapter, UI, tests), built around the MIT-licensed [Viridian](https://github.com/dylan7077/viridian) grader by Dylan Roberts. It was chosen over other open-source graders for its clear license and its own published findings on which measurements are reliable.
+- **Integration:** the kit's installer stopped safely because this branch had moved on from the public snapshot it was written for, so the payload was integrated by hand:
+  - every card is checked against the signed-in profile, and trashed cards can't be graded;
+  - photo-size errors answer 413, and the service's own messages reach the user;
+  - report photos are removed after *any* card deletion (one card for good, a pack with its cards, a profile, the 30-day trash purge) by sweeping report folders that no saved report points to. This replaced the kit's per-route snapshots, which wouldn't have covered the trash purge or deleted profiles;
+  - the screens use the app's theme (dark mode works).
+- **Adapter fixes:**
+  - the card's official picture (sent as an optional alignment reference) went through the user-photo checks, so a small official image failed the whole inspection; it's now skipped instead;
+  - a note now appears when the back photo doesn't look like a card back, and when back centering can't be measured because Viridian's card-back reference image isn't installed (upstream doesn't ship it).
+- **Honesty:**
+  - every result carries "Experimental CV estimate — not professional grading.";
+  - the report explains that the overall estimate uses centering and surface only, because Viridian's own validation found its blind corner/edge heuristics don't separate damaged from clean cards;
+  - no probabilities, accuracy claims or grading-profit advice.
+- **Desktop launcher:**
+  - it now carries `.venv-grading` and `third_party/viridian` across updates and rollbacks (before, an update would have discarded the setup);
+  - it starts the grading service if it's set up, and skips it quietly if not;
+  - it stops the service before swapping folders and when the window closes.
+- **Verified:** a real run of the pinned Viridian commit on the reference Voltorb photo through the browser (upload, report with overlays, reopen from the card, delete) and a fresh install of the pinned commit. Tests: 9 Node integration tests with a mock service, the kit's 3 sanitising tests, 3 launcher tests, 7 Python adapter tests, and an e2e step.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

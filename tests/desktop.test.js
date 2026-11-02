@@ -9,7 +9,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import zlib from 'node:zlib';
 import {
-  ensurePackages, installedVersion, isUp, latestCommit, rollback, startServer, stopServer, unzip, update, waitUntilUp,
+  ensurePackages, gradingPython, installedVersion, isUp, latestCommit, rollback, startGrading, startServer, stopGrading, stopServer, unzip, update, waitUntilUp,
 } from '../desktop/launcher.mjs';
 import { createApp } from '../server/app.js';
 import { mockCatalog, startMockSources } from './helpers/mock-sources.js';
@@ -223,6 +223,72 @@ describe('desktop app: installing and updating from GitHub', () => {
     const evil = makeZip({ '../../evil.txt': 'x' }, 'LLMModel-x');
     assert.throws(() => unzip(evil, path.join(dir, 'unzip-test')), /unsafe path/);
     assert.equal(fs.existsSync(path.join(dir, 'evil.txt')), false);
+  });
+
+  test('the optional pre-grading setup survives an update and a rollback', async () => {
+    const venv = path.join(appDir, '.venv-grading', 'marker.txt');
+    const viridian = path.join(appDir, 'third_party', 'viridian', 'LICENSE');
+    for (const f of [venv, viridian]) {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, 'set up');
+    }
+    const v5 = 'e'.repeat(40);
+    publish(v5, 'Keeps grading', app('lock-1'));
+    await update({ ...config(), latest: await latestCommit(config()), log, npm });
+    assert.equal(installedVersion(appDir).sha, v5);
+    assert.equal(fs.readFileSync(venv, 'utf8'), 'set up', 'Python environment carried across');
+    assert.equal(fs.readFileSync(viridian, 'utf8'), 'set up', 'Viridian source carried across');
+    assert.equal(fs.existsSync(path.join(`${appDir}.previous`, '.venv-grading')), false, 'moved, not left behind to be deleted');
+    assert.equal(rollback({ appDir, log }), true);
+    assert.equal(fs.readFileSync(venv, 'utf8'), 'set up', 'and back again after a rollback');
+    assert.equal(fs.readFileSync(viridian, 'utf8'), 'set up');
+    assert.equal(fs.readFileSync(path.join(appDir, 'data', 'collection.db'), 'utf8'), 'my cards');
+  });
+});
+
+describe('desktop app: optional pre-grading service', () => {
+  let dir;
+  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-grading-launch-')); });
+  after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const lines = [];
+  const log = (...parts) => lines.push(parts.join(' '));
+
+  test('not set up (no Python): skipped quietly, the app starts as usual', async () => {
+    assert.equal(gradingPython(dir), null);
+    assert.equal(await startGrading({ appDir: dir, log }), null);
+    assert.match(lines.at(-1), /not set up/);
+  });
+
+  test('set up: started on 127.0.0.1 with the app, stopped with it; skipped when already running', { skip: process.platform === 'win32' }, async () => {
+    for (const f of ['services/grading/app.py', 'third_party/viridian/src/grading.py']) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), '');
+    }
+    // A stand-in "python" that records how it was started and keeps running.
+    const python = path.join(dir, '.venv-grading', 'bin', 'python');
+    fs.mkdirSync(path.dirname(python), { recursive: true });
+    fs.writeFileSync(python, '#!/bin/sh\necho "$@" > started.txt\nexec sleep 30\n', { mode: 0o755 });
+    assert.equal(gradingPython(dir), python);
+    assert.equal(gradingPython(dir, 'win32'), null, 'on Windows it looks for .venv-grading\\Scripts\\python.exe');
+
+    const port = 4900 + Math.floor(Math.random() * 90);
+    const child = await startGrading({ appDir: dir, gradingPort: port, log });
+    assert.ok(child);
+    const until = Date.now() + 5000;
+    while (!fs.existsSync(path.join(dir, 'started.txt')) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fs.readFileSync(path.join(dir, 'started.txt'), 'utf8').trim(), `-m uvicorn services.grading.app:app --host 127.0.0.1 --port ${port}`);
+    await stopGrading(child);
+    assert.ok(child.exitCode != null || child.signalCode != null, 'stopped');
+
+    // Started by hand already: the launcher leaves it alone.
+    const running = http.createServer((_req, res) => res.end('{"ready":true}'));
+    await new Promise((r) => running.listen(port, '127.0.0.1', r));
+    try {
+      assert.equal(await startGrading({ appDir: dir, gradingPort: port, log }), null);
+      assert.match(lines.at(-1), /already running/);
+    } finally {
+      running.close();
+    }
   });
 });
 

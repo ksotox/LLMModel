@@ -60,6 +60,8 @@ Tests were added for each fix. The credit-drain test was confirmed to fail witho
 | --- | --- | --- | --- |
 | S1 | ~~Medium~~ Low | ~~No password.~~ **Fixed:** profiles with passwords and sign-in (scrypt, HttpOnly session cookie, login throttle). Still open: the server listens on every network interface, and there is no password reset. | Listen on `localhost` by default with an "Allow my phone" switch; add an owner-run reset. |
 | S2 | Low | The server downloads any `http(s)` address it's sent as an official picture, which could be used to probe the local network. | Accept only known image hosts (TCGdex, pokemontcg.io, Scrydex, TCGplayer CDN). |
+| S3 | Low | Photos under `/media` need a signed-in profile, but not *the owning* profile: anyone signed in who knows a file's random name (a UUID for pre-grading photos) can open it. | Serve uploads through a route that checks the card's owner. |
+| S4 | Low | The optional pre-grading service (`127.0.0.1:8765`) has no sign-in of its own: any program on the same PC can call it. It only analyses photos it's sent and stores nothing; it never listens on the network. | Keep it bound to 127.0.0.1 (the scripts and launcher do); add a shared secret if the PC has untrusted users. |
 
 ### Data sources (risks)
 

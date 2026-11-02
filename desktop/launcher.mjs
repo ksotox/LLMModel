@@ -9,6 +9,10 @@
 //     the server.
 //  4. While the app is open it checks GitHub every 30 minutes and tells the app about a new
 //     version, which offers "Restart to update".
+//  5. If the optional pre-grading service has been set up (scripts/grading-setup.ps1), it starts
+//     it too, on 127.0.0.1 only, and stops it with the app. Without Python nothing changes: the
+//     app shows pre-grading as offline. Its setup (.venv-grading, third_party/viridian) is carried
+//     across updates like the collection.
 // Everything is logged to launcher.log next to this file.
 
 import { spawn } from 'node:child_process';
@@ -31,7 +35,13 @@ export const DEFAULTS = {
   api: 'https://api.github.com',
   codeload: 'https://codeload.github.com',
   checkEveryMinutes: 30,
+  startGrading: true, // start the pre-grading service when it's set up ("startGrading": false in config.json to stop that)
+  gradingPort: 8765,
 };
+
+// Folders inside the app folder that aren't part of the code and must survive an update: the
+// optional pre-grading setup. (The collection, data/, is handled separately and more carefully.)
+export const KEEP_ACROSS_UPDATES = ['.venv-grading', path.join('third_party', 'viridian')];
 
 export function loadConfig(dir = HERE) {
   try {
@@ -230,11 +240,28 @@ export async function update({ appDir, repo, codeload, latest, log, selfDir = nu
     }
   }
 
+  carryOver(previous, appDir, log);
+
   // The launcher updates itself too, from the next start.
   const nextLauncher = path.join(appDir, 'desktop', 'launcher.mjs');
   if (selfDir && fs.existsSync(nextLauncher)) fs.copyFileSync(nextLauncher, path.join(selfDir, 'launcher.mjs'));
   log(`updated to ${latest.sha.slice(0, 7)}`);
   return { updated: true, from: current?.sha ?? null, to: latest.sha };
+}
+
+/** Move the optional pre-grading setup from one app folder to another. Never fatal: it can be set up again. */
+function carryOver(from, to, log) {
+  for (const rel of KEEP_ACROSS_UPDATES) {
+    const src = path.join(from, rel);
+    const dest = path.join(to, rel);
+    if (!fs.existsSync(src) || fs.existsSync(dest)) continue;
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.renameSync(src, dest);
+    } catch (err) {
+      log(`couldn't keep ${rel} (run scripts\\grading-setup.ps1 again to restore pre-grading): ${err.message}`);
+    }
+  }
 }
 
 /** Windows can lock a file for a moment (antivirus scans): retry a rename for a few seconds. */
@@ -282,6 +309,7 @@ export function rollback({ appDir, log }) {
   rmrf(failed);
   fs.renameSync(appDir, failed);
   if (fs.existsSync(path.join(failed, 'data'))) fs.renameSync(path.join(failed, 'data'), path.join(previous, 'data'));
+  carryOver(failed, previous, log);
   fs.renameSync(previous, appDir);
   log(`rolled back to ${installedVersion(appDir)?.sha?.slice(0, 7) ?? 'the previous version'}; the failed one is in ${failed}`);
   return true;
@@ -335,6 +363,58 @@ export function stopServer(child, { timeoutMs = 8000 } = {}) {
   });
 }
 
+/** The pre-grading service's Python, if it has been set up in the app folder. */
+export function gradingPython(appDir, platform = process.platform) {
+  const python = platform === 'win32'
+    ? path.join(appDir, '.venv-grading', 'Scripts', 'python.exe')
+    : path.join(appDir, '.venv-grading', 'bin', 'python');
+  const ready = [python, path.join(appDir, 'services', 'grading', 'app.py'), path.join(appDir, 'third_party', 'viridian', 'src', 'grading.py')]
+    .every((f) => fs.existsSync(f));
+  return ready ? python : null;
+}
+
+/**
+ * Start the optional pre-grading service (local only). Returns the process, or null when it isn't
+ * set up or already running (e.g. started by hand). Never throws: the app works without it.
+ */
+export async function startGrading({ appDir, gradingPort = 8765, log, python = gradingPython(appDir) }) {
+  if (!python) {
+    log('pre-grading not set up (optional): skipping');
+    return null;
+  }
+  try {
+    const res = await fetch(`http://127.0.0.1:${gradingPort}/health`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      log('pre-grading service already running');
+      return null;
+    }
+  } catch { /* not running: start it */ }
+  try {
+    const child = spawn(python, ['-m', 'uvicorn', 'services.grading.app:app', '--host', '127.0.0.1', '--port', String(gradingPort)], {
+      cwd: appDir, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    });
+    child.stdout.on('data', (d) => log('[grading]', String(d).trimEnd()));
+    child.stderr.on('data', (d) => log('[grading]', String(d).trimEnd()));
+    child.on('error', (err) => log(`pre-grading service couldn't start: ${err.message}`));
+    child.on('exit', (code) => log(`pre-grading service stopped (exit ${code})`));
+    log(`pre-grading service starting on 127.0.0.1:${gradingPort}`);
+    return child;
+  } catch (err) {
+    log(`pre-grading service couldn't start: ${err.message}`);
+    return null;
+  }
+}
+
+/** Stop the pre-grading service (it holds files in the app folder open, which would block an update). */
+export function stopGrading(child, { timeoutMs = 5000 } = {}) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode != null || child.signalCode != null) return resolve();
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } resolve(); }, timeoutMs);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    try { child.kill(); } catch { clearTimeout(timer); resolve(); }
+  });
+}
+
 function findAppBrowser() {
   const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean);
   const candidates = roots.flatMap((r) => [
@@ -373,9 +453,12 @@ async function main() {
   }
 
   let server = null;
+  let grading = null;
   let pending = null; // newest version known to be waiting
 
   const bringUp = async () => {
+    await stopGrading(grading); // its files must not be in use while the folder is swapped
+    grading = null;
     const latest = await latestOrNull();
     let result = { updated: false };
     if (latest) {
@@ -388,13 +471,19 @@ async function main() {
     if (!fs.existsSync(path.join(config.appDir, 'package.json'))) throw new Error(`The app isn't installed in ${config.appDir} and couldn't be downloaded (are you online?).`);
     await ensurePackages(config.appDir, log);
     server = startServer({ ...config, log });
-    if (await waitUntilUp(url, { child: server })) return;
+    if (await waitUntilUp(url, { child: server })) {
+      if (config.startGrading) grading = await startGrading({ ...config, log });
+      return;
+    }
     if (result.updated) {
       log('the new version did not start: rolling back');
       await stopServer(server);
       if (rollback({ ...config, log })) {
         server = startServer({ ...config, log });
-        if (await waitUntilUp(url, { child: server })) return;
+        if (await waitUntilUp(url, { child: server })) {
+          if (config.startGrading) grading = await startGrading({ ...config, log });
+          return;
+        }
       }
     }
     throw new Error(`The server didn't start. Details are in ${path.join(HERE, 'launcher.log')}.`);
@@ -432,7 +521,7 @@ async function main() {
   const win = openWindow(url, path.join(HERE, 'window'), log);
   const quit = async () => {
     clearInterval(timer);
-    await stopServer(server);
+    await Promise.all([stopServer(server), stopGrading(grading)]);
     log('closed');
     process.exit(0);
   };

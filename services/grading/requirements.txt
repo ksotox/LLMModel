@@ -1,0 +1,10 @@
+# Minimal requirements for the adapter and upstream grading engine.
+# Versions are bounded for reproducible setup; test after upgrading.
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
+python-multipart>=0.0.9,<1
+numpy>=1.26,<3
+opencv-python-headless>=4.8,<5
+Pillow>=10,<13
+requests>=2.31,<3
+python-dotenv>=1,<2
