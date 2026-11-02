@@ -13,6 +13,7 @@ import { direction, gradeFromTitle, listingMatchesCard, soldStats } from './sold
 import { createAuth, hashPassword, checkPassword, publicUser, validateProfile } from './auth.js';
 import { CONDITIONS, openDb, PACK_KINDS, STATUSES, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
+import { createGradingRouter, initializeGradingTable, sweepGradingOrphans } from './grading/router.js';
 import { SET_CODES } from './setCodes.js';
 import { allSets, setChecklist, userSets } from './sets.js';
 
@@ -57,7 +58,11 @@ export function createApp({
   const store = openDb(path.join(dataDir, 'collection.db'));
   const auth = createAuth(store, { secureCookie });
   store.purgeSessions();
+  initializeGradingTable(store.db);
   for (const { photo_path } of store.purgeTrash(30)) if (photo_path) fs.rmSync(path.join(dataDir, photo_path), { force: true });
+  // Pre-grading photos of cards deleted for good (their report rows went with the card).
+  const sweepGrading = () => sweepGradingOrphans(store.db, dataDir);
+  sweepGrading();
   // Without sign-in, everything belongs to one built-in profile.
   let localUser = null;
   if (!requireLogin) {
@@ -344,6 +349,8 @@ export function createApp({
     next();
   });
   app.use(express.json({ limit: '1mb' }));
+  // Experimental pre-grading through the local Viridian service (127.0.0.1 only; see server/grading).
+  app.use('/api/grading', createGradingRouter({ store, dataDir }));
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
   for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));
@@ -428,6 +435,7 @@ export function createApp({
     if (id === req.user.id) throw new HttpError(400, 'You can’t delete your own profile');
     if (!store.getUser(id)) throw new HttpError(404, 'Profile not found');
     for (const photo of store.deleteUser(id)) removeFile(photo);
+    sweepGrading();
     res.status(204).end();
   });
 
@@ -745,6 +753,7 @@ export function createApp({
     if (req.query.permanent === '1') {
       store.deleteCard(existing.id);
       removeFile(existing.photo_path);
+      sweepGrading();
     } else {
       store.trashCards([existing.id], req.user.id);
     }
@@ -818,6 +827,7 @@ export function createApp({
     });
     for (const c of cards) removeFile(c.photo_path);
     removeFile(existing.photo_path);
+    if (cards.length) sweepGrading();
     res.status(204).end();
   });
 
@@ -825,8 +835,8 @@ export function createApp({
 
   app.use((err, _req, res, _next) => {
     const status = err.status ?? (err instanceof multer.MulterError ? 400 : 500);
-    if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'Something went wrong on the server' : err.message });
+    if (status >= 500 && !err.expose) console.error(err);
+    res.status(status).json({ error: status >= 500 && !err.expose ? 'Something went wrong on the server' : err.message });
   });
 
   app.locals.store = store;

@@ -1,0 +1,58 @@
+/* Experimental pre-grading (public/js/grading.js). Uses the app's theme colours, so it follows
+   light and dark mode. Based on the Viridian integration kit's styles. */
+.gr-dialog { padding: 4px 4px 20px; max-width: 1050px; margin: auto; }
+.gr-dialog h2 { font-size: 1.5rem; margin: 4px 0; }
+.gr-dialog h3 { margin: 24px 0 10px; font-size: 1.05rem; }
+.gr-eyebrow { font-size: 0.72rem; letter-spacing: 0.12em; font-weight: 800; text-transform: uppercase; color: var(--accent); }
+.gr-muted { color: var(--muted); font-size: 0.86rem; margin: 3px 0; line-height: 1.5; }
+.gr-tip, .gr-notice, .gr-retry { border-radius: 12px; padding: 11px 14px; font-size: 0.87rem; line-height: 1.5; margin: 14px 0; }
+.gr-tip { background: color-mix(in srgb, var(--focus) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--focus) 30%, var(--line)); }
+.gr-notice { background: color-mix(in srgb, #f59e0b 14%, var(--surface)); border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--line)); }
+.gr-retry { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.gr-connection { font-weight: 700; font-size: 0.86rem; color: var(--accent); margin: 12px 0; }
+.gr-connection.gr-ready { color: var(--ok); }
+.gr-upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.gr-upload { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; min-width: 0; cursor: pointer; }
+.gr-upload-title { font-weight: 800; }
+.gr-upload input[type=file] { max-width: 100%; font-size: 0.82rem; padding: 6px; }
+.gr-photo-preview { height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; border-radius: 10px; border: 1px dashed var(--line); background: var(--surface); }
+.gr-photo-preview img { width: auto; max-height: 138px; max-width: 100%; object-fit: contain; }
+.gr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
+.gr-status { color: var(--muted); font-size: 0.86rem; margin: 0; }
+.gr-report { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.gr-report-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.gr-report-head h3 { margin: 3px 0 4px; }
+.gr-estimate { text-align: center; background: var(--ok-soft); padding: 12px 18px; border-radius: 12px; min-width: 150px; }
+.gr-estimate span { display: block; color: var(--ok); font-size: 0.66rem; letter-spacing: 0.08em; font-weight: 800; text-transform: uppercase; }
+.gr-estimate strong { font-size: 1.7rem; color: var(--ok); }
+.gr-side { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
+.gr-side h4 { margin: 8px 0 10px; }
+.gr-scores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.gr-metric { background: var(--bg); padding: 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.gr-metric.unavailable strong { color: var(--muted); }
+.gr-metric-title { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.gr-metric strong { display: block; font-size: 1.25rem; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.gr-metric small { display: block; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.gr-photos, .gr-quality-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.gr-photos figure { margin: 0; background: var(--bg); border: 1px solid var(--line); padding: 10px; border-radius: 12px; text-align: center; }
+.gr-photos img { max-width: 100%; max-height: 330px; object-fit: contain; margin: 0 auto; }
+.gr-photos figcaption { font-size: 0.76rem; color: var(--muted); margin-top: 8px; }
+.gr-quality { border-radius: 10px; border: 1px solid var(--line); padding: 10px 12px; }
+.gr-quality.ok strong { color: var(--ok); }
+.gr-quality strong { font-size: 0.85rem; }
+.gr-warnings { background: var(--bg); border-radius: 10px; padding: 10px 16px; margin-top: 14px; }
+.gr-warnings h4 { margin: 4px 0; }
+.gr-warnings ul { margin: 6px 0; padding-left: 18px; color: var(--muted); font-size: 0.84rem; line-height: 1.6; }
+.gr-history-item, .gr-card-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; background: var(--surface); }
+.gr-history-actions { display: flex; gap: 6px; flex: none; }
+.gr-card-picker { margin-top: 4px; }
+.gr-card-option-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gr-card-option-main > div { min-width: 0; }
+.gr-card-option-main img, .gr-placeholder { height: 57px; width: 42px; object-fit: contain; border-radius: 4px; background: var(--surface-2); flex-shrink: 0; }
+.gr-placeholder { display: grid; place-items: center; font-size: 20px; }
+.gr-card-option strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 660px) {
+  .gr-upload-grid, .gr-photos, .gr-quality-grid { grid-template-columns: 1fr; }
+  .gr-scores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gr-estimate { width: 100%; }
+}

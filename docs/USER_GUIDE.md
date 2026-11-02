@@ -10,6 +10,7 @@ Contents:
 5. [A card's page](#5-a-cards-page)
 6. [Packs, tins, kits and bundles](#6-packs-tins-kits-and-bundles)
 6b. [Set completion](#6b-set-completion)
+6c. [Pre-grade a card (experimental)](#6c-pre-grade-a-card-experimental)
 7. [Searching any card](#7-searching-any-card)
 8. [Prices, rarity and pull chance explained](#8-prices-rarity-and-pull-chance-explained)
 9. [eBay sold prices](#9-ebay-sold-prices)
@@ -72,6 +73,7 @@ The red bar at the top has four buttons:
 | **Collection** | All your cards, with search, filters, sorting and the total value |
 | **Packs** | The packs, tins, kits and bundles you've recorded, and what came out of each |
 | **Sets** | How complete each expansion is, with every card you own and still need |
+| **Pre-grade** | An experimental condition check of a card from a front and back photo |
 | **Search** | Any Pokémon card, including ones you don't own yet |
 | **+ Add** | Add cards from photos (or packs) |
 
@@ -250,6 +252,51 @@ Rarities (for illustration rares and the reverse holo goal) are available for En
 
 ---
 
+## 6c. Pre-grade a card (experimental)
+
+> **Experimental CV estimate — not professional grading.** It uses computer vision with provisional rules: no trained model, no accuracy guarantee, and it isn't a PSA, BGS or CGC grade. Don't decide on a paid grading submission from it alone.
+
+**What it checks,** from a fresh photo of the card's front and back:
+- **Centering:** the border on each side, as left/right and top/bottom ratios (for example `L/R 55/45`). Left/right is the more reliable one.
+- **Corners, edges and surface:** possible whitening, wear and scuffs, with an overlay drawn on the card.
+- **Photo quality:** sharpness, glare and size. If a photo isn't good enough, the report says **Retake recommended** and shows no overall estimate.
+
+The **experimental estimate** (for example "~8/10") comes from centering and surface only, the lower of front and back. The corner and edge readings are shown for information: on ordinary photos they aren't reliable enough to count.
+
+**How to use it:**
+1. Open **Pre-grade** and pick the card (each copy separately), or open a card and click **Pre-grade card**.
+2. Choose a **Front** and a **Back** photo: the whole card, straight on, out of its sleeve, on a plain contrasting surface, with no glare. JPEG, PNG or WebP, up to 8 MB each.
+3. Click **Analyze both photos**. The report, your original photos and the overlays are saved with that card.
+4. **Earlier inspections** lists every report for the card: **View** reopens one, **Delete** removes it and its photos (the card stays).
+
+Reports go with the card: moving the card to the Trash keeps them, deleting it for good deletes them.
+
+### Setting it up (once, optional)
+Pre-grading runs a small separate program on your computer. Without it, the rest of the app works as usual and Pre-grade shows "Grading service offline".
+
+**Windows:**
+1. Install **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). During setup, tick **Add python.exe to PATH**.
+2. Install **Git** from [git-scm.com](https://git-scm.com/download/win), if you haven't already.
+3. In PowerShell, run:
+   ```powershell
+   cd C:\Users\kevso.KEVRYZEN\LLMModel-main
+   powershell -ExecutionPolicy Bypass -File scripts\grading-setup.ps1
+   ```
+   This downloads Viridian (the open-source grading engine, MIT license) and its Python packages into the app folder. It takes a few minutes.
+4. **With the desktop app:** close it and open it again. It starts the grading service by itself whenever it's set up, keeps the setup through updates, and stops it when you close the window.
+5. **Without the desktop app:** start it in a second PowerShell window and keep that window open:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\grading-start.ps1
+   ```
+
+**Mac / Linux:** `sh scripts/grading-setup.sh`, then `sh scripts/grading-start.sh`.
+
+The service only listens on this computer (`127.0.0.1:8765`). Your phone can still use Pre-grade, because it goes through the app.
+
+**Back centering:** Viridian measures back centering by comparing with a picture of a clean, perfectly centred card back, which isn't included. Without it, back centering shows "—". You can add your own scan or photo of a well-centred back as `third_party\viridian\data\refs\card_back.jpg`.
+
+---
+
 ## 7. Searching any card
 
 **Search** looks up any Pokémon card, even ones you don't own:
@@ -383,6 +430,8 @@ Sign in with your profile on the phone too.
 | A Japanese card wasn't matched | Check the bottom-left code and number (e.g. `SV2a 100/165`) and type them in. The Japanese name can be typed too. |
 | "You already have this card" when adding | The same card and variant is in your collection. Choose **Yes, add anyway** for another copy, or **No** to go back. |
 | An iPhone photo won't open | Turn on **Convert iPhone HEIC photos** in **Profile & settings**, or on the iPhone choose Settings → Camera → Formats → **Most Compatible**. |
+| Pre-grade says "Grading service offline" | Set it up once (see [section 6c](#6c-pre-grade-a-card-experimental)), then reopen the desktop app or run `scripts\grading-start.ps1`. |
+| Pre-grade: "Could not find the full card" | Photograph the whole card, flat, on a plain surface that contrasts with its border. |
 | Deleted a card by mistake | Open **Trash** at the top of the collection and **Restore** it (within 30 days). |
 | A card was read wrong | Fix the name, set code or number, and pick the right match. Blurry or dark photos are the usual cause. |
 | `npm` errors about `package.json` | PowerShell is in the wrong folder: `cd` into the app folder first. |

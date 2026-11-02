@@ -2,6 +2,7 @@
 
 import { api } from './api.js';
 import { ebaySection } from './ebay.js';
+import { openGradingDialog } from './grading.js';
 import { historySection } from './history.js';
 import { cardQuads, cropToBlob, cutCard, loadImage } from './images.js';
 import { lookupPanel } from './lookup.js';
@@ -784,6 +785,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
       copiesSection(),
       h('div.actions.left',
         h('button.btn', { type: 'button', onclick: () => render('edit') }, 'Edit'),
+        h('button.btn', { type: 'button', title: 'Experimental condition check from a front and back photo', onclick: () => { dialog.close(); openGradingDialog(card); } }, 'Pre-grade card'),
         h('button.btn', { type: 'button', onclick: () => findOfficial(extra) }, card.tcg_id ? 'Change official card' : 'Find official card'),
         card.tcg_id && !card.official_image_path && h('button.btn', {
           type: 'button',

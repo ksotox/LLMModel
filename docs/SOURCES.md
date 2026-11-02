@@ -34,6 +34,16 @@ Scarlet & Violet base set (8,000+ packs), Scarlet & Violet—151, Temporal Force
 Phantasmal Flames (5,000+ packs). Other Scarlet & Violet and Mega Evolution sets use the average for their era. The
 numbers and their attribution are in `server/pullRates.js`, and each card shows its source in the UI.
 
+### Optional: experimental pre-grading (local Python service)
+
+| Component | Version / address | Used for | Code |
+| --- | --- | --- | --- |
+| **Viridian** by Dylan Roberts, MIT license | `https://github.com/dylan7077/viridian`, **pinned commit `f22ec116a727dc3d0976e304eb28ad83c89d681b`** (2026-07-03) | Card detection, centering, corner/edge/surface screening, overlays (`src.grading`, `src.backgrade`, `src.refgrade`; no card index, no ONNX model) | downloaded by `scripts/grading-setup.ps1` / `.sh` into `third_party/viridian` (not committed; its `LICENSE` stays with it) |
+| FastAPI, Uvicorn, python-multipart, NumPy, OpenCV (headless), Pillow, requests, python-dotenv | ranges in `services/grading/requirements.txt` (tested: FastAPI 0.162, Uvicorn 0.54, NumPy 2.5, OpenCV 4.14, Pillow 12.3) | The adapter service on `127.0.0.1:8765` | `services/grading/app.py` |
+| My Pokédex Viridian Pre-Grading Integration Kit v0.1 | supplied by the owner (2026-11-01) | Starting point for `server/grading/`, `services/grading/`, `public/js/grading.js`, `public/css/grading.css`, the scripts and tests (adapted, see HISTORY phase 16) | — |
+
+The service gets the user's two photos and the card's locally cached official picture from this app's server only, and nothing is sent elsewhere.
+
 ### Used by the desktop launcher (`desktop/launcher.mjs`)
 
 | Service | Address | Used for |

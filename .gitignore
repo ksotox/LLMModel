@@ -3,3 +3,8 @@ data/
 tests/.tmp/
 *.log
 .DS_Store
+
+# Experimental pre-grading (local Python service): environment and upstream Viridian source
+.venv-grading/
+third_party/viridian/
+__pycache__/
