@@ -113,6 +113,11 @@ export class PtcgDataClient {
     return card ? { card, set } : null;
   }
 
+  /** The dataset's whole record for a "ptcg:" id (attacks, abilities, weaknesses…), or null. */
+  async rawCard(id) {
+    return (await this.#locate(id))?.card ?? null;
+  }
+
   /** Full details for a "ptcg:" id, normalised to the columns we store. */
   async details(id) {
     const found = await this.#locate(id);

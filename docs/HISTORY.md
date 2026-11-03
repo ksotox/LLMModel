@@ -379,6 +379,35 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - Node integration: precision data and images, including that unknown keys never become file names and that images whose content doesn't match their declared type are dropped;
   - e2e: the slab, flip, close-ups, Map view, back tab and findings.
 
+## Phase 18: PokéBattles
+
+- **Asked for:** a PokéBattles tab using the Pokémon 3D API models: one card shown in 3D with its moves, or two cards battling, with moves and abilities to choose and a game-like presentation. Battles should open the way TomBastable's Pokemon-Card-ARKit demo does, with the Pokémon popping out of its card, but without scanning. The owner chose: moves from the card's own data, and both a vs-computer and a two-player mode.
+- **3D models:** `pokemon-3d-api.oneapp.dev` was blocked in the build environment. It's the viewer of the open-source Pokémon 3D API, whose model list (`MergedOpt.json`, 1,025 Pokémon with forms) and `.glb` files are on GitHub. `server/models3d.js` caches the list (memory + disk) and downloads each model once; only files the list names, from the project's GitHub address, are allowed, checked as glTF (≤ 15 MB). Forms follow the card (Mega, regional, VMAX → Gigantamax, shiny rarities). Cards without a Pokédex number are matched by name with card suffixes and owner prefixes removed.
+- **Battle data:** TCGdex and the dataset already send attacks, abilities, weakness, resistance and the Pokédex number, but the app was dropping them. `server/battle.js` reads them again from the (cached) raw card. Unlinked or attack-less cards get a basic Tackle; Trainers can't battle.
+- **Rules (`public/js/battle/engine.js`):** simple, original rules built on the cards' data:
+  - energy per turn and printed costs;
+  - "+" and "×" damage decided by coin flips; weakness and resistance as printed;
+  - abilities usable once each, powering up the next attack;
+  - a computer opponent;
+  - pure functions with a seeded random generator, so battles can be tested.
+- **Stage (`public/js/battle/scene.js`, three.js 0.180.0 served locally):**
+  - **the summon:** the card (its picture on a 3D card with our own card back) drops onto a type-coloured platform and glows, and the model pops out with a flash and particles;
+  - **attacks and hits:** attacks lunge with type-coloured particles (Lightning adds a bolt); hits shake, flash red and show floating numbers; healing, energy, power-up aura and fainting each have their own effect;
+  - **models:** a model's own animation clip plays when it has one (most have none);
+  - **fallbacks:** a Pokémon without a model fights as its standing card; without WebGL, a CSS card stage is used.
+- **Page:** picker with form choice and mode switch; the summon intro with floating card details (they shrink to a tag on phones); the showcase (orbit, practice target); the battle (HP and energy plates, typewriter messages, move buttons with cost pips and expected damage, turn banner, win screen with rematch).
+- **Found while testing:**
+  - a Pokémon with a single 3D form crashed the showcase;
+  - moves clicked during the intro were silently ignored (they're now disabled until it ends);
+  - Skip only fast-forwarded for 50 ms;
+  - three.js hides its package.json, so the vendor path is resolved from its main file.
+- **Tests:**
+  - `battle.test.js` (6): battle data from TCGdex, Japanese and unlinked cards; forms; proxy and cache, path tricks, non-glTF files, offline; profile access;
+  - `battleEngine.test.js` (8): the rules;
+  - mock TCGdex cards carry battle data, and the mock serves a model list and generated glTF cubes;
+  - e2e: showcase, a full battle against the computer, two-player turns, and the card-only fallback with the model host down.
+  - Verified in a browser with the real models from GitHub (Voltorb, Electrode, Linoone), including dark mode and a 390 px-wide phone screen.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

@@ -66,6 +66,44 @@ const CARDS = {
   },
 };
 
+// What TCGdex sends for battles (attacks, abilities, weakness, Pokédex number), for a few cards.
+const BATTLE = {
+  'en:sv02-066': { dexId: [100], stage: 'Basic', retreat: 1, attacks: [{ cost: ['Lightning'], name: 'Rollout', damage: 20 }, { cost: ['Lightning', 'Colorless'], name: 'Lightning Ball', damage: 30 }], weaknesses: [{ type: 'Fighting', value: '×2' }] },
+  'en:sv02-067': { dexId: [101], stage: 'Stage1', retreat: 1, attacks: [{ cost: ['Lightning'], name: 'Thunder Jolt', damage: '30+', effect: 'Flip a coin. If heads, this attack does 30 more damage.' }, { cost: ['Lightning', 'Colorless', 'Colorless'], name: 'Explosion', damage: 120 }], weaknesses: [{ type: 'Fighting', value: '×2' }] },
+  'en:sv03-168': { dexId: [264], stage: 'Stage1', retreat: 1, abilities: [{ type: 'Ability', name: 'Quick Search', effect: 'Once during your turn, you may search your deck for a card.' }], attacks: [{ cost: ['Colorless'], name: 'Headbutt', damage: 30 }, { cost: ['Colorless', 'Colorless', 'Colorless'], name: 'Gutsy Charge', damage: '70+', effect: 'Flip a coin. If heads, this attack does 70 more damage.' }], weaknesses: [{ type: 'Fighting', value: '×2' }] },
+  'en:sv02-065': { dexId: [923], stage: 'Stage2', attacks: [{ cost: ['Lightning', 'Lightning'], name: 'Electro Paws', damage: 120 }], weaknesses: [{ type: 'Fighting', value: '×2' }], resistances: [{ type: 'Metal', value: '-30' }] },
+  'ja:SV2a-100': { dexId: [100], stage: 'Basic', attacks: [{ cost: ['Lightning'], name: 'ころがる', damage: 20 }], weaknesses: [{ type: 'Fighting', value: '×2' }] },
+};
+
+/** A tiny, valid binary glTF (a coloured cube), standing in for a Pokémon 3D model. */
+export function cubeGlb(color = [0.95, 0.3, 0.2]) {
+  const p = [];
+  for (const [x, y, z] of [[-1, 0, -1], [1, 0, -1], [1, 2, -1], [-1, 2, -1], [-1, 0, 1], [1, 0, 1], [1, 2, 1], [-1, 2, 1]]) p.push(x * 0.5, y * 0.5, z * 0.5);
+  const idx = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+  const pos = Buffer.from(new Float32Array(p).buffer);
+  const ind = Buffer.from(new Uint16Array(idx).buffer);
+  const bin = Buffer.concat([pos, ind, Buffer.alloc((4 - ((pos.length + ind.length) % 4)) % 4)]);
+  const json = {
+    asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 0 }] }],
+    materials: [{ pbrMetallicRoughness: { baseColorFactor: [...color, 1], metallicFactor: 0, roughnessFactor: 0.6 } }],
+    buffers: [{ byteLength: bin.length }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: pos.length, target: 34962 }, { buffer: 0, byteOffset: pos.length, byteLength: ind.length, target: 34963 }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: 8, type: 'VEC3', min: [-0.5, 0, -0.5], max: [0.5, 1, 0.5] },
+      { bufferView: 1, componentType: 5123, count: idx.length, type: 'SCALAR' },
+    ],
+  };
+  let text = Buffer.from(JSON.stringify(json));
+  text = Buffer.concat([text, Buffer.alloc((4 - (text.length % 4)) % 4, 0x20)]);
+  const header = Buffer.alloc(12);
+  header.write('glTF', 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + 8 + text.length + 8 + bin.length, 8);
+  const chunk = (type, data) => { const h = Buffer.alloc(8); h.writeUInt32LE(data.length, 0); h.write(type, 4); return Buffer.concat([h, data]); };
+  return Buffer.concat([header, chunk('JSON', text), chunk('BIN\0', bin)]);
+}
+
 // eBay sold listings for Voltorb PAL 066/193 over ten weeks: up, then down, then flat, plus
 // listings the app must ignore (a lot, another set's Voltorb, another card).
 export const EBAY_SALES = [
@@ -212,7 +250,7 @@ const COLORS = { Lightning: [250, 204, 21], Colorless: [214, 211, 209], Trainer:
 
 export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {}) {
   const requests = [];
-  const state = { tcgdexDown, ebayApproved, pptRemaining: null, pptRequests: [] };
+  const state = { tcgdexDown, ebayApproved, pptRemaining: null, pptRequests: [], modelDownloads: [], modelsDown: false };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     requests.push(url.pathname + url.search);
@@ -260,6 +298,7 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         set: { id: setId, name: s.name, cardCount: { official: s.official, total: s.official + 20 } },
         pricing: extra.pricing ?? { tcgplayer: null, cardmarket: null },
         ...(extra.variants ? { variants_detailed: extra.variants } : {}),
+        ...(BATTLE[`${lang}:${setId}-${localId}`] ?? {}),
       });
     }
     if ((m = url.pathname.match(/^\/assets\/\w+\/\w+\/([^/]+)\/([^/]+)\/high\.png$/))) {
@@ -327,6 +366,24 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
     if (url.pathname.startsWith('/tcgplayer-cdn/product/')) {
       return png([56, 189, 248]);
     }
+    // The Pokémon 3D API: its model list and .glb files (cubes; Pawmot's file is broken on purpose).
+    if (url.pathname.startsWith('/models3d/') && state.modelsDown) return json(503, { error: 'down' });
+    if (url.pathname === '/models3d/index.json') {
+      const model = (form, id) => `${base}/models3d/assets/models/opt/${form}/${id}.glb`;
+      return json(200, { pokemon: [
+        { id: 100, forms: [{ name: 'Voltorb', model: model('regular', 100), formName: 'regular' }, { name: 'Hisuian Voltorb', model: model('hisuian', 100), formName: 'hisuian' }, { name: 'Shiny Voltorb', model: model('shiny', 100), formName: 'shiny' }] },
+        { id: 101, forms: [{ name: 'Electrode', model: model('regular', 101), formName: 'regular' }] },
+        { id: 264, forms: [{ name: 'Linoone', model: model('regular', 264), formName: 'regular' }, { name: 'Elsewhere', model: 'https://example.com/models/opt/regular/9999.glb', formName: 'regular' }] },
+        { id: 923, forms: [{ name: 'Pawmot', model: model('regular', 923), formName: 'regular' }] },
+        { id: 656, forms: [{ name: 'Froakie', model: model('regular', 656), formName: 'regular' }] },
+      ] });
+    }
+    if ((m = url.pathname.match(/^\/models3d\/assets\/models\/opt\/(\w+)\/(\d+)\.glb$/))) {
+      state.modelDownloads.push(`${m[1]}/${m[2]}`);
+      res.writeHead(200, { 'content-type': 'application/octet-stream' });
+      if (m[2] === '923') return res.end('<html>not a model</html>');
+      return res.end(cubeGlb(m[1] === 'shiny' ? [0.95, 0.85, 0.2] : m[2] === '264' ? [0.85, 0.8, 0.7] : [0.95, 0.3, 0.2]));
+    }
     // Frankfurter exchange rates: a fixed 1.20 dollars per euro.
     if (url.pathname === '/fx/v1/latest') {
       if (state.fxDown) return json(503, { error: 'down' });
@@ -346,6 +403,8 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
         fxUrl: `${base}/fx/v1`,
         ebayUrl: `${base}/ebay`,
         pptUrl: `${base}/ppt/api/v2`,
+        models3dIndexUrl: `${base}/models3d/index.json`,
+        models3dAssetPrefix: `${base}/models3d/`,
         requests,
         state,
         close: () => new Promise((r) => server.close(r)),

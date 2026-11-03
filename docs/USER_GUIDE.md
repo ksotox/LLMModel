@@ -11,6 +11,7 @@ Contents:
 6. [Packs, tins, kits and bundles](#6-packs-tins-kits-and-bundles)
 6b. [Set completion](#6b-set-completion)
 6c. [Pre-grade a card (experimental)](#6c-pre-grade-a-card-experimental)
+6d. [PokéBattles](#6d-pokébattles)
 7. [Searching any card](#7-searching-any-card)
 8. [Prices, rarity and pull chance explained](#8-prices-rarity-and-pull-chance-explained)
 9. [eBay sold prices](#9-ebay-sold-prices)
@@ -74,6 +75,7 @@ The red bar at the top has four buttons:
 | **Packs** | The packs, tins, kits and bundles you've recorded, and what came out of each |
 | **Sets** | How complete each expansion is, with every card you own and still need |
 | **Pre-grade** | An experimental condition check of a card from a front and back photo |
+| **PokéBattles** | Your Pokémon cards come to life in 3D: try their moves, or battle two of them |
 | **Search** | Any Pokémon card, including ones you don't own yet |
 | **+ Add** | Add cards from photos (or packs) |
 
@@ -304,6 +306,38 @@ The service only listens on this computer (`127.0.0.1:8765`). Your phone can sti
 
 ---
 
+## 6d. PokéBattles
+
+Pick Pokémon cards from your collection and watch them come out of their cards in 3D.
+
+**Choosing:** open **PokéBattles** and tap one or two of your Pokémon cards (Trainer and Energy cards aren't listed).
+- Each card shows whether it has a **3D model** and, when there are several, a **3D form** to choose: regular, shiny, Mega, Gigantamax, Alolan, Galarian or Hisuian. The app picks the one that fits the card (a "Mega Lucario ex" starts as Mega Lucario, a VMAX as Gigantamax).
+- With two cards, choose **vs Computer** or **Two players** (you take turns on the same device).
+
+**The summon:** the card drops onto its platform and lands face up. It glows in its type's colour, and the Pokémon pops out of the card. The card's details (HP, type, attacks with their damage, ability, weakness) float beside it. **Skip intro** jumps straight in.
+
+**One card: Showcase.** Drag to turn the Pokémon around, and scroll or pinch to zoom. Tap one of its attacks to see it used on a practice target and how much damage it would do. Tap its ability to see it power up. **3D form** and **Summon again** replay it.
+
+**Two cards: Battle.**
+- Name plates show each Pokémon's HP and energy. The message box tells what happens.
+- On your turn, pick an attack, an ability, or **Rest**. With **vs Computer** the computer plays the other side; with **Two players** the box says whose turn it is.
+- The battle ends when one Pokémon reaches 0 HP. **Rematch** plays again; **Choose again** goes back.
+
+**The rules** are simple ones made for this app from each card's own data. They aren't the official card game rules (tap **How PokéBattles work** for the summary):
+- HP is the card's HP.
+- Each side gains 1 energy per turn (up to 6). An attack needs as much energy as its cost shows, and uses it up. **Rest** gives 1 more energy.
+- "30+" flips a coin to double. "20×" flips 3 coins: 20 for each heads. An attack with no damage heals 20 (if it mentions healing) or gives 2 energy.
+- Weakness and resistance work as printed on the card being hit.
+- Each ability can be used once per battle and powers up the next attack by 50%.
+
+**Good to know:**
+- Japanese cards battle too. A card not linked to its official card gets one basic attack (Tackle, 20).
+- The 3D models come from the free, fan-made Pokémon 3D API (about 1,000 Pokémon). Each is downloaded the first time it's shown, then kept on your computer, so it opens instantly and works offline next time.
+- A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
+- On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
+
+---
+
 ## 7. Searching any card
 
 **Search** looks up any Pokémon card, even ones you don't own:
@@ -439,6 +473,7 @@ Sign in with your profile on the phone too.
 | An iPhone photo won't open | Turn on **Convert iPhone HEIC photos** in **Profile & settings**, or on the iPhone choose Settings → Camera → Formats → **Most Compatible**. |
 | Pre-grade says "Grading service offline" | Set it up once (see [section 6c](#6c-pre-grade-a-card-experimental)), then reopen the desktop app or run `scripts\grading-start.ps1`. |
 | Pre-grade: "Could not find the full card" | Photograph the whole card, flat, on a plain surface that contrasts with its border. |
+| PokéBattles shows a card instead of a 3D Pokémon | That Pokémon has no model yet, or the model couldn't be downloaded (no internet). Try again online; once downloaded, it's kept. |
 | Deleted a card by mistake | Open **Trash** at the top of the collection and **Restore** it (within 30 days). |
 | A card was read wrong | Fix the name, set code or number, and pick the right match. Blurry or dark photos are the usual cause. |
 | `npm` errors about `package.json` | PowerShell is in the wrong folder: `cd` into the app folder first. |

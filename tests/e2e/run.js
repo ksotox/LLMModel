@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
 import { EbayClient } from '../../server/ebay.js';
+import { Models3D } from '../../server/models3d.js';
 import { PriceTrackerClient } from '../../server/priceTracker.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
@@ -28,7 +29,8 @@ const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') :
 async function startServer(dataDir, mock, port = 0) {
   const ebay = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
   const priceTracker = new PriceTrackerClient({ apiKey: 'test-key', baseUrl: mock.pptUrl });
-  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker });
+  const models3d = new Models3D({ dataDir, indexUrl: mock.models3dIndexUrl, assetPrefix: mock.models3dAssetPrefix });
+  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker, models3d });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -487,6 +489,60 @@ try {
   await gr.getByText('No inspections saved for this card yet.').waitFor();
   await page.keyboard.press('Escape');
   grader.online = false;
+
+  step('PokéBattles: one card pops out of its card in 3D and tries its moves (showcase)');
+  await page.getByRole('link', { name: 'PokéBattles' }).click();
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  await page.locator('.bt-tile').first().waitFor();
+  assert.equal(await page.locator('.bt-tile', { hasText: 'Punk Helmet' }).count(), 0, 'Trainer cards can’t battle');
+  await page.locator('.bt-tile', { hasText: 'Electrode' }).click();
+  await page.locator('.bt-slot', { hasText: 'Electrode' }).locator('.bt-ok', { hasText: '3D model' }).waitFor();
+  await page.getByRole('button', { name: '✨ Showcase' }).click();
+  await page.locator('canvas.stage-canvas').waitFor();
+  await page.locator('.card-info-panel.slot-0.in', { hasText: 'Thunder Jolt' }).waitFor({ timeout: 30000 });
+  await page.locator('.bt-message', { hasText: 'Drag to turn it around' }).waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: /Thunder Jolt/ }).click();
+  await page.locator('.bt-message', { hasText: /It would deal (30|60) damage/ }).waitFor({ timeout: 20000 });
+
+  step('PokéBattles: two cards battle the computer until one faints');
+  await page.getByRole('button', { name: '← Choose again' }).click();
+  await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click();
+  await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
+  await page.getByRole('button', { name: '⚔ Battle!' }).click();
+  await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.locator('.hp-plate.side-0').waitFor({ timeout: 30000 });
+  for (let i = 0; i < 40 && !(await page.locator('.bt-result').count()); i++) {
+    await page.waitForFunction(() => document.querySelector('.bt-result') || document.querySelector('.move-grid .move-btn:not(:disabled)'), null, { timeout: 30000 });
+    const move = page.locator('.move-grid .move-btn:not(:disabled)').first();
+    if (await page.locator('.bt-result').count()) break;
+    await move.click();
+  }
+  await page.locator('.bt-result h3', { hasText: /wins|draw/ }).waitFor();
+  assert.ok(await page.locator('.hp-text', { hasText: /^0\// }).count() >= 1, 'one side ends at 0 HP');
+
+  step('PokéBattles: two players take turns choosing moves; a card without a 3D model fights as its card');
+  await page.getByRole('button', { name: 'Choose again', exact: true }).click();
+  await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bt-tile', { hasText: 'ビリリダマ' }).click();
+  await page.getByRole('button', { name: 'Two players' }).click();
+  // A form whose model isn't downloaded yet, with the model host down: the card itself fights.
+  await page.getByLabel('3D form for ビリリダマ').selectOption('hisuian');
+  mock.state.modelsDown = true;
+  await page.getByRole('button', { name: '⚔ Battle!' }).click();
+  await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.waitForFunction(() => document.querySelector('.stage-frame')?.dataset.fighters === '3d,card', null, { timeout: 30000 });
+  mock.state.modelsDown = false;
+  // The browser logs the failed model download (503); that's the case being tested.
+  errors.splice(0, errors.length, ...errors.filter((e) => !/status of 50[23]/.test(e)));
+  const whose = page.locator('.bt-whose', { hasText: /^Player \d: choose/ });
+  await whose.waitFor({ timeout: 30000 });
+  const first = await whose.textContent();
+  await page.locator('.move-grid .move-btn:not(:disabled)').first().click();
+  await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 30000 });
+  assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
+  await page.getByRole('button', { name: '← Choose again' }).click();
 
   step('restart the server: everything is still there');
   await srv.stop();
