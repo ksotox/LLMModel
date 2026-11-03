@@ -20,6 +20,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 
+from services.grading import precision
+
 ROOT = Path(__file__).resolve().parents[2]
 VIRIDIAN = Path(os.environ.get('VIRIDIAN_PATH', str(ROOT / 'third_party' / 'viridian'))).resolve()
 MAX_BYTES = 8 * 1024 * 1024
@@ -129,6 +131,7 @@ def compute(front_data: bytes, back_data: bytes, reference_data: bytes | None):
     front_metrics = {'centering': f.centering, 'corners': f.corners, 'edges': f.edges,
                      'surface': f.surface, 'experimental_overall': f.overall}
     reference_used = False
+    reference_overlay = None
     if reference_data:
         try:
             ref = image_from_bytes(reference_data, cv2, np)
@@ -139,6 +142,7 @@ def compute(front_data: bytes, back_data: bytes, reference_data: bytes | None):
                 reference_used = True
             defects = refgrade.assess_defects(f.warped, ref)
             if defects and defects.get('inliers', 0) >= 30:
+                reference_overlay = defects.get('overlay_img')
                 front_metrics['corners'] = defects['corners']
                 front_metrics['edges'] = defects['edges']
                 # Surface detector is not independently validated for every foil pattern:
@@ -151,6 +155,7 @@ def compute(front_data: bytes, back_data: bytes, reference_data: bytes | None):
         except Exception:
             # Reference alignment is a bonus; never pretend an unaligned reference worked.
             reference_used = False
+            reference_overlay = None
     back_metrics = backgrade.grade_back(b.warped)
     back_metrics.pop('overlay_img', None)
     back_reference = (VIRIDIAN / 'data' / 'refs' / 'card_back.jpg').is_file()
@@ -174,6 +179,14 @@ def compute(front_data: bytes, back_data: bytes, reference_data: bytes | None):
         fs = front_metrics['experimental_overall']
         bs = back_metrics['experimental_overall']
         overall = min(fs, bs) if fs is not None and bs is not None else None
+    # Precision scan: close-ups and maps of exactly what was measured (no new grading rules).
+    def flat(photo, res):
+        quad = (res.detect_info or {}).get('quad')
+        if quad and len(quad) == 4:
+            return precision.flatten(photo, quad, grading)
+        return cv2.resize(res.warped, (precision.HI_W, precision.HI_H), interpolation=cv2.INTER_CUBIC)
+    front_scan = precision.scan_side('front', f.warped, flat(front, f), front_metrics, grading, backgrade, refgrade)
+    back_scan = precision.scan_side('back', b.warped, flat(back, b), back_metrics, grading, backgrade, refgrade)
     result = {
         'ok': True,
         'engine': 'viridian-cv',
@@ -188,6 +201,9 @@ def compute(front_data: bytes, back_data: bytes, reference_data: bytes | None):
             f.warped, front_metrics['centering'], front_metrics['corners'], front_metrics['edges'])),
         'back_overlay': data_uri(cv2, grading.annotate_detection(
             b.warped, back_metrics['centering'], back_metrics['corners'], back_metrics['edges'])),
+        'reference_overlay': data_uri(cv2, reference_overlay) if reference_used and reference_overlay is not None else None,
+        'precision': {'front': front_scan, 'back': back_scan},
+        'findings': precision.findings(front_scan, back_scan, front_metrics, back_metrics),
     }
     return plain(result)
 

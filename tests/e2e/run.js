@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../server/app.js';
 import { EbayClient } from '../../server/ebay.js';
+import { Models3D } from '../../server/models3d.js';
 import { PriceTrackerClient } from '../../server/priceTracker.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
 
@@ -28,7 +29,8 @@ const SHOTS = process.env.SCREENSHOTS ? path.join(ROOT, 'docs', 'screenshots') :
 async function startServer(dataDir, mock, port = 0) {
   const ebay = new EbayClient({ clientId: 'id', clientSecret: 'secret', baseUrl: mock.ebayUrl });
   const priceTracker = new PriceTrackerClient({ apiKey: 'test-key', baseUrl: mock.pptUrl });
-  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker });
+  const models3d = new Models3D({ dataDir, indexUrl: mock.models3dIndexUrl, assetPrefix: mock.models3dAssetPrefix });
+  const app = createApp({ dataDir, catalog: mockCatalog(mock), ebay, priceTracker, models3d });
   const server = await new Promise((resolve) => {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
@@ -47,6 +49,13 @@ const mock = await startMockSources();
 // A stand-in for the local Python grading service (the real one is optional and not needed here).
 const grader = { online: false };
 const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const TINY_JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAOAAoDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDfooor4U9k/9k=';
+const scanSide = () => {
+  const jpg = `data:image/jpeg;base64,${TINY_JPEG}`;
+  const png = `data:image/png;base64,${PNG_1PX}`;
+  const reg = (key, grade) => ({ key, grade, fraction: grade < 8 ? 0.12 : 0.01, severity: grade >= 9 ? 'none' : grade >= 8 ? 'minor' : 'moderate', white: grade < 8 ? 0.1 : 0.01, dark: 0.004, image: jpg, mask: png });
+  return { flat: jpg, surface_map: png, corners: [reg('tl', 9), reg('tr', 7), reg('bl', 10), reg('br', 8)], edges: [reg('top', 10), reg('bottom', 8), reg('left', 9), reg('right', 10)] };
+};
 const graderServer = http.createServer((req, res) => {
   req.resume();
   req.on('end', () => {
@@ -58,6 +67,8 @@ const graderServer = http.createServer((req, res) => {
       capture: { front: { ok: true, warnings: [] }, back: { ok: true, warnings: [] } }, reference_used: true,
       warnings: ['Corners, edges, and surface are unvalidated visual heuristics.'],
       front_overlay: `data:image/png;base64,${PNG_1PX}`, back_overlay: `data:image/png;base64,${PNG_1PX}`,
+      precision: { front: scanSide(), back: scanSide() },
+      findings: [{ side: 'front', area: 'Top-right corner', kind: 'possible whitening', severity: 'moderate', grade: 7, detail: '10.0% of the measured corner area is bright and colourless' }],
     }));
   });
 });
@@ -443,10 +454,28 @@ try {
   await gr.getByLabel('Front photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await gr.getByLabel('Back photo').setInputFiles(REF('voltorb-reverse-holo.jpg'));
   await gr.getByRole('button', { name: 'Analyze both photos' }).click();
-  await gr.locator('.gr-report .gr-estimate', { hasText: '~8/10' }).waitFor();
+  await gr.locator('.gr-report .gr-big', { hasText: '~8' }).waitFor();
   await gr.locator('.gr-report .gr-notice', { hasText: 'Experimental CV estimate — not professional grading.' }).waitFor();
-  await gr.locator('.gr-metric', { hasText: 'L/R 55/45' }).waitFor();
-  assert.equal(await gr.locator('.gr-report img').count(), 4, 'front, back and both overlays');
+  // The virtual slab: card name, estimate and the "not a pro grade" stamp, flips to the back.
+  const slab = gr.locator('.slab-wrap');
+  await slab.locator('.slab-face.front .slab-title', { hasText: 'Linoone' }).waitFor();
+  await slab.locator('.slab-face.front .slab-grade', { hasText: '~8' }).waitFor();
+  await slab.locator('.slab-face.front .slab-stamp', { hasText: 'EXPERIMENTAL' }).waitFor();
+  await slab.getByRole('button', { name: '↻ Flip' }).click();
+  await slab.locator('.slab-inner.flipped').waitFor();
+  await slab.getByRole('button', { name: 'Original photo' }).click();
+  assert.match(await slab.locator('.slab-face.front .slab-window img').getAttribute('src'), /\/front\.jpg$/);
+  // Breakdown, precision scan with close-ups and view modes, and the list of findings.
+  await gr.locator('.gr-cat', { hasText: 'Centering' }).locator('.gr-analysis', { hasText: 'L/R 55/45' }).waitFor();
+  await gr.locator('.gr-cat', { hasText: 'Corners' }).locator('.gr-tag', { hasText: 'Screening only' }).waitFor();
+  assert.equal(await gr.locator('.gr-corner-grid .gr-closeup').count(), 4);
+  assert.equal(await gr.locator('.gr-edge-list .gr-closeup').count(), 4);
+  const tr = gr.locator('.gr-closeup', { hasText: 'Top-right corner' });
+  await tr.getByRole('button', { name: 'Map' }).click();
+  await tr.locator('.gr-zoom.v-map').waitFor();
+  await gr.getByRole('tab', { name: 'Back' }).click();
+  await gr.locator('.gr-sub', { hasText: 'Back corners' }).waitFor();
+  await gr.locator('.gr-findings tr', { hasText: 'possible whitening' }).waitFor();
   await gr.locator('.gr-history-item').first().waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('link', { name: 'Collection' }).click();
@@ -460,6 +489,60 @@ try {
   await gr.getByText('No inspections saved for this card yet.').waitFor();
   await page.keyboard.press('Escape');
   grader.online = false;
+
+  step('PokéBattles: one card pops out of its card in 3D and tries its moves (showcase)');
+  await page.getByRole('link', { name: 'PokéBattles' }).click();
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  await page.locator('.bt-tile').first().waitFor();
+  assert.equal(await page.locator('.bt-tile', { hasText: 'Punk Helmet' }).count(), 0, 'Trainer cards can’t battle');
+  await page.locator('.bt-tile', { hasText: 'Electrode' }).click();
+  await page.locator('.bt-slot', { hasText: 'Electrode' }).locator('.bt-ok', { hasText: '3D model' }).waitFor();
+  await page.getByRole('button', { name: '✨ Showcase' }).click();
+  await page.locator('canvas.stage-canvas').waitFor();
+  await page.locator('.card-info-panel.slot-0.in', { hasText: 'Thunder Jolt' }).waitFor({ timeout: 30000 });
+  await page.locator('.bt-message', { hasText: 'Drag to turn it around' }).waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: /Thunder Jolt/ }).click();
+  await page.locator('.bt-message', { hasText: /It would deal (30|60) damage/ }).waitFor({ timeout: 20000 });
+
+  step('PokéBattles: two cards battle the computer until one faints');
+  await page.getByRole('button', { name: '← Choose again' }).click();
+  await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click();
+  await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
+  await page.getByRole('button', { name: '⚔ Battle!' }).click();
+  await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.locator('.hp-plate.side-0').waitFor({ timeout: 30000 });
+  for (let i = 0; i < 40 && !(await page.locator('.bt-result').count()); i++) {
+    await page.waitForFunction(() => document.querySelector('.bt-result') || document.querySelector('.move-grid .move-btn:not(:disabled)'), null, { timeout: 30000 });
+    const move = page.locator('.move-grid .move-btn:not(:disabled)').first();
+    if (await page.locator('.bt-result').count()) break;
+    await move.click();
+  }
+  await page.locator('.bt-result h3', { hasText: /wins|draw/ }).waitFor();
+  assert.ok(await page.locator('.hp-text', { hasText: /^0\// }).count() >= 1, 'one side ends at 0 HP');
+
+  step('PokéBattles: two players take turns choosing moves; a card without a 3D model fights as its card');
+  await page.getByRole('button', { name: 'Choose again', exact: true }).click();
+  await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bt-tile', { hasText: 'ビリリダマ' }).click();
+  await page.getByRole('button', { name: 'Two players' }).click();
+  // A form whose model isn't downloaded yet, with the model host down: the card itself fights.
+  await page.getByLabel('3D form for ビリリダマ').selectOption('hisuian');
+  mock.state.modelsDown = true;
+  await page.getByRole('button', { name: '⚔ Battle!' }).click();
+  await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.waitForFunction(() => document.querySelector('.stage-frame')?.dataset.fighters === '3d,card', null, { timeout: 30000 });
+  mock.state.modelsDown = false;
+  // The browser logs the failed model download (503); that's the case being tested.
+  errors.splice(0, errors.length, ...errors.filter((e) => !/status of 50[23]/.test(e)));
+  const whose = page.locator('.bt-whose', { hasText: /^Player \d: choose/ });
+  await whose.waitFor({ timeout: 30000 });
+  const first = await whose.textContent();
+  await page.locator('.move-grid .move-btn:not(:disabled)').first().click();
+  await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 30000 });
+  assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
+  await page.getByRole('button', { name: '← Choose again' }).click();
 
   step('restart the server: everything is still there');
   await srv.stop();

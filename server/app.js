@@ -16,6 +16,8 @@ import { identifyCard } from './identify.js';
 import { createGradingRouter, initializeGradingTable, sweepGradingOrphans } from './grading/router.js';
 import { SET_CODES } from './setCodes.js';
 import { allSets, setChecklist, userSets } from './sets.js';
+import { battleData, isPokemonCard } from './battle.js';
+import { Models3D } from './models3d.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -28,6 +30,7 @@ const VENDOR = {
   '/vendor/tessdata': path.join(packageDir('@tesseract.js-data/eng'), '4.0.0_best_int'),
   '/vendor/tessdata-jpn': path.join(packageDir('@tesseract.js-data/jpn'), '4.0.0_best_int'),
   '/vendor/heic2any': path.join(packageDir('heic2any'), 'dist'),
+  '/vendor/three': path.resolve(path.dirname(require.resolve('three')), '..'), // three hides package.json behind its exports
 };
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -46,6 +49,7 @@ export function createApp({
   priceTracker = new PriceTrackerClient(),
   trackerOptions = {},
   desktop = null, // { version(), update, restart() } when run by the desktop launcher
+  models3d = null, // PokéBattles 3D models (default: the Pokémon 3D API on GitHub, cached in dataDir)
   requireLogin = true, // false: one built-in profile, no sign-in (tests, scripts)
   secureCookie = false,
 } = {}) {
@@ -501,6 +505,35 @@ export function createApp({
   });
 
   // Set completion: your sets, any set to browse, and one set's checklist.
+  // ---- PokéBattles: 3D models and battle data from the cards ----
+
+  const models = models3d ?? new Models3D({ dataDir });
+
+  // The user's Pokémon cards for the picker (copies of the same card grouped), from the database only.
+  app.get('/api/battles/fighters', (req, res) => {
+    const { cards } = store.queryCards({ userId: req.user.id, group: true, pageSize: 500, sort: 'name' });
+    res.json({ cards: cards.filter((c) => !c.category || /pok[eé]mon|ポケモン/i.test(c.category)).map(toJson) });
+  });
+
+  // One card ready for battle: its attacks, abilities, HP, weakness… and its 3D model forms.
+  app.get('/api/battles/cards/:id', async (req, res) => {
+    const card = findCard(req.params.id, req);
+    const battle = await battleData(catalog, card);
+    if (!isPokemonCard(card, battle)) throw new HttpError(400, 'Only Pokémon cards can battle');
+    res.json({ card: toJson(card), battle, models: await models.forCard(card, battle.dexIds) });
+  });
+
+  // A 3D model file: downloaded once from the Pokémon 3D API (only files its list names), then cached.
+  app.get('/api/battles/models/:form/:file', async (req, res) => {
+    try {
+      const file = await models.file(req.params.form, req.params.file);
+      res.set('Cache-Control', 'private, max-age=2592000, immutable');
+      res.type('model/gltf-binary').sendFile(file);
+    } catch (err) {
+      throw Object.assign(new HttpError(err.status ?? 502, err.message), { expose: true }); // expected (offline, bad file): not a bug
+    }
+  });
+
   app.get('/api/sets', async (req, res) => {
     res.json({ sets: await userSets(catalog, store, req.user.id) });
   });

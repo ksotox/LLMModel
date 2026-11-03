@@ -25,8 +25,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   zip, swap `LLMModel-main` (keeps `.previous`, moves `data/` and the grading setup, reuses `node_modules` if the lock
   is unchanged, rolls back if the server won't start), server over IPC (`/api/desktop`), Edge `--app` window.
 - Older one-click start: `Start Pokedex.cmd` (CRLF, kept by `.gitattributes`) runs `npm start -- --open`.
-- `npm run check:live`: looks up the 3 reference cards in every real source (run on a networked machine).
-- Data lives in `DATA_DIR` (default `./data`): `collection.db` plus image folders. Back it up to keep the collection.
+- `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
 ## Architecture (where to look)
 - `server/app.js`: Express 5 routes; `createApp({dataDir, catalog, ebay, priceTracker, requireLogin})` (tests pass
@@ -40,11 +39,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   ANDs every filter. `server/sets.js`: set checklists (TCGdex set cards, rarities from the dataset).
 - `server/catalog.js`: combines sources. TCGdex (`tcg.js`) first, then the PokemonTCG dataset
   (`ptcgData.js`, ids prefixed `ptcg:`), with prices from `prices.js` (TCGdex → tcgcsv backup).
-- `server/identify.js` + `setCodes.js`: turn OCR readings into a card (voting, misread fixes, name check).
-- `server/pullRates.js`: per-pack rarity rate ÷ count of that rarity in the set.
-- `server/ebay.js` + `soldStats.js`: Marketplace Insights client, sold stats, weekly/monthly trend.
-- `server/priceTracker.js` (client, tolerant parser) + `priceTrackerService.js` (credit budget, cache)
-  + `scheduler.js` (hourly: daily price snapshot, then tracker top-ups).
+- `identify.js` + `setCodes.js`: OCR readings → card. `pullRates.js`: pull chance. `ebay.js` + `soldStats.js`: sold
+  prices/trends. `priceTracker.js` + `priceTrackerService.js` (credit budget) + `scheduler.js` (hourly snapshots).
 - `public/js/`: vanilla ES modules, no build step, hash routing. `views.js` (collection: Compact/Detailed/Table,
   density, filters + presets, select + bulk bar, trash; card page with copies), `add.js` (read statuses,
   progress, retry incl. 180°, duplicate Yes/No), `sets.js`, `account.js` (sign-in, profile, theme),
@@ -88,7 +84,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
 ## Current state (2026-11-02)
-- `main` holds PRs #1–#10. Branch work: experimental pre-grading (below). 161 unit + 7 Python tests + e2e pass.
+- `main` holds PRs #1–#11. Branch (PR #12): pre-grade report + slab, then PokéBattles. 175 unit + 9 Python tests + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -96,10 +92,15 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
+- **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId re-read from cached raw TCGdex/dataset card),
+  `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
+  (engine = original simple rules, pure + seeded; scene = three.js stage, summon-from-card intro, FlatStage fallback).
+  Models are Nintendo IP from a fan project: never commit them.
 - **Pre-grading (experimental):** `server/grading/` (Express router, `card_grading_reports` table, photos in
   `data/uploads/grading/<uuid>/`, orphan sweep after any card delete) → optional Python FastAPI
   `services/grading/app.py` on 127.0.0.1:8765 using MIT Viridian (`third_party/viridian`, gitignored, pinned in
-  `scripts/grading-setup.*`). Label every result "Experimental CV estimate — not professional grading.";
+  `scripts/grading-setup.*`). `precision.py`: flattened sides, corner/edge close-ups + masks matching upstream's
+  regions, surface map, findings; `gradingReport.js`: slab (flip/tilt/PNG), breakdown, scan. Label every result "Experimental CV estimate — not professional grading.";
   no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
 - **See `docs/CODE_REVIEW.md`** for the prioritised list (bugs B1–B6 now fixed, desktop D1–D3, perf P1–P3, security S1–S2,

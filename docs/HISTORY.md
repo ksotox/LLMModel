@@ -358,6 +358,62 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - it stops the service before swapping folders and when the window closes.
 - **Verified:** a real run of the pinned Viridian commit on the reference Voltorb photo through the browser (upload, report with overlays, reopen from the card, delete) and a fresh install of the pinned commit. Tests: 9 Node integration tests with a mock service, the kit's 3 sanitising tests, 3 launcher tests, 7 Python adapter tests, and an e2e step.
 
+## Phase 17: A detailed pre-grading report with a virtual slab
+
+- **Asked for:** a report as detailed as TCGrader's graded-card page, with the card shown in a sleeve/slab. The owner supplied a saved copy of a TCGrader page; the live site wasn't reachable from the build environment, so its layout was taken from that page's markup: a flippable 3D slab with a label, a breakdown per category with front/back scores and flagged issues, and a "precision scan" of every corner and edge.
+- **Precision scan (`services/grading/precision.py`):**
+  - each side is cut out and straightened at 800×1120 from the detected outline;
+  - close-ups of the 4 corners and 4 edges come with a transparent map of the pixels Viridian's test counted, in exactly the regions it measures. The front and back use different upstream rules, and both are reproduced; tests check the maps add up to Viridian's own numbers;
+  - per-corner and per-edge scores use Viridian's own fraction-to-grade tables, and a surface map marks its scratch/scuff features;
+  - findings are built only from those measurements, worst first;
+  - when the card was aligned to its official picture, Viridian's reference-difference map is kept too.
+- **What it showed:** on a pack-fresh card, Viridian's blind corner test counts printed text and symbols ("BASIC", the energy symbol) as whitening, because its corner box reaches into the print. That's why upstream excludes these readings from the grade. The report now says so beside them, labels them "Screening only", and lets you see the counted pixels on the **Map** view.
+- **Report UI (`public/js/gradingReport.js`):**
+  - **virtual slab:** label, estimate badge and an "experimental · not a pro grade" stamp; flip; tilt with the pointer; flattened or original photo; save as a PNG that keeps the label;
+  - **breakdown cards:** front/back bars, generated analysis text, flagged issues, and "Counts toward estimate" or "Screening only";
+  - **precision scan:** each close-up has Original / Contrast / Inverted / Detail / Map views; plus a surface map and a findings table;
+  - **graded eBay prices:** saved PokemonPriceTracker data, shown for reference with no advice.
+  - Older reports still open, with their original photos and overlays.
+- **Tests:**
+  - Python: 2 new, against the real Viridian code;
+  - Node integration: precision data and images, including that unknown keys never become file names and that images whose content doesn't match their declared type are dropped;
+  - e2e: the slab, flip, close-ups, Map view, back tab and findings.
+
+## Phase 18: PokéBattles
+
+- **Asked for:** a PokéBattles tab using the Pokémon 3D API models: one card shown in 3D with its moves, or two cards battling, with moves and abilities to choose and a game-like presentation. Battles should open the way TomBastable's Pokemon-Card-ARKit demo does, with the Pokémon popping out of its card, but without scanning. The owner chose: moves from the card's own data, and both a vs-computer and a two-player mode.
+- **3D models:** `pokemon-3d-api.oneapp.dev` was blocked in the build environment. It's the viewer of the open-source Pokémon 3D API, whose model list (`MergedOpt.json`, 1,025 Pokémon with forms) and `.glb` files are on GitHub. `server/models3d.js` caches the list (memory + disk) and downloads each model once; only files the list names, from the project's GitHub address, are allowed, checked as glTF (≤ 15 MB). Forms follow the card (Mega, regional, VMAX → Gigantamax, shiny rarities). Cards without a Pokédex number are matched by name with card suffixes and owner prefixes removed.
+- **Battle data:** TCGdex and the dataset already send attacks, abilities, weakness, resistance and the Pokédex number, but the app was dropping them. `server/battle.js` reads them again from the (cached) raw card. Unlinked or attack-less cards get a basic Tackle; Trainers can't battle.
+- **Rules (`public/js/battle/engine.js`):** simple, original rules built on the cards' data:
+  - energy per turn and printed costs;
+  - "+" and "×" damage decided by coin flips; weakness and resistance as printed;
+  - abilities usable once each, powering up the next attack;
+  - a computer opponent;
+  - pure functions with a seeded random generator, so battles can be tested.
+- **Stage (`public/js/battle/scene.js`, three.js 0.180.0 served locally):**
+  - **the summon:** the card (its picture on a 3D card with our own card back) drops onto a type-coloured platform and glows, and the model pops out with a flash and particles;
+  - **attacks and hits:** attacks lunge with type-coloured particles (Lightning adds a bolt); hits shake, flash red and show floating numbers; healing, energy, power-up aura and fainting each have their own effect;
+  - **models:** a model's own animation clip plays when it has one (most have none);
+  - **fallbacks:** a Pokémon without a model fights as its standing card; without WebGL, a CSS card stage is used.
+- **Closer to the AR demo** (after the owner shared its screenshot):
+  - the Pokémon now stands on its card, which stays full-size and bright as its base;
+  - a Poké Ball (a simple model of our own) bounces onto the card, pops open as the Pokémon appears, and stays on the card;
+  - the details float as a banner above the Pokémon (card thumbnail, name, set and number, type icon, HP) and follow the camera;
+  - the camera looks down at the card;
+  - the models are sized to about the card's width.
+- **Page:** picker with form choice and mode switch; the summon intro with floating card details (they shrink to a tag on phones); the showcase (orbit, practice target); the battle (HP and energy plates, typewriter messages, move buttons with cost pips and expected damage, turn banner, win screen with rematch).
+- **Found while testing:**
+  - a Pokémon with a single 3D form crashed the showcase;
+  - moves clicked during the intro were silently ignored (they're now disabled until it ends);
+  - Skip only fast-forwarded for 50 ms;
+  - three.js hides its package.json, so the vendor path is resolved from its main file.
+- **Tests:**
+  - `battle.test.js` (6): battle data from TCGdex, Japanese and unlinked cards; forms; proxy and cache, path tricks, non-glTF files, offline; profile access;
+  - `battleEngine.test.js` (8): the rules;
+  - mock TCGdex cards carry battle data, and the mock serves a model list and generated glTF cubes;
+  - e2e: showcase, a full battle against the computer, two-player turns, and the card-only fallback with the model host down.
+  - Verified in a browser with the real models from GitHub (Voltorb, Electrode, Linoone), including dark mode and a 390 px-wide phone screen.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

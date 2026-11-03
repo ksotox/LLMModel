@@ -5,9 +5,10 @@
 // Honesty rules for this screen: every result is labelled as an experimental CV estimate, no
 // probabilities or accuracy claims, no "worth grading" advice.
 
+import { CV_LABEL, reportView } from './gradingReport.js';
 import { cardNumber, clear, confirmDialog, formatDate, h, modal, toast, VARIANT_LABELS } from './ui.js';
 
-export const CV_LABEL = 'Experimental CV estimate — not professional grading.';
+export { CV_LABEL, reportView };
 const MAX_BYTES = 8 * 1024 * 1024;
 
 async function call(url, options) {
@@ -23,55 +24,6 @@ async function call(url, options) {
 const muted = (text) => h('p.gr-muted', text);
 const describeCopy = (card) => [card.set_code, cardNumber(card), card.variant && card.variant !== 'normal' ? VARIANT_LABELS[card.variant] ?? card.variant : null,
   card.condition, card.storage_location].filter(Boolean).join(' · ');
-
-function metric(label, item, extra = '') {
-  const unavailable = item?.grade == null;
-  return h('div.gr-metric', { class: unavailable ? 'unavailable' : '' },
-    h('span.gr-metric-title', label),
-    h('strong', unavailable ? '—' : `${item.grade}/10`),
-    h('small', unavailable
-      ? item?.note || 'Couldn’t be measured from this photo'
-      : [`${item.confidence || 'unknown'} confidence`, item.method === 'reference' || item.method === 'reference-back' ? 'aligned to the official picture' : null, extra].filter(Boolean).join(' · ')));
-}
-
-function qualitySummary(side, name) {
-  const ok = side?.ok;
-  return h('div.gr-quality', { class: ok ? 'ok' : 'warn' },
-    h('strong', `${name} photo: ${ok ? '✓ quality checks passed' : '⚠ retake recommended'}`),
-    muted(side?.warnings?.length ? side.warnings.join(' ') : 'No sharpness, glare or size problems found.'));
-}
-
-export function reportView(report) {
-  const retake = report.status === 'retake';
-  const wrap = h('section.gr-report',
-    h('div.gr-report-head',
-      h('div',
-        h('div.gr-eyebrow', 'Pre-grading report'),
-        h('h3', retake ? 'Retake recommended' : 'Condition screening complete'),
-        muted(formatDate(report.created_at, true))),
-      h('div.gr-estimate',
-        h('span', 'Experimental estimate'),
-        h('strong', !retake && report.experimental_overall != null ? `~${report.experimental_overall}/10` : 'Not shown'))),
-    h('p.gr-notice', h('strong', CV_LABEL), ' This is computer-vision screening with provisional rules, not a trained or calibrated grade predictor, and not a PSA, BGS or CGC grade.'),
-    h('div.gr-quality-grid', qualitySummary(report.capture?.front, 'Front'), qualitySummary(report.capture?.back, 'Back')));
-  if (retake) wrap.append(h('p.gr-retry', '⚠ At least one photo didn’t pass the quality checks, so no overall estimate is shown. Take sharper, glare-free photos of the whole card and try again.'));
-  else wrap.append(muted('The overall estimate comes from centering and surface only (the lower of front and back). The corner and edge readings are shown for information: on ordinary photos they aren’t reliable enough to count.'));
-
-  for (const [side, title] of [['front', 'Front'], ['back', 'Back']]) {
-    const d = report[side] ?? {};
-    const c = d.centering;
-    const ratios = [c?.left_right && `L/R ${c.left_right}`, c?.top_bottom && `T/B ${c.top_bottom}`].filter(Boolean).join(' · ');
-    wrap.append(h('section.gr-side',
-      h('h4', `${title}`),
-      h('div.gr-scores', metric('Centering', c, ratios), metric('Corners', d.corners), metric('Edges', d.edges), metric('Surface', d.surface)),
-      c?.axis_note && muted(c.axis_note),
-      h('div.gr-photos',
-        report.media?.[side] && h('figure', h('a', { href: report.media[side], target: '_blank', rel: 'noopener' }, h('img', { src: report.media[side], alt: `${title} original photo`, loading: 'lazy' })), h('figcaption', 'Your original photo')),
-        report.media?.[`${side}_overlay`] && h('figure', h('a', { href: report.media[`${side}_overlay`], target: '_blank', rel: 'noopener' }, h('img', { src: report.media[`${side}_overlay`], alt: `${title} inspection overlay`, loading: 'lazy' })), h('figcaption', 'Inspection overlay (centering lines, corners, edges)')))));
-  }
-  if (report.warnings?.length) wrap.append(h('section.gr-warnings', h('h4', 'Inspection notes'), h('ul', report.warnings.map((m) => h('li', m)))));
-  return wrap;
-}
 
 /** The pre-grading dialog for one card copy: photos in, report out, earlier reports below. */
 export function openGradingDialog(card) {
@@ -116,7 +68,7 @@ export function openGradingDialog(card) {
     history), { wide: true, onClose: () => urls.forEach((u) => URL.revokeObjectURL(u)) });
 
   const show = (report) => {
-    clear(stage, reportView(report));
+    clear(stage, reportView(report, card));
     stage.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 

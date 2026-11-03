@@ -34,6 +34,15 @@ Scarlet & Violet base set (8,000+ packs), Scarlet & Violet—151, Temporal Force
 Phantasmal Flames (5,000+ packs). Other Scarlet & Violet and Mega Evolution sets use the average for their era. The
 numbers and their attribution are in `server/pullRates.js`, and each card shows its source in the UI.
 
+### PokéBattles 3D models
+
+| Service | Address (env override) | Used for | Code | Key? |
+| --- | --- | --- | --- | --- |
+| **Pokémon 3D API** model list (github.com/Pokemon-3D-api, code MIT) | `https://raw.githubusercontent.com/Pokemon-3D-api/api-server/main/server/json/MergedOpt.json` (`MODELS3D_INDEX_URL`) | National Pokédex number → forms (regular, shiny, mega, gmax, regional…) and model files. Cached 1 day, with a copy in `data/models3d/index.json` for offline use | `server/models3d.js` | No |
+| **Pokémon 3D API** models | `https://raw.githubusercontent.com/Pokemon-3D-api/assets/main/models/opt/<form>/<id>.glb` (only under `MODELS3D_ASSET_PREFIX`) | `.glb` models (Draco + WebP), downloaded on first view, checked, cached in `data/models3d/` | `server/models3d.js` | No |
+
+The models are © Nintendo / Creatures / GAME FREAK, shared by the Pokémon 3D API as a non-commercial fan project. The app downloads them for personal viewing and never stores them in this repository. The site `pokemon-3d-api.oneapp.dev` is that project's own viewer; the app uses the data behind it directly. The "pops out of the card" intro was inspired by [TomBastable/Pokemon-Card-ARKit](https://github.com/TomBastable/Pokemon-Card-ARKit) (no code taken). Battle data (attacks, abilities, weakness, resistance, Pokédex number) comes from TCGdex and the Pokémon TCG dataset, already listed above.
+
 ### Optional: experimental pre-grading (local Python service)
 
 | Component | Version / address | Used for | Code |
@@ -66,6 +75,7 @@ The service gets the user's two photos and the card's locally cached official pi
 | [@tesseract.js-data/eng](https://github.com/naptha/tessdata) | 1.0.0 | English OCR model, served by the app |
 | [@tesseract.js-data/jpn](https://github.com/naptha/tessdata) | 1.0.0 | Japanese OCR model (~2 MB), loaded only when a Japanese card is read |
 | [heic2any](https://github.com/alexcorvi/heic2any) | 0.0.4 | Converts iPhone HEIC photos to JPEG in the browser (loaded only when one is uploaded) |
+| [three](https://threejs.org/) | 0.180.0 | PokéBattles 3D stage: glTF + Draco loaders, orbit controls (served from node_modules at `/vendor/three`, with an import map) |
 | `node:sqlite` | built into Node ≥ 22.5 | The collection database |
 | `node:crypto` (scrypt) | built in | Profile passwords and session tokens |
 | [Playwright](https://playwright.dev/) | preinstalled | Browser e2e test (not a project dependency) |

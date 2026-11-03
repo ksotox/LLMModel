@@ -16,7 +16,8 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Physical inventory.** Every copy keeps its own condition (NM–DMG), grade, price paid, storage place ("Binder 2, page 5") and plans (keep / trade / sell). Copies are grouped as ×2, ×3 in the gallery, and listed on the card's page.
 - **Gallery views, filters and bulk changes.** Compact, Detailed or sortable Table view; Compact / Comfortable / Large density; filters for rarity, type, variant, language, condition, value, date, graded and duplicates, all combined, plus one-click views (Most valuable, Missing prices, Grading candidates…). Select many cards to move, re-condition, mark for trade, export to CSV or delete (to a 30-day Trash, with Undo).
 - **Set completion.** The **Sets** page shows how complete each expansion is, with the full checklist (missing cards greyed out), the estimated cost of the missing cards, and Main / Master / Reverse holo goals.
-- **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface, with overlays and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
+- **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface. The report shows the card in a virtual slab (flip, tilt, save as image), a front/back breakdown per category, close-ups of every corner and edge with the pixels that were counted, a surface map, and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
+- **PokéBattles.** Pick a Pokémon card and it pops out of the card as a 3D model, with its details floating beside it, so you can try its moves. Or pick two and battle with their printed attacks, against the computer or a friend on the same device. Models come from the open-source [Pokémon 3D API](https://github.com/Pokemon-3D-api) and are kept on your computer after the first view.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -37,8 +38,14 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 | ![Table view](docs/screenshots/17-table-view.png) | ![Bulk changes](docs/screenshots/18-bulk-select.png) |
 | **Set completion checklist** | **Dark mode** |
 | ![Set checklist](docs/screenshots/19-set-checklist.png) | ![Dark mode](docs/screenshots/20-dark-mode.png) |
-| **Pre-grade: pick a card** | **Pre-grade report (experimental, real Viridian run)** |
-| ![Pre-grade page](docs/screenshots/22-pre-grade-page.png) | ![Pre-grade report](docs/screenshots/21-pre-grade-report.png) |
+| **Pre-grade: the card in a virtual slab** | **Precision scan: every corner and edge up close** |
+| ![Pre-grade slab](docs/screenshots/23-pre-grade-slab.png) | ![Precision scan](docs/screenshots/24-pre-grade-precision-scan.png) |
+| **PokéBattles: the Pokémon pop out of their cards** | **The pop-out, step by step** |
+| ![PokéBattles summon](docs/screenshots/26-pokebattles-summon.png) | ![Pop out of the card](docs/screenshots/29-pokebattles-pop-out.png) |
+| **PokéBattles: battle vs the computer** | **PokéBattles: showcase one Pokémon** |
+| ![PokéBattles battle](docs/screenshots/27-pokebattles-battle.png) | ![PokéBattles showcase](docs/screenshots/28-pokebattles-showcase.png) |
+| **Pre-grade report (experimental, real Viridian run)** | **Saved slab image** |
+| ![Pre-grade report](docs/screenshots/21-pre-grade-report.png) | ![Slab image](docs/screenshots/25-pre-grade-slab-image.png) |
 
 > **New here? Read the [user guide](docs/USER_GUIDE.md)**: every feature, step by step.
 >
@@ -215,6 +222,8 @@ server/
   auth.js       profiles: password hashes, sign-in sessions, login throttle
   db.js         SQLite schema + queries (search, filters, grouping of copies, trash, stats, users)
   sets.js       set-completion checklists
+  battle.js     PokéBattles: attacks, abilities, weakness and Pokédex number from the card's data
+  models3d.js   Pokémon 3D API model list + download/cache of .glb models
   grading/      experimental pre-grading: router (uploads, reports, cleanup) + normalize (answer sanitising)
 services/grading/  optional local Python (FastAPI) adapter around Viridian, 127.0.0.1:8765
 scripts/grading-*.ps1|.sh  set up (pinned Viridian commit) / start the pre-grading service
@@ -243,7 +252,11 @@ public/         no-build frontend (vanilla ES modules)
   js/search.js  search any card online
   js/sets.js    Sets page and a set's checklist
   js/account.js setup, sign-in, profile page, theme
-  js/grading.js Pre-grade page and dialog, reports
+  js/grading.js Pre-grade page and dialog
+  js/gradingReport.js the report: virtual slab, breakdown, precision scan, findings
+  js/battles.js PokéBattles page: picker, summon intro, showcase, battle
+  js/battle/engine.js  PokéBattles rules (pure, testable)
+  js/battle/scene.js   3D stage (three.js): cards, models, attacks, effects; CSS fallback without WebGL
   js/foilAsync.js / foilWorker.js  foil measurements in a Web Worker
 tests/
   api.test.js     API tests (node:test) against mock sources
@@ -255,6 +268,8 @@ tests/
   auth.test.js    profiles, sign-in, sessions, throttling, who sees what
   collection.test.js  duplicates, grouping, paging, filters, bulk changes, trash, CSV
   sets.test.js    set checklists, goals, missing value
+  battle.test.js  PokéBattles data, model forms, model proxy/cache, access
+  battleEngine.test.js  battle rules with a seeded random generator
   grading.test.js pre-grading with a mock service: uploads, limits, access, history, cleanup on delete
   grading-utils.test.js  sanitising of the grading service's answers
   desktop.test.js desktop launcher: install, update keeping the collection, rollback, server, update banner API
@@ -279,6 +294,7 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 | `POST /api/cards/bulk` | `{ ids, action: 'set' \| 'trash' \| 'restore', set: { pack_id, condition, storage_location, status, … } }` |
 | `GET /api/cards/export?ids=` | CSV of the chosen cards |
 | `GET /api/grading/health` · `GET /api/grading/cards/:id` · `POST /api/grading/cards/:id` · `DELETE /api/grading/cards/:id/reports/:reportId` | Pre-grading service status · a card's reports · new report (multipart `front` + `back`, JPEG/PNG/WebP ≤ 8 MB) · delete a report and its photos |
+| `GET /api/battles/fighters` · `GET /api/battles/cards/:id` · `GET /api/battles/models/:form/:file` | Your Pokémon cards · one card's battle data and 3D forms · a 3D model (downloaded once from the Pokémon 3D API, then cached) |
 | `GET /api/sets` · `GET /api/sets/:lang/all` · `GET /api/sets/:lang/:id[?values=1]` | Your sets with completion · every set · one set's checklist (with missing value) |
 | `POST /api/cards` | Add one or more cards: multipart with `cards` (JSON array) and one image per card referenced by `photoField` |
 | `PATCH /api/cards/:id` | Edit a card. Changing `tcg_id` re-links it and fetches the official image |
