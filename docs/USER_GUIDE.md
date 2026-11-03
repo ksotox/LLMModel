@@ -314,7 +314,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - Each card shows whether it has a **3D model** and, when there are several, a **3D form** to choose: regular, shiny, Mega, Gigantamax, Alolan, Galarian or Hisuian. The app picks the one that fits the card (a "Mega Lucario ex" starts as Mega Lucario, a VMAX as Gigantamax).
 - With two cards, choose **vs Computer** or **Two players** (you take turns on the same device).
 
-**The summon:** the card drops onto its platform and lands face up. It glows in its type's colour, and the Pokémon pops out of the card. The card's details (HP, type, attacks with their damage, ability, weakness) float beside it. **Skip intro** jumps straight in.
+**The summon:** the card drops onto its platform and lands face up. A Poké Ball bounces onto it, glows in the Pokémon's type colour and pops open, and the Pokémon comes out standing on its card, like an AR card scanner. A label floats above it: the card's picture, name, set and number, type and HP, then its attacks, ability and weakness. **Skip intro** jumps straight in.
 
 **One card: Showcase.** Drag to turn the Pokémon around, and scroll or pinch to zoom. Tap one of its attacks to see it used on a practice target and how much damage it would do. Tap its ability to see it power up. **3D form** and **Summon again** replay it.
 

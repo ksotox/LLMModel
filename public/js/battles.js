@@ -27,15 +27,25 @@ const costPips = (cost = []) => h('span.cost-pips', { title: cost.length ? `${co
 const typeChip = (t) => h('span.type-chip', { style: { background: typeHex(t) } }, t);
 const damageLabel = (a) => (a.damage?.base ? `${a.damage.base}${a.damage.mod === 'x' ? '×' : a.damage.mod ?? ''}` : '—');
 
-/** The card's details floating next to the Pokémon (like an AR card scanner's info panel). */
+const TYPE_SYMBOLS = { Grass: '🍃', Fire: '🔥', Water: '💧', Lightning: '⚡', Psychic: '👁', Fighting: '✊', Darkness: '🌙', Metal: '⚙', Fairy: '✨', Dragon: '🐉', Colorless: '★' };
+const typeOrb = (t) => h('span.type-orb', { style: { background: typeHex(t) }, title: t }, TYPE_SYMBOLS[t] ?? '★');
+
+/**
+ * The card's details floating above the Pokémon, like an AR card scanner's banner: the card's
+ * picture, name, set and number, its type and HP, then its attacks.
+ */
 function infoPanel(entry) {
   const b = entry.battle;
+  const c = entry.card;
+  const thumb = c.official_url || c.photo_url;
   return h('div.card-info-panel',
-    h('div.cip-head', h('strong', entry.card.name), h('span.cip-hp', `HP ${b.hp}`)),
-    h('div.cip-types', b.types.map(typeChip)),
+    h('div.cip-row',
+      thumb && h('img.cip-thumb', { src: thumb, alt: '' }),
+      h('div.cip-id', h('strong', c.name), h('small', [c.set_name || c.set_code, c.number && `${c.number}${c.set_total ? `/${c.set_total}` : ''}`].filter(Boolean).join(' · ') || 'Your card')),
+      h('div.cip-right', h('span.cip-orbs', b.types.slice(0, 2).map(typeOrb)), h('span.cip-hp', `HP ${b.hp}`))),
     h('ul.cip-attacks', b.attacks.map((a) => h('li', costPips(a.cost), h('span', a.name), h('b', damageLabel(a))))),
     b.abilities.length > 0 && h('p.cip-ability', '✦ ', h('b', b.abilities[0].name)),
-    h('p.cip-foot', [b.weaknesses[0] && `Weak: ${b.weaknesses[0].type} ${b.weaknesses[0].value}`, b.resistances[0] && `Resist: ${b.resistances[0].type} ${b.resistances[0].value}`].filter(Boolean).join(' · ') || ' '),
+    (b.weaknesses[0] || b.resistances[0]) && h('p.cip-foot', [b.weaknesses[0] && `Weak: ${b.weaknesses[0].type} ${b.weaknesses[0].value}`, b.resistances[0] && `Resist: ${b.resistances[0].type} ${b.resistances[0].value}`].filter(Boolean).join(' · ')),
     !b.fromCard && h('p.cip-note', 'No attack data for this card yet: using a basic attack.'));
 }
 
@@ -237,6 +247,7 @@ async function introduce(stage, a, slot, sel) {
   panel.classList.add(`slot-${slot}`);
   await stage.summon(slot);
   a.hud.append(panel);
+  stage.anchor?.(panel, slot); // floats above the Pokémon (3D stage); a corner otherwise
   requestAnimationFrame(() => panel.classList.add('in'));
   // On small screens the panel would cover the Pokémon: it shrinks to its name and HP after a
   // moment, and a tap opens it again.

@@ -49,8 +49,6 @@
 .card-info-panel.slot-0 { left: 14px; transform: translateX(-20px); }
 .card-info-panel.slot-1 { right: 14px; transform: translateX(20px); }
 .card-info-panel.in { opacity: 1; transform: none; }
-.cip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.cip-head strong { font-size: 1rem; }
 .cip-hp { font-weight: 800; color: #fca5a5; }
 .cip-types { display: flex; gap: 4px; margin: 4px 0; }
 .cip-attacks { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -142,6 +140,28 @@
 }
 .card-info-panel { pointer-events: auto; cursor: pointer; }
 .card-info-panel.mini { width: auto; }
-.card-info-panel.mini > :not(.cip-head) { display: none; }
-.card-info-panel.mini .cip-head::after { content: ' ▾'; color: #94a3b8; }
 .e-pip { background: rgb(148 163 184 / 0.25); border-color: rgb(148 163 184 / 0.55); }
+
+/* AR-style banner above the Pokémon */
+.card-info-panel.anchored { top: 0; left: 0; right: auto; width: min(270px, 70%); transition: opacity 0.4s; }
+.card-info-panel.anchored:not(.in) { opacity: 0; }
+.cip-row { display: flex; align-items: center; gap: 8px; }
+.cip-thumb { width: 30px; aspect-ratio: 63 / 88; object-fit: cover; border-radius: 3px; flex: none; box-shadow: 0 1px 3px #0008; }
+.cip-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cip-id strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cip-id small { font-size: 0.68rem; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cip-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.cip-orbs { display: flex; gap: 3px; }
+.type-orb { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 0.75rem; box-shadow: inset 0 -2px 0 #0003, 0 1px 3px #0006; }
+.card-info-panel .cip-attacks { border-top: 1px solid rgb(255 255 255 / 0.15); padding-top: 6px; }
+.card-info-panel.mini > :not(.cip-row) { display: none; }
+.card-info-panel.mini .cip-id strong::after { content: ' ▾'; color: #94a3b8; }
+.card-info-panel.anchored.slot-1 { top: 0; bottom: auto; right: auto; }
+@media (max-width: 720px) {
+  .hp-plate { width: 46%; padding: 4px 8px; font-size: 0.8rem; border-left-width: 4px; }
+  .hp-plate.side-1 { top: 6px; left: 6px; }
+  .hp-plate.side-0 { bottom: 6px; right: 6px; }
+  .plate-top small { display: none; }
+  .hp-bar { margin: 3px 0 2px; }
+  .e-pip { width: 7px; height: 7px; }
+}

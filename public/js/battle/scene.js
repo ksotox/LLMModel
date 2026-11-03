@@ -21,8 +21,7 @@ export const TYPE_COLORS = {
 };
 export const typeColor = (type) => TYPE_COLORS[type] ?? TYPE_COLORS.Colorless;
 
-const CARD_W = 0.9;
-const CARD_H = CARD_W * 88 / 63;
+const CARD_RATIO = 88 / 63;
 const ease = {
   out: (t) => 1 - (1 - t) ** 3,
   inOut: (t) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2),
@@ -167,6 +166,10 @@ export class BattleStage {
     this.host = host;
     this.mode = mode;
     this.slots = [null, null];
+    this.anchors = new Set();
+    // The card is the Pokémon's base (as in an AR card scanner): big enough to stand on.
+    this.cardW = mode === 'showcase' ? 1.3 : 1.1;
+    this.cardH = this.cardW * CARD_RATIO;
     this.tweens = new Set();
     this.effects = new Set();
     this.clock = new THREE.Clock();
@@ -184,17 +187,17 @@ export class BattleStage {
     this.scene.background = sky(dark);
     this.camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 100);
     if (mode === 'showcase') {
-      this.camera.position.set(0, 1.9, 5.2);
+      this.camera.position.set(0, 3.0, 4.4);
       this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-      this.controls.target.set(0, 0.75, 0);
+      this.controls.target.set(0, 0.6, 0);
       this.controls.enablePan = false;
       this.controls.minDistance = 2.5;
       this.controls.maxDistance = 9;
       this.controls.maxPolarAngle = Math.PI * 0.49;
       this.controls.update();
     } else {
-      this.camera.position.set(0.6, 2.5, 6.4);
-      this.camera.lookAt(0.2, 0.55, -0.4);
+      this.camera.position.set(0.5, 3.2, 6.4);
+      this.camera.lookAt(0.2, 0.45, -0.3);
     }
 
     this.scene.add(new THREE.HemisphereLight(dark ? 0x8ea4ff : 0xffffff, dark ? 0x1a1a2e : 0x9db38a, dark ? 1.4 : 1.8));
@@ -263,6 +266,33 @@ export class BattleStage {
     }
     this.controls?.update();
     this.renderer.render(this.scene, this.camera);
+    this.#placeAnchors();
+  }
+
+  /**
+   * Keep an HTML label floating above a fighter (like an AR info banner), inside the stage.
+   * The label follows the camera (orbiting in the showcase) and goes away with its element.
+   */
+  anchor(el, slot) {
+    el.classList.add('anchored');
+    this.anchors.add({ el, slot });
+  }
+
+  #placeAnchors() {
+    if (!this.anchors.size) return;
+    const W = this.host.clientWidth;
+    const H = this.host.clientHeight;
+    for (const a of [...this.anchors]) {
+      if (!a.el.isConnected) { this.anchors.delete(a); continue; }
+      const s = this.slots[a.slot];
+      if (!s) continue;
+      const p = s.base.clone().setY(s.lift + s.height + 0.25).project(this.camera);
+      const w = a.el.offsetWidth;
+      const h = a.el.offsetHeight;
+      const x = Math.min(W - w / 2 - 8, Math.max(w / 2 + 8, (p.x * 0.5 + 0.5) * W));
+      const y = Math.min(H - 8, Math.max(h + 8, (-p.y * 0.5 + 0.5) * H));
+      a.el.style.transform = `translate(${Math.round(x - w / 2)}px, ${Math.round(y - h)}px)`;
+    }
   }
 
   tween(ms, update, easing = ease.inOut) {
@@ -284,10 +314,11 @@ export class BattleStage {
 
   /** The platform under a fighter: a disc with a rim in the fighter's type colour. */
   #platform(pos, color) {
+    const k = this.cardW * 0.95;
     const group = new THREE.Group();
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.05, 0.12, 48), new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.8 }));
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95 * k, 1.05 * k, 0.12, 48), new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.8 }));
     disc.position.y = 0.06;
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.035, 8, 64), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.0 * k, 0.035, 8, 64), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.12;
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 32), new THREE.MeshBasicMaterial({ map: this.dot, color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
@@ -335,6 +366,7 @@ export class BattleStage {
       const clips = gltf.animations ?? [];
       return {
         object: wrap,
+        height: box2.max.y - box2.min.y,
         clips,
         attackClip: clips.find((c) => !/faint|dizzy|down|die|dead|sleep|hurt|damage|idle/i.test(c.name)) ?? null,
         faintClip: clips.find((c) => /faint|dizzy|down|die|dead|sleep/i.test(c.name)) ?? null,
@@ -354,10 +386,12 @@ export class BattleStage {
     const color = typeColor(info.types?.[0]);
     const pos = this.position(slot);
     const platform = this.#platform(pos, color);
-    const height = this.mode === 'showcase' ? 1.7 : 1.35;
+    const height = this.mode === 'showcase' ? 1.2 : 1.05; // about the card's width, as in an AR card scanner
     const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height)]);
 
     const card = new THREE.Group();
+    const CARD_W = this.cardW;
+    const CARD_H = this.cardH;
     const geo = roundedCardGeometry(CARD_W, CARD_H, 0.05);
     const faceMat = new THREE.MeshStandardMaterial({ map: front, roughness: 0.45, metalness: 0.1, transparent: true, side: THREE.FrontSide });
     const backMat = new THREE.MeshStandardMaterial({ map: this.backTexture, roughness: 0.6, transparent: true, side: THREE.FrontSide });
@@ -370,8 +404,10 @@ export class BattleStage {
     card.visible = false;
     this.scene.add(card);
 
+    // The Pokémon stands on the card's upper half; its Poké Ball sits on the lower half.
+    const base = pos.clone().add(new THREE.Vector3(0, 0, -CARD_H * 0.14));
     const body = new THREE.Group();
-    body.position.copy(pos);
+    body.position.copy(base);
     const target = this.position(1 - slot);
     const faceAngle = Math.atan2(target.x - pos.x, target.z - pos.z);
     // Face the opponent, turned a little towards the camera so the front side shows.
@@ -395,9 +431,14 @@ export class BattleStage {
     body.visible = false;
     this.scene.add(body);
     const mixer = model?.clips.length ? new THREE.AnimationMixer(model.object.children[0]) : null;
+    const ball = this.#pokeBall(this.mode === 'showcase' ? 0.15 : 0.13);
+    ball.group.position.copy(pos).add(new THREE.Vector3(CARD_W * 0.22, 0, CARD_H * 0.3));
+    ball.group.visible = false;
+    this.scene.add(ball.group);
 
     this.slots[slot] = {
-      slot, info, color, pos, platform, card, faceMat, backMat, body, model, mixer,
+      slot, info, color, pos, base, platform, card, faceMat, backMat, body, model, mixer, ball,
+      height: model?.height ?? CARD_H * 1.25 * 1.25,
       lift: 0, scale: 1, phase: slot * 1.7, ready: false, fainted: false, aura: null,
     };
     return { hasModel: Boolean(model) };
@@ -406,15 +447,46 @@ export class BattleStage {
   removeFighter(slot) {
     const s = this.slots[slot];
     if (!s) return;
-    this.scene.remove(s.platform, s.card, s.body);
+    this.scene.remove(s.platform, s.card, s.body, s.ball?.group);
     this.slots[slot] = null;
   }
 
-  /** Card drops in, lands, glows, and the Pokémon pops out of it. */
+  /** A Poké Ball (our own simple model): the top half is hinged at the back so it can open. */
+  #pokeBall(r) {
+    const group = new THREE.Group();
+    const red = new THREE.MeshStandardMaterial({ color: 0xe11d2a, roughness: 0.35, metalness: 0.05 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
+    const bottom = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), white);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, r * 0.14, 32, 1, true), black);
+    const button = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.26, r * 0.26, r * 0.12, 24), white);
+    button.rotation.x = Math.PI / 2;
+    button.position.z = r * 0.98;
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.36, r * 0.36, r * 0.08, 24), black);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.z = r * 0.95;
+    const lid = new THREE.Group(); // hinge at the back edge
+    lid.position.z = -r;
+    const top = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), red);
+    top.position.z = r;
+    lid.add(top);
+    const inner = new THREE.Group();
+    inner.position.y = r;
+    inner.add(bottom, band, ring, button, lid);
+    group.add(inner);
+    // Face the camera with its button.
+    group.userData.radius = r;
+    return { group, lid, radius: r };
+  }
+
+  /**
+   * The summon: the card lands face up, a Poké Ball drops onto it and pops open, and the
+   * Pokémon comes out standing on the card (like an AR card scanner, but no scanning needed).
+   */
   async summon(slot) {
     const s = this.slots[slot];
     if (!s) return;
-    const { card, pos, color } = s;
+    const { card, pos, color, ball } = s;
     card.visible = true;
     card.position.set(pos.x, 3.2, pos.z + 0.4);
     card.rotation.set(-0.2, 0, 0.3);
@@ -428,46 +500,64 @@ export class BattleStage {
     card.rotation.set(-Math.PI / 2, 0, 0);
     this.#burst(new THREE.Vector3(pos.x, 0.15, pos.z), 0xffffff, { count: 24, speed: 1.2, life: 0.45, size: 0.06 });
 
-    // 2. Charge-up: a rising ring and a beam of light in the type colour, sparkles over the card.
+    // 2. The Poké Ball drops onto the card and bounces.
+    const bx = ball.group.position.x;
+    const bz = ball.group.position.z;
+    ball.group.rotation.y = Math.atan2(this.camera.position.x - bx, this.camera.position.z - bz);
+    ball.group.visible = true;
+    ball.lid.rotation.x = 0;
+    await this.tween(650, (t) => {
+      const bounce = Math.abs(Math.cos(t * Math.PI * 2.5)) * (1 - t) ** 1.6;
+      ball.group.position.y = 0.135 + bounce * 2.2;
+      ball.group.rotation.z = Math.sin(t * 20) * 0.15 * (1 - t);
+    }, (t) => t);
+    ball.group.position.y = 0.135;
+
+    // 3. Charge-up: the ball wobbles, a ring and a beam of light rise in the type colour.
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.5, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(pos.x, 0.15, pos.z);
+    ring.position.set(s.base.x, 0.15, s.base.z);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 2.6, 32, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    beam.position.set(pos.x, 1.4, pos.z);
+    beam.position.set(s.base.x, 1.4, s.base.z);
     this.scene.add(ring, beam);
     this.#sparkles(new THREE.Vector3(pos.x, 0.2, pos.z), color, 0.9);
     await this.tween(800, (t) => {
+      ball.group.rotation.z = Math.sin(t * Math.PI * 6) * 0.25 * Math.sin(t * Math.PI);
       ring.scale.setScalar(1 + t * 1.4);
       ring.material.opacity = 0.9 * (1 - t * 0.6);
       beam.material.opacity = Math.sin(t * Math.PI) * 0.45;
       beam.scale.set(1, 0.3 + t * 0.7, 1);
       s.faceMat.emissive = new THREE.Color(color);
-      s.faceMat.emissiveIntensity = t * 0.8;
+      s.faceMat.emissiveIntensity = Math.sin(t * Math.PI) * 0.6;
     });
+    ball.group.rotation.z = 0;
 
-    // 3. Pop out: the Pokémon grows out of the card with a flash and a ring of particles.
+    // 4. The ball pops open with a flash, and the Pokémon comes out onto the card.
     this.flash.color.set(color);
-    this.flash.position.set(pos.x, 1, pos.z + 0.5);
+    this.flash.position.set(s.base.x, 1, s.base.z + 0.6);
     s.body.visible = true;
     s.body.scale.setScalar(0.001);
-    s.body.position.y = -0.3;
-    this.#burst(new THREE.Vector3(pos.x, 0.4, pos.z), color, { count: 70, speed: 2.6, life: 0.8, size: 0.09 });
+    s.body.position.set(s.base.x, -0.3, s.base.z);
+    const ballTop = ball.group.position.clone().setY(0.135 + ball.radius * 2);
+    this.#burst(ballTop, 0xffffff, { count: 40, speed: 2.2, life: 0.6, size: 0.08 });
+    this.#burst(new THREE.Vector3(s.base.x, 0.4, s.base.z), color, { count: 70, speed: 2.6, life: 0.8, size: 0.09 });
     await this.tween(700, (t) => {
+      ball.lid.rotation.x = -1.9 * Math.min(1, t * 2.2);
       s.body.scale.setScalar(Math.max(0.001, t));
-      s.body.position.y = -0.3 + 0.43 * Math.min(1, t * 1.2);
+      s.body.position.y = -0.3 + 0.44 * Math.min(1, t * 1.2);
       this.flash.intensity = 25 * Math.sin(Math.min(1, t * 1.6) * Math.PI);
       beam.material.opacity = 0.45 * (1 - t);
       ring.material.opacity = 0.35 * (1 - t);
     }, ease.back);
     this.flash.intensity = 0;
     this.scene.remove(ring, beam);
-    s.faceMat.emissiveIntensity = 0.15;
-    // The card stays under the Pokémon as its base, dimmed.
-    s.faceMat.opacity = 0.75;
-    s.lift = 0.13;
+    s.faceMat.emissiveIntensity = 0;
+    s.lift = 0.14;
     s.scale = 1;
     s.ready = true;
     if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
+    // The ball closes again and stays on the card.
+    await this.tween(350, (t) => { ball.lid.rotation.x = -1.9 * (1 - t); });
   }
 
   #playClip(s, clip) {
@@ -481,7 +571,7 @@ export class BattleStage {
   /** Screen position (px, relative to the host) of a point above a fighter, for floating text. */
   screenPoint(slot, y = 1.6) {
     const s = this.slots[slot];
-    const p = (s ? s.pos.clone() : this.position(slot)).setY(y).project(this.camera);
+    const p = (s ? (s.base ?? s.pos).clone() : this.position(slot)).setY(s?.height ? s.lift + s.height * 0.8 : y).project(this.camera);
     return { x: (p.x * 0.5 + 0.5) * this.host.clientWidth, y: (-p.y * 0.5 + 0.5) * this.host.clientHeight };
   }
 
@@ -501,8 +591,8 @@ export class BattleStage {
     const s = this.slots[slot];
     if (!s?.ready) return;
     const color = typeColor(type ?? s.info.types?.[0]);
-    const from = s.pos.clone();
-    const to = this.position(1 - slot);
+    const from = s.base.clone();
+    const to = this.slots[1 - slot]?.base?.clone() ?? this.position(1 - slot);
     const dir = to.clone().sub(from).setY(0).normalize();
     if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
     await this.tween(260, (t) => s.body.position.set(from.x + dir.x * 0.7 * t, s.body.position.y, from.z + dir.z * 0.7 * t), ease.out);
@@ -519,7 +609,7 @@ export class BattleStage {
     if (amount <= 0) return this.wait(300);
     const mats = [];
     s.body.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if ('emissive' in m) mats.push([m, m.emissive.clone(), m.emissiveIntensity]); });
-    const x0 = s.pos.x;
+    const x0 = s.base.x;
     await this.tween(420, (t) => {
       s.body.position.x = x0 + Math.sin(t * Math.PI * 8) * 0.12 * (1 - t);
       const k = Math.sin(t * Math.PI * 3) > 0 ? 1 : 0;
@@ -553,7 +643,7 @@ export class BattleStage {
     if (!on) return;
     const aura = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.05, 8, 64), new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
     aura.rotation.x = Math.PI / 2;
-    aura.position.copy(s.pos).setY(0.3);
+    aura.position.copy(s.base).setY(0.3);
     this.scene.add(aura);
     s.aura = aura;
     this.float(slot, 'Powered up!', 'energy');
@@ -574,7 +664,7 @@ export class BattleStage {
       s.body.position.y = y0 - t * 0.5;
       s.body.rotation.z = t * 0.5 * (s.slot === 0 ? -1 : 1);
       for (const m of mats) m.opacity = 1 - t;
-      s.faceMat.opacity = 0.75 * (1 - t * 0.6);
+      s.faceMat.opacity = 1 - t * 0.45;
     });
     s.body.visible = false;
   }
@@ -707,7 +797,7 @@ export class BattleStage {
     group.position.copy(pos);
     group.lookAt(this.position(0).setY(0));
     this.scene.add(group);
-    this.slots[1] = { slot: 1, info: { types: ['Colorless'] }, pos, body: group, card: new THREE.Group(), faceMat: new THREE.MeshBasicMaterial(), platform: new THREE.Group(), lift: 0, scale: 1, phase: 0, ready: false, fainted: false };
+    this.slots[1] = { slot: 1, info: { types: ['Colorless'] }, pos, base: pos.clone(), height: 1.5, body: group, card: new THREE.Group(), faceMat: new THREE.MeshBasicMaterial(), platform: new THREE.Group(), lift: 0, scale: 1, phase: 0, ready: false, fainted: false };
   }
 
   dispose() {

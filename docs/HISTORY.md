@@ -395,6 +395,12 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - **attacks and hits:** attacks lunge with type-coloured particles (Lightning adds a bolt); hits shake, flash red and show floating numbers; healing, energy, power-up aura and fainting each have their own effect;
   - **models:** a model's own animation clip plays when it has one (most have none);
   - **fallbacks:** a Pokémon without a model fights as its standing card; without WebGL, a CSS card stage is used.
+- **Closer to the AR demo** (after the owner shared its screenshot):
+  - the Pokémon now stands on its card, which stays full-size and bright as its base;
+  - a Poké Ball (a simple model of our own) bounces onto the card, pops open as the Pokémon appears, and stays on the card;
+  - the details float as a banner above the Pokémon (card thumbnail, name, set and number, type icon, HP) and follow the camera;
+  - the camera looks down at the card;
+  - the models are sized to about the card's width.
 - **Page:** picker with form choice and mode switch; the summon intro with floating card details (they shrink to a tag on phones); the showcase (orbit, practice target); the battle (HP and energy plates, typewriter messages, move buttons with cost pips and expected damage, turn banner, win screen with rematch).
 - **Found while testing:**
   - a Pokémon with a single 3D form crashed the showcase;
