@@ -490,6 +490,7 @@ try {
   await page.keyboard.press('Escape');
   grader.online = false;
 
+  // 3D steps get long time limits: the test browser draws without a graphics card.
   step('PokéBattles: one card pops out of its card in 3D and tries its moves (showcase)');
   await page.getByRole('link', { name: 'PokéBattles' }).click();
   await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
@@ -499,10 +500,10 @@ try {
   await page.locator('.bt-slot', { hasText: 'Electrode' }).locator('.bt-ok', { hasText: '3D model' }).waitFor();
   await page.getByRole('button', { name: '✨ Showcase' }).click();
   await page.locator('canvas.stage-canvas').waitFor();
-  await page.locator('.card-info-panel.slot-0.in', { hasText: 'Thunder Jolt' }).waitFor({ timeout: 30000 });
-  await page.locator('.bt-message', { hasText: 'Drag to turn it around' }).waitFor({ timeout: 30000 });
+  await page.locator('.card-info-panel.slot-0.in', { hasText: 'Thunder Jolt' }).waitFor({ timeout: 90000 });
+  await page.locator('.bt-message', { hasText: 'Drag to turn it around' }).waitFor({ timeout: 90000 });
   await page.getByRole('button', { name: /Thunder Jolt/ }).click();
-  await page.locator('.bt-message', { hasText: /It would deal (30|60) damage/ }).waitFor({ timeout: 20000 });
+  await page.locator('.bt-message', { hasText: /It would deal (30|60) damage/ }).waitFor({ timeout: 90000 });
 
   step('PokéBattles: two cards battle the computer until one faints');
   await page.getByRole('button', { name: '← Choose again' }).click();
@@ -510,11 +511,11 @@ try {
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
   await page.getByRole('button', { name: '⚔ Battle!' }).click();
-  await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 30000 });
+  await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 90000 });
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
-  await page.locator('.hp-plate.side-0').waitFor({ timeout: 30000 });
+  await page.locator('.hp-plate.side-0').waitFor({ timeout: 90000 });
   for (let i = 0; i < 40 && !(await page.locator('.bt-result').count()); i++) {
-    await page.waitForFunction(() => document.querySelector('.bt-result') || document.querySelector('.move-grid .move-btn:not(:disabled)'), null, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('.bt-result') || document.querySelector('.move-grid .move-btn:not(:disabled)'), null, { timeout: 90000 });
     const move = page.locator('.move-grid .move-btn:not(:disabled)').first();
     if (await page.locator('.bt-result').count()) break;
     await move.click();
@@ -532,17 +533,49 @@ try {
   mock.state.modelsDown = true;
   await page.getByRole('button', { name: '⚔ Battle!' }).click();
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
-  await page.waitForFunction(() => document.querySelector('.stage-frame')?.dataset.fighters === '3d,card', null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector('.stage-frame')?.dataset.fighters === '3d,card', null, { timeout: 90000 });
   mock.state.modelsDown = false;
   // The browser logs the failed model download (503); that's the case being tested.
   errors.splice(0, errors.length, ...errors.filter((e) => !/status of 50[23]/.test(e)));
   const whose = page.locator('.bt-whose', { hasText: /^Player \d: choose/ });
-  await whose.waitFor({ timeout: 30000 });
+  await whose.waitFor({ timeout: 90000 });
   const first = await whose.textContent();
   await page.locator('.move-grid .move-btn:not(:disabled)').first().click();
-  await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 30000 });
+  await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 90000 });
   assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
   await page.getByRole('button', { name: '← Choose again' }).click();
+
+  step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
+  await page.goto(`${base}/#/`);
+  await page.locator('.card-tile').nth(5).waitFor();
+  await page.locator('.pfx-toggle').click();
+  await page.locator('.card-grid.pfx-grid .card-tile.pfx-on').nth(5).waitFor();
+  const popVoltorb = page.locator('.card-tile.pfx-on', { hasText: 'Voltorb' }).first();
+  await popVoltorb.scrollIntoViewIfNeeded();
+  await popVoltorb.locator('img.pfx-model.ready').waitFor({ timeout: 90000 }); // drawn with software WebGL here
+  assert.equal(await page.locator('.card-tile.pfx-on', { hasText: 'Punk Helmet' }).locator('img.pfx-model').count(), 0, 'a Trainer has no Pokémon to pop out');
+  const savedPicture = path.join(dataDir, 'popout', 'regular', '100.webp');
+  for (let i = 0; i < 100 && !fs.existsSync(savedPicture); i++) await page.waitForTimeout(100);
+  assert.ok(fs.existsSync(savedPicture), 'the picture is saved for every device');
+  await shot('30-popout-gallery');
+  let uploads = 0;
+  const countUploads = (r) => { if (r.method() === 'PUT' && r.url().includes('/api/popout/pictures/')) uploads++; };
+  page.on('request', countUploads);
+  await page.reload();
+  const again = page.locator('.card-tile.pfx-on', { hasText: 'Voltorb' }).first();
+  await again.scrollIntoViewIfNeeded();
+  await again.locator('img.pfx-model.ready').waitFor({ timeout: 90000 });
+  page.off('request', countUploads);
+  assert.equal(uploads, 0, 'drawn only once');
+  await page.getByRole('group', { name: 'Card image' }).getByRole('button', { name: 'My photos' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6 && !document.querySelector('.card-tile.pfx-on'));
+  await page.getByRole('group', { name: 'Card image' }).getByRole('button', { name: 'Official' }).click();
+  await page.locator('.card-tile.pfx-on').first().waitFor();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.card-tile.pfx-on'));
+  await page.getByRole('button', { name: 'Done selecting' }).click();
+  await page.locator('.pfx-toggle').click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6 && !document.querySelector('.card-tile.pfx-on, .pfx-grid'));
 
   step('restart the server: everything is still there');
   await srv.stop();

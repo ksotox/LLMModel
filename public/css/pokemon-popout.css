@@ -1,0 +1,138 @@
+/* 3D Pop-out for the card gallery (from the owner's artwork pop-out package, adapted).
+   Scoped to .pfx-on / .pfx-grid so the ordinary gallery stays unchanged when the switch is off. */
+.pfx-toggle {
+  display:inline-flex; align-items:center; gap:8px; padding:5px 9px 5px 12px;
+  border:1px solid #c9a6ff; border-radius:999px;
+  background:linear-gradient(110deg,#faf5ff,#f1e5ff); color:#6d28d9;
+  font:600 13px/1.35 system-ui,sans-serif; white-space:nowrap; cursor:pointer;
+  box-shadow:0 3px 13px rgba(116,66,213,.13);
+}
+.pfx-toggle input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.pfx-toggle:focus-within { outline:2px solid #7c3aed; outline-offset:3px; }
+.pfx-cube {font-size:19px; line-height:1;color:#7c3aed}
+.pfx-track { width:37px; height:21px; border-radius:100px; background:#b8adcf; position:relative; flex:none; transition:background .2s; }
+.pfx-track::after { content:''; position:absolute; left:3px; top:3px; width:15px; height:15px; border-radius:50%; background:white; box-shadow:0 1px 4px #0003; transition:transform .2s; }
+.pfx-toggle input:checked + .pfx-track { background:#8c35fb; box-shadow:0 0 12px #ad6aff66; }
+.pfx-toggle input:checked + .pfx-track::after { transform:translateX(16px); }
+
+/* Keep intact card click, price, sorting, set label, inset, and collection behavior. */
+.card-tile.pfx-on { --pfx:139,93,246; background:transparent; border:0; overflow:visible; box-shadow:none; position:relative; isolation:isolate; }
+.card-tile.pfx-on:hover { z-index:2; transform:translateY(-2px); box-shadow:none; }
+.card-tile.pfx-on.pfx-fire { --pfx:255,136,41; }
+.card-tile.pfx-on.pfx-water { --pfx:64,189,255; }
+.card-tile.pfx-on.pfx-poison { --pfx:192,65,245; }
+.card-tile.pfx-on.pfx-grass { --pfx:95,229,135; }
+.card-tile.pfx-on.pfx-electric { --pfx:255,222,70; }
+.card-tile.pfx-on.pfx-dark { --pfx:123,104,172; }
+.card-tile.pfx-on.pfx-fighting { --pfx:230,120,70; }
+.card-tile.pfx-on.pfx-metal { --pfx:170,185,205; }
+.card-tile.pfx-on.pfx-dragon { --pfx:214,170,60; }
+.card-tile.pfx-on .card-img {
+  position:relative; aspect-ratio:1 / 1.06; padding:0; background:transparent;
+  display:flex; align-items:center; justify-content:center; overflow:visible;
+  perspective:850px; isolation:isolate; z-index:1;
+}
+.card-tile.pfx-on .card-img > .pfx-aura {
+  position:absolute; width:90%; height:66%; bottom:8%; left:5%; border-radius:50%;
+  background:radial-gradient(ellipse,rgba(var(--pfx),.29),rgba(var(--pfx),.09) 48%,transparent 73%);
+  filter:blur(15px); z-index:0; pointer-events:none;
+}
+.card-tile.pfx-on .card-img > .pfx-pedestal {
+  position:absolute; left:9%; right:9%; bottom:3%; height:6%; border-radius:50%;
+  background:linear-gradient(180deg,#fff 3%,rgba(var(--pfx),.9) 30%,#fff 55%,rgba(var(--pfx),.48) 85%);
+  box-shadow:0 5px 13px rgba(59,46,110,.23),0 0 19px rgba(var(--pfx),.7),0 0 3px white inset;
+  transform:perspective(200px) rotateX(22deg); z-index:1; pointer-events:none;
+}
+.card-tile.pfx-on .card-img > .pfx-particles {
+  position:absolute; inset:0; border-radius:20px; pointer-events:none; z-index:2;
+  background:radial-gradient(circle at 9% 28%,rgba(var(--pfx),.85) 0 1.3px,transparent 2px),
+    radial-gradient(circle at 93% 35%,rgba(var(--pfx),.8) 0 2px,transparent 3px),
+    radial-gradient(circle at 14% 70%,rgba(var(--pfx),.6) 0 2px,transparent 4px),
+    radial-gradient(circle at 90% 68%,rgba(255,255,255,.93) 0 2px,transparent 3px);
+  filter:drop-shadow(0 0 5px rgba(var(--pfx),.8));
+}
+/* Generic fallback: every card gets a dimensional display, even without special art. */
+.card-tile.pfx-on .card-img > img.pfx-face {
+  position:relative; z-index:3; display:block; max-width:none; height:84%; width:auto; aspect-ratio:63 / 88;
+  object-fit:cover; border-radius:11px;
+  filter:drop-shadow(0 17px 10px rgba(38,31,72,.28));
+  transform:perspective(650px) rotateY(-5deg) rotateX(4deg) translateY(-1%);
+  transition:transform .35s cubic-bezier(.2,.7,.2,1);
+}
+.card-tile.pfx-on:hover .card-img > img.pfx-face { transform:perspective(650px) rotateY(-2deg) rotateX(2deg) translateY(-3%) scale(1.035); }
+/* The Pokémon's 3D model, drawn on transparency, standing out of the card (popoutRender.js). */
+.card-tile.pfx-on .card-img > img.pfx-model {
+  position:absolute; z-index:4; left:0; top:0; width:100%; height:100%; max-width:none; object-fit:contain;
+  pointer-events:none; opacity:0; transform:translateY(-2%) scale(1.06);
+  filter:drop-shadow(0 10px 8px rgba(36,32,55,.32)) drop-shadow(0 0 10px rgba(var(--pfx),.45));
+  transition:opacity .45s ease, transform .35s cubic-bezier(.2,.7,.2,1);
+}
+.card-tile.pfx-on .card-img > img.pfx-model:not([src]) { visibility:hidden; }
+.card-tile.pfx-on .card-img > img.pfx-model.ready { opacity:1; }
+.card-tile.pfx-on:hover .card-img > img.pfx-model { transform:translateY(-5%) scale(1.1); }
+.card-tile.pfx-on .card-img > .badge, .card-tile.pfx-on .card-img > .tick { z-index:6; }
+/* Prepared transparent subject aligned with its clean image/background. */
+.card-tile.pfx-on .card-img > img.pfx-foreground {
+  position:absolute; z-index:4; left:0; top:0; max-width:none; width:100%; height:100%; object-fit:contain;
+  pointer-events:none; filter:drop-shadow(0 12px 8px #24203740);
+  transform:translateY(-3%) scale(1.09); transition:transform .35s ease;
+}
+.card-tile.pfx-on:hover .card-img > img.pfx-foreground { transform:translateY(-6%) scale(1.14); }
+/* Prepared illustration scene (as in the mockup) already includes the card, effects and pedestal. */
+.card-tile.pfx-on.pfx-scene-mode .card-img > .pfx-pedestal,
+.card-tile.pfx-on.pfx-scene-mode .card-img > .pfx-particles { opacity:0; }
+.card-tile.pfx-on .card-img > img.pfx-scene {
+  position:relative; z-index:4; display:block; max-width:none; width:111%; height:110%;
+  object-fit:contain; filter:drop-shadow(0 11px 9px rgba(31,23,66,.08));
+  transform:translateY(-1%); transition:transform .4s cubic-bezier(.2,.7,.2,1);
+}
+.card-tile.pfx-on:hover .card-img > img.pfx-scene { transform:translateY(-2.5%) scale(1.025); }
+.card-tile.pfx-on .card-img > img.card-inset { z-index:5; width:27%; bottom:8%; right:4%; }
+.card-tile.pfx-on .card-info {
+  position:relative; z-index:5; flex:1; min-width:0; margin:0 1% 1%;
+  padding:13px 14px 13px; border-radius:19px;
+  background:rgba(255,255,255,.79); border:1px solid rgba(255,255,255,.82);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  box-shadow:0 9px 20px rgba(42,35,85,.14),0 1px 2px rgba(42,35,85,.1);
+}
+.card-tile.pfx-on .card-info .price {color:#147639;font-weight:800}
+.card-tile.pfx-on .card-info .card-foot {border-color:#b7b2c6}
+
+/* The gallery behind pop-out tiles: a soft lavender backdrop, as in the mockup. */
+.card-grid.pfx-grid {
+  padding:18px 14px 22px; border-radius:22px; gap:22px 16px;
+  background:radial-gradient(120% 60% at 50% 0%,#f4eeff 0%,transparent 70%),linear-gradient(180deg,#ece6fb,#e6e3f3 60%,#efedf6);
+}
+
+/* Dark theme */
+:root[data-theme="dark"] .card-grid.pfx-grid { background:radial-gradient(120% 60% at 50% 0%,#2a2145 0%,transparent 70%),linear-gradient(180deg,#1b1730,#15131f); }
+:root[data-theme="dark"] .card-tile.pfx-on .card-info { background:rgba(24,20,40,.78); border-color:rgba(255,255,255,.08); box-shadow:0 9px 20px rgba(0,0,0,.35); }
+:root[data-theme="dark"] .card-tile.pfx-on .card-info .price { color:#4ade80; }
+:root[data-theme="dark"] .card-tile.pfx-on .card-info .card-foot { border-color:rgba(255,255,255,.14); }
+:root[data-theme="dark"] .pfx-toggle { background:linear-gradient(110deg,#2a1f45,#1f1838); border-color:#5b3fa0; color:#d8c4ff; }
+:root[data-theme="dark"] .pfx-cube { color:#c4a5ff; }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .card-grid.pfx-grid { background:radial-gradient(120% 60% at 50% 0%,#2a2145 0%,transparent 70%),linear-gradient(180deg,#1b1730,#15131f); }
+  :root[data-theme="system"] .card-tile.pfx-on .card-info { background:rgba(24,20,40,.78); border-color:rgba(255,255,255,.08); box-shadow:0 9px 20px rgba(0,0,0,.35); }
+  :root[data-theme="system"] .card-tile.pfx-on .card-info .price { color:#4ade80; }
+  :root[data-theme="system"] .card-tile.pfx-on .card-info .card-foot { border-color:rgba(255,255,255,.14); }
+  :root[data-theme="system"] .pfx-toggle { background:linear-gradient(110deg,#2a1f45,#1f1838); border-color:#5b3fa0; color:#d8c4ff; }
+  :root[data-theme="system"] .pfx-cube { color:#c4a5ff; }
+}
+@media (max-width:720px) {
+ /* Two pop-out tiles side by side on phones, as in the mockup (unless "Large" is chosen). */
+ .card-grid.pfx-grid { padding:12px 8px 16px; gap:16px 10px; border-radius:18px; }
+ .card-grid.pfx-grid:not(.density-large) { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width:400px) {
+ .card-tile.pfx-on .card-info { padding:10px 9px; border-radius:15px; }
+ .card-tile.pfx-on .card-name {font-size:.89rem}
+}
+@media (prefers-reduced-motion:reduce) {
+ .pfx-on .pfx-face,.pfx-on .pfx-scene,.pfx-on .pfx-foreground,.pfx-on .pfx-model,.pfx-track,.pfx-track:after {transition:none!important;}
+ .card-tile.pfx-on:hover { transform:none; }
+ .card-tile.pfx-on:hover .card-img > img.pfx-model { transform:translateY(-2%) scale(1.06); }
+ .card-tile.pfx-on:hover .card-img > img.pfx-scene,
+ .card-tile.pfx-on:hover .card-img > img.pfx-face,
+ .card-tile.pfx-on:hover .card-img > img.pfx-foreground {transform:none;}
+}

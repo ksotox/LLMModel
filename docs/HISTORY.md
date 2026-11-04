@@ -401,6 +401,33 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - the details float as a banner above the Pokémon (card thumbnail, name, set and number, type icon, HP) and follow the camera;
   - the camera looks down at the card;
   - the models are sized to about the card's width.
+- **More realistic look** (owner's request):
+  - **No better models exist.** The Pokémon 3D API only publishes its compressed, game-style models, so realism comes from rendering.
+  - **Lighting (`public/js/battle/world.js`, all generated in code):**
+    - a physically based sky and sun (dusk in dark mode), with light from that sky on every surface;
+    - soft sun shadows from the Pokémon, cards, Poké Balls and platforms;
+    - neutral tone mapping (ACES washed out the models' reds) and distance haze.
+  - **Environment:** gently rolling grass land; a dirt battle field with chalk lines and a stone ring; 16,000 instanced grass blades swaying in a wind shader; smooth rocks and boulders, pine and broadleaf trees, distant hills; stone platforms.
+  - **Art direction:** the owner then shared an open-world game screenshot as a reference. Added:
+    - a deeper blue sky with a drifting cloud dome (an fBm shader);
+    - snow-capped mountain ranges and green ridges built from ridged noise and coloured by height, with aerial-perspective haze and mist banks;
+    - layered hills, an instanced forest in clumps, cut-stone blocks around the field, ruined pillars and walls, flower patches.
+    - Everything is procedural; none of that game's assets or landmarks are used.
+  - **Graphics levels:**
+    - **High:** GTAO ambient occlusion, bloom (bright effects only; a too-low threshold at first washed out the whole picture) and the densest vegetation, at 1.5× pixels;
+    - **Standard:** no post-processing, fewer blades, smaller shadows;
+    - **Basic:** no shadows, no sky lighting, Lambert materials, no grass, flowers or clouds, 0.75× resolution;
+    - **defaults:** software renderers get Basic; phones and ≤ 4-core machines get Standard. The choice is remembered.
+    - Measured in a software renderer: 1.1 s → 0.3 s per frame for Basic. The e2e's 3D steps got longer time limits because it runs without a GPU.
+  - **Camera:** lowered so the horizon, mountains and sky are in view.
+  - **The owner's "Hi-Fi v4" mock-up** (a single-page three.js battle the owner made, attached as HTML) was then merged in, rewritten for the app's three.js version and pipeline (colour space, tone mapping, fog):
+    - **Land:** one heightfield from the arena to ridged peaks, replacing the separate green ridges. It is coloured by height and slope (meadow and dirt, sand, rock, snow); a shader swaps the grass texture for its plain brightness on bare ground.
+    - **Lake:** water with Fresnel sky reflection, sun glint and moving noise ripples.
+    - **Grass:** the instanced grass shader, placed where the fixed camera looks, with gusts, root shading and backlight. High has 60k blades, Standard 20k (it was 16k / 5k).
+    - **Trees and air:** layered-cone pines in the forest, drifting pollen, and mist banks laid along the view.
+    - **Battle view and hits:** a three-quarter camera with idle drift; hits shake the camera and flash the screen (both off with reduced motion); attacks wind up before the lunge; a fainted Pokémon topples.
+    - **Panels:** frosted-glass HP plates, a vignette, move buttons with a type-coloured edge and a type label, and two-column moves on phones.
+    - **Left out:** the mock-up's two placeholder creatures and its made-up moves and levels. The battles keep the cards' real models and card rules.
 - **Page:** picker with form choice and mode switch; the summon intro with floating card details (they shrink to a tag on phones); the showcase (orbit, practice target); the battle (HP and energy plates, typewriter messages, move buttons with cost pips and expected damage, turn banner, win screen with rematch).
 - **Found while testing:**
   - a Pokémon with a single 3D form crashed the showcase;
@@ -413,6 +440,25 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - mock TCGdex cards carry battle data, and the mock serves a model list and generated glTF cubes;
   - e2e: showcase, a full battle against the computer, two-player turns, and the card-only fallback with the model host down.
   - Verified in a browser with the real models from GitHub (Voltorb, Electrode, Linoone), including dark mode and a 390 px-wide phone screen.
+
+## Phase 19: 3D Pop-out gallery
+
+- **Asked for:** the collection shown like the owner's phone mockup, with each Pokémon bursting out of its card above a glowing pedestal and a frosted info panel. The owner supplied a code package (`pokemon_artwork_effect_demo.zip`: switch, CSS, `registerArtwork()`, 4 prepared scene images cropped from the mockup, an installer for `views.js`).
+- **Limit, said up front:** CSS can't make a Pokémon come out of an arbitrary card; only the 4 prepared cards match the mockup exactly.
+- **The owner chose:**
+  - every other Pokémon card shows its 3D model (the PokéBattles models) standing out of its tilted card;
+  - the 4 scene images are committed.
+- **Built:**
+  - the package, applied by hand. It is shown in official mode only; My photos and Select show plain tiles, and table view has no switch. A dual-type card glows in its first type. Dark-theme panels, a lavender backdrop, and two columns on phones were added.
+  - **3D pictures (`public/js/popoutRender.js`):**
+    - `POST /api/popout/models` gives each card's model (by name, else Pokédex number; none for Trainers, Energy or another profile's cards);
+    - tiles ask for theirs as they scroll into view;
+    - missing ones are drawn one at a time by one offscreen WebGL renderer (transparent background, three-quarter turn, studio light);
+    - each picture is saved with `PUT /api/popout/pictures/<form>/<id>` (WebP/PNG signature, 1 MB limit, listed models only) into `data/popout/`, so it's drawn once per Pokémon for all cards and devices;
+    - the picture sits over the CSS-tilted card, so card pictures never go through WebGL (no cross-origin images needed).
+  - `public/js/battle/modelLoader.js`: model loading shared with the battle stage.
+- **Tests:** `popout.test.js` (4): keys, effects, `registerArtwork`, the model lookup, pictures (signature, size, path tricks, first one kept). The e2e covers: switch on, Voltorb's picture drawn and saved, no upload after reload, a Trainer with no Pokémon, My photos and Select plain, switch off.
+- **Found while testing:** in a 390 px window the pop-out grid fell back to one column (the "Comfortable" minimum width). It's now two columns on phones unless "Large" is chosen.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

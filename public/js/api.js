@@ -90,4 +90,11 @@ export const api = {
     return request('POST', `/api/packs/${id}/photo`, form);
   },
   deletePack: (id, withCards = false) => request('DELETE', `/api/packs/${id}${withCards ? '?withCards=1' : ''}`),
+
+  // 3D Pop-out: which model each card has, and saving a drawn picture (raw image body).
+  popoutModels: (ids) => request('POST', '/api/popout/models', { ids }),
+  savePopoutPicture: async (form, id, blob) => {
+    const res = await fetch(`/api/popout/pictures/${encodeURIComponent(form)}/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': blob.type || 'image/webp' }, body: blob });
+    if (!res.ok) throw new Error(`Saving the picture failed (${res.status})`);
+  },
 };

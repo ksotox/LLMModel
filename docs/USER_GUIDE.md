@@ -182,6 +182,11 @@ The **Collection** page shows:
 - **Table:** one row per card with name, set, number, rarity, variant, quantity, condition and value. Click a column heading to sort by it.
 - **Density:** **Compact**, **Comfortable** or **Large** tiles.
 - **Official / My photos:** shows the official picture or your own photo on each tile. The other one appears as a small inset.
+- **3D Pop-out** (the switch next to Official / My photos): each card stands on a glowing pedestal in its type's colour, with sparkles and a frosted panel for its details:
+  - a few cards have prepared artwork of the Pokémon bursting out of the card (for now: Ethan's Typhlosion DRI 190, Mega Dragalge ex CRI 104, Mega Slowbro ex PBL 031, Team Rocket's Spidops DRI 020);
+  - every other Pokémon card shows its 3D model (the same models as PokéBattles) stepping out of the card. Each Pokémon is drawn the first time it scrolls into view, which can take a moment, and is then saved, so it appears instantly afterwards on every device;
+  - Trainer and Energy cards, and Pokémon without a 3D model, stand on the pedestal as they are;
+  - it only works with **Official** pictures: **My photos** and **Select** show the plain gallery. Your choice is remembered.
 - **Group copies:** several copies of the same card and variant show as one tile with **×2**, **×3**…. Turn it off to see each copy.
 
 The collection loads 60 cards at a time and loads more as you scroll, so large collections stay fast.
@@ -335,6 +340,21 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - The 3D models come from the free, fan-made Pokémon 3D API (about 1,000 Pokémon). Each is downloaded the first time it's shown, then kept on your computer, so it opens instantly and works offline next time.
 - A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
 - On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
+- **Graphics** (top right of the battle):
+  - **High:** detailed shadows, soft shading where things meet (ambient occlusion), a glow on attack effects, and the densest grass and forest.
+  - **Standard:** lighter, for phones and older computers.
+  - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
+  - The app picks a level for your device the first time and remembers your choice.
+- **The setting:** the battles take place outdoors, in an open landscape:
+  - a blue sky with drifting clouds and a real-looking sun (a pink sunset in dark mode);
+  - hills rising to rocky, snow-capped peaks, fading into a blue haze, with mist in the valleys;
+  - a small lake with rippling water that reflects the sky and glints in the sun;
+  - woods of pines and leafy trees, old stone pillars and walls, rocks;
+  - thick grass bending in gusts of wind, patches of flowers, pollen drifting in the air;
+  - a dirt battle field with chalk lines inside a ring of cut stone blocks.
+- **The battle view** looks across the field from behind your Pokémon and drifts slowly. When a hit lands, the screen flashes and the camera shakes (both turned off if your device asks for reduced motion). An attacker steps back before it lunges; a fainted Pokémon topples over.
+- The name plates are frosted glass, and each attack button has an edge in the Pokémon's type colour.
+- **The Pokémon models** are the same game-style models as before (the 3D API has no more detailed ones). What changed is how they're lit (sunlight, sky light and soft shadows) and the world around them.
 
 ---
 

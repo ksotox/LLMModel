@@ -9,6 +9,8 @@ import { lookupPanel } from './lookup.js';
 import {
   cardNumber, clear, confirmDialog, debounce, formatChance, formatDate, formatPrice, h, KIND_LABELS, modal, oneIn, rarityBadge, toast, VARIANT_LABELS,
 } from './ui.js';
+import { artworkForCard, isPopoutOn, popoutImageNodes, popoutToggle, setPopoutOn } from './pokemon-popout.js';
+import { watchModelSlot } from './popoutRender.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -72,16 +74,23 @@ function cardTile(card, mode, onOpen, { compact = false, selecting = false, sele
   const primary = mode === 'photo' ? photo || official : official || photo;
   const secondary = primary === official ? photo : official;
   const qty = card.quantity > 1 ? card.quantity : card.owned > 1 && !card.ids ? card.owned : 0;
+  // 3D Pop-out: official pictures only, and not while selecting (plain tiles are easier to tick).
+  const popout = mode === 'official' && isPopoutOn() && Boolean(primary) && !selecting;
+  const popArt = popout ? artworkForCard(card) : null;
   return h('button.card-tile', {
     type: 'button',
-    class: [compact ? 'compact' : '', selected ? 'selected' : ''].join(' '),
+    class: [compact ? 'compact' : '', selected ? 'selected' : '', popout ? `pfx-on pfx-${popArt.effect}` : '', popArt?.scene ? 'pfx-scene-mode' : ''].join(' '),
     'aria-pressed': selecting ? String(selected) : undefined,
     onclick: () => (selecting ? onToggle(card) : onOpen(card)),
     'aria-label': `${card.name} ${cardNumber(card)}`,
   },
   h('div.card-img',
-    primary ? h('img', { src: primary, alt: '', loading: 'lazy' }) : h('div.card-noimg', card.name),
-    !compact && secondary && h('img.card-inset', { src: secondary, alt: '', loading: 'lazy', title: secondary === photo ? 'Your photo' : 'Official card' }),
+    popout
+      ? popoutImageNodes(h, card, primary, secondary, { compact, onModelSlot: watchModelSlot })
+      : [
+        primary ? h('img', { src: primary, alt: '', loading: 'lazy' }) : h('div.card-noimg', card.name),
+        !compact && secondary && h('img.card-inset', { src: secondary, alt: '', loading: 'lazy', title: secondary === photo ? 'Your photo' : 'Official card' }),
+      ],
     card.variant && card.variant !== 'normal' && h('span.badge.variant', VARIANT_LABELS[card.variant] ?? card.variant),
     qty > 0 && h('span.badge.qty', { title: `${qty} copies` }, `×${qty}`),
     selecting && h('span.tick', { 'aria-hidden': 'true' }, selected ? '✓' : '')),
@@ -117,7 +126,8 @@ function shortDate(iso) {
 
 function cardGrid(cards, mode, onOpen, emptyState, opts = {}) {
   if (!cards.length) return emptyState;
-  return h('div.card-grid', { class: opts.density ? `density-${opts.density}` : '' }, cards.map((c) => cardTile(c, mode, onOpen, { ...opts, selected: opts.isSelected?.(c) })));
+  const popout = mode === 'official' && isPopoutOn() && !opts.selecting;
+  return h('div.card-grid', { class: [opts.density ? `density-${opts.density}` : '', popout ? 'pfx-grid' : ''].join(' ') }, cards.map((c) => cardTile(c, mode, onOpen, { ...opts, selected: opts.isSelected?.(c) })));
 }
 
 function modeToggle(mode, onChange) {
@@ -273,6 +283,7 @@ export async function renderCollection(root, meta, navigate, params) {
     segmented('View', [['compact', 'Compact'], ['detailed', 'Detailed'], ['table', 'Table']], prefs.view, (v) => { prefs.view = v; savePrefs({ ...prefs }); renderViewControls(); draw(); }),
     prefs.view !== 'table' && segmented('Density', [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['large', 'Large']], prefs.density, (v) => { prefs.density = v; savePrefs({ ...prefs }); renderViewControls(); draw(); }),
     prefs.view !== 'table' && modeToggle(mode, (m) => { mode = m; draw(); }),
+    prefs.view !== 'table' && popoutToggle(h, isPopoutOn(), (on) => { setPopoutOn(on); draw(); }),
     h('label.check', h('input', { type: 'checkbox', checked: prefs.group, onchange: (e) => { prefs.group = e.target.checked; savePrefs({ ...prefs }); load(); } }), ' Group copies'),
     h('button.btn.small', { type: 'button', class: selecting ? 'active' : '', onclick: () => { selecting = !selecting; if (!selecting) selected.clear(); renderViewControls(); draw(); } }, selecting ? 'Done selecting' : 'Select'));
 
@@ -544,7 +555,7 @@ export async function renderPack(root, meta, navigate, id) {
     clear(results, cardGrid(cards, mode, (c) => openCard(c.id, { onChange: reload }),
       h('div.empty', h('p', search.value ? 'No cards match your search.' : 'No cards linked to this pack yet.'),
         !search.value && h('a.btn.primary', { href: `#/add?pack=${pack.id}` }, 'Add cards from this pack'))));
-    clear(toggleHost, modeToggle(mode, (m) => { mode = m; load(); }));
+    clear(toggleHost, h('div.view-controls', modeToggle(mode, (m) => { mode = m; load(); }), popoutToggle(h, isPopoutOn(), (on) => { setPopoutOn(on); load(); })));
   };
   search.addEventListener('input', debounce(load, 250));
 
