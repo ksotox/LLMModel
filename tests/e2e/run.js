@@ -545,6 +545,38 @@ try {
   assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
   await page.getByRole('button', { name: '← Choose again' }).click();
 
+  step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
+  await page.goto(`${base}/#/`);
+  await page.locator('.card-tile').nth(5).waitFor();
+  await page.locator('.pfx-toggle').click();
+  await page.locator('.card-grid.pfx-grid .card-tile.pfx-on').nth(5).waitFor();
+  const popVoltorb = page.locator('.card-tile.pfx-on', { hasText: 'Voltorb' }).first();
+  await popVoltorb.scrollIntoViewIfNeeded();
+  await popVoltorb.locator('img.pfx-model.ready').waitFor({ timeout: 90000 }); // drawn with software WebGL here
+  assert.equal(await page.locator('.card-tile.pfx-on', { hasText: 'Punk Helmet' }).locator('img.pfx-model').count(), 0, 'a Trainer has no Pokémon to pop out');
+  const savedPicture = path.join(dataDir, 'popout', 'regular', '100.webp');
+  for (let i = 0; i < 100 && !fs.existsSync(savedPicture); i++) await page.waitForTimeout(100);
+  assert.ok(fs.existsSync(savedPicture), 'the picture is saved for every device');
+  await shot('30-popout-gallery');
+  let uploads = 0;
+  const countUploads = (r) => { if (r.method() === 'PUT' && r.url().includes('/api/popout/pictures/')) uploads++; };
+  page.on('request', countUploads);
+  await page.reload();
+  const again = page.locator('.card-tile.pfx-on', { hasText: 'Voltorb' }).first();
+  await again.scrollIntoViewIfNeeded();
+  await again.locator('img.pfx-model.ready').waitFor({ timeout: 90000 });
+  page.off('request', countUploads);
+  assert.equal(uploads, 0, 'drawn only once');
+  await page.getByRole('group', { name: 'Card image' }).getByRole('button', { name: 'My photos' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6 && !document.querySelector('.card-tile.pfx-on'));
+  await page.getByRole('group', { name: 'Card image' }).getByRole('button', { name: 'Official' }).click();
+  await page.locator('.card-tile.pfx-on').first().waitFor();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.card-tile.pfx-on'));
+  await page.getByRole('button', { name: 'Done selecting' }).click();
+  await page.locator('.pfx-toggle').click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6 && !document.querySelector('.card-tile.pfx-on, .pfx-grid'));
+
   step('restart the server: everything is still there');
   await srv.stop();
   srv = await startServer(dataDir, mock, srv.port);

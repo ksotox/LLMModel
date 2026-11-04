@@ -441,6 +441,25 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - e2e: showcase, a full battle against the computer, two-player turns, and the card-only fallback with the model host down.
   - Verified in a browser with the real models from GitHub (Voltorb, Electrode, Linoone), including dark mode and a 390 px-wide phone screen.
 
+## Phase 19: 3D Pop-out gallery
+
+- **Asked for:** the collection shown like the owner's phone mockup, with each Pokémon bursting out of its card above a glowing pedestal and a frosted info panel. The owner supplied a code package (`pokemon_artwork_effect_demo.zip`: switch, CSS, `registerArtwork()`, 4 prepared scene images cropped from the mockup, an installer for `views.js`).
+- **Limit, said up front:** CSS can't make a Pokémon come out of an arbitrary card; only the 4 prepared cards match the mockup exactly.
+- **The owner chose:**
+  - every other Pokémon card shows its 3D model (the PokéBattles models) standing out of its tilted card;
+  - the 4 scene images are committed.
+- **Built:**
+  - the package, applied by hand. It is shown in official mode only; My photos and Select show plain tiles, and table view has no switch. A dual-type card glows in its first type. Dark-theme panels, a lavender backdrop, and two columns on phones were added.
+  - **3D pictures (`public/js/popoutRender.js`):**
+    - `POST /api/popout/models` gives each card's model (by name, else Pokédex number; none for Trainers, Energy or another profile's cards);
+    - tiles ask for theirs as they scroll into view;
+    - missing ones are drawn one at a time by one offscreen WebGL renderer (transparent background, three-quarter turn, studio light);
+    - each picture is saved with `PUT /api/popout/pictures/<form>/<id>` (WebP/PNG signature, 1 MB limit, listed models only) into `data/popout/`, so it's drawn once per Pokémon for all cards and devices;
+    - the picture sits over the CSS-tilted card, so card pictures never go through WebGL (no cross-origin images needed).
+  - `public/js/battle/modelLoader.js`: model loading shared with the battle stage.
+- **Tests:** `popout.test.js` (4): keys, effects, `registerArtwork`, the model lookup, pictures (signature, size, path tricks, first one kept). The e2e covers: switch on, Voltorb's picture drawn and saved, no upload after reload, a Trainer with no Pokémon, My photos and Select plain, switch off.
+- **Found while testing:** in a 390 px window the pop-out grid fell back to one column (the "Comfortable" minimum width). It's now two columns on phones unless "Large" is chosen.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

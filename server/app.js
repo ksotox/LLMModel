@@ -534,6 +534,68 @@ export function createApp({
     }
   });
 
+  // ---- 3D Pop-out (gallery): which 3D model each card has, and the saved model pictures ----
+  // A picture is the model drawn by the browser on a transparent background, one per model file
+  // (shared by every card of that Pokémon), kept in data/popout/<form>/<id>.webp|png.
+
+  const popoutDir = path.join(dataDir, 'popout');
+  const PICTURE_TYPES = { '.webp': 'image/webp', '.png': 'image/png' };
+  const pictureBase = async (form, id) => {
+    let idx = null;
+    try { idx = await models.index(); } catch { /* list unavailable */ }
+    if (!idx || !/^[A-Za-z][\w-]{0,30}$/.test(form) || !/^[\w-]{1,60}$/.test(id) || !idx.byFile.has(`${form}/${id}.glb`)) {
+      throw new HttpError(404, 'No such model');
+    }
+    return path.join(popoutDir, form, id);
+  };
+  const savedPicture = (base) => Object.keys(PICTURE_TYPES).map((ext) => base + ext).find((f) => fs.existsSync(f)) ?? null;
+
+  app.post('/api/popout/models', async (req, res) => {
+    if (!Array.isArray(req.body?.ids)) throw new HttpError(400, '"ids" must be a list of card ids');
+    const ids = [...new Set(req.body.ids.map(Number).filter(Number.isInteger))].slice(0, 200);
+    const out = {};
+    const todo = [];
+    for (const id of ids) {
+      const card = store.getCard(id, req.user.id);
+      if (!card || /trainer|energy|トレーナー|エネルギー/i.test(String(card.category ?? ''))) out[id] = null;
+      else todo.push([id, card]);
+    }
+    const lookup = async ([id, card]) => {
+      // By name first (no network); a card whose name doesn't match (Japanese, unusual names) by its Pokédex number.
+      let m = await models.forCard(card, []);
+      if (!m.available && card.tcg_id) m = await models.forCard(card, (await battleData(catalog, card).catch(() => null))?.dexIds ?? []);
+      const entry = m.available && m.forms.find((f) => f.form === m.default);
+      const file = entry?.url?.split('/').pop()?.replace(/\.glb$/, '');
+      if (!file) { out[id] = null; return; }
+      const saved = savedPicture(path.join(popoutDir, entry.form, file));
+      out[id] = { form: entry.form, id: file, model: entry.url, picture: `/api/popout/pictures/${entry.form}/${file}`, has: Boolean(saved) };
+    };
+    for (let i = 0; i < todo.length; i += 4) await Promise.all(todo.slice(i, i + 4).map(lookup));
+    res.json({ models: out });
+  });
+
+  app.get('/api/popout/pictures/:form/:id', async (req, res) => {
+    const file = savedPicture(await pictureBase(req.params.form, req.params.id));
+    if (!file) throw new HttpError(404, 'Not drawn yet');
+    res.set('Cache-Control', 'private, max-age=2592000');
+    res.type(PICTURE_TYPES[path.extname(file)]).sendFile(file);
+  });
+
+  app.put('/api/popout/pictures/:form/:id', express.raw({ type: Object.values(PICTURE_TYPES), limit: '1mb' }), async (req, res) => {
+    const base = await pictureBase(req.params.form, req.params.id);
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const ext = buf.length > 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP' ? '.webp'
+      : buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? '.png' : null;
+    if (!ext) throw new HttpError(400, 'Send a WebP or PNG picture');
+    if (!savedPicture(base)) {
+      fs.mkdirSync(path.dirname(base), { recursive: true });
+      const tmp = `${base}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, buf);
+      fs.renameSync(tmp, base + ext);
+    }
+    res.status(204).end();
+  });
+
   app.get('/api/sets', async (req, res) => {
     res.json({ sets: await userSets(catalog, store, req.user.id) });
   });

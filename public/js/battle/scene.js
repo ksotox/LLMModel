@@ -11,8 +11,7 @@
 // engine's events one after another.
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { createModelLoader, loadModel } from './modelLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
 
@@ -216,11 +215,9 @@ export class BattleStage {
     this.dot = softCircleTexture();
     this.backTexture = cardBackTexture();
     this.textureLoader = new THREE.TextureLoader();
-    this.loader = new GLTFLoader();
-    const draco = new DRACOLoader();
-    draco.setDecoderPath('/vendor/three/examples/jsm/libs/draco/gltf/');
-    this.loader.setDRACOLoader(draco);
-    this.draco = draco;
+    const models = createModelLoader();
+    this.loader = models.loader;
+    this.draco = models;
 
     this.resize = this.resize.bind(this);
     this.observer = new ResizeObserver(this.resize);
@@ -367,44 +364,8 @@ export class BattleStage {
   }
 
   /** A fighter's 3D model, normalised to `height` and standing on y = 0 (null if it can't load). */
-  async #model(url, height) {
-    if (!url) return null;
-    try {
-      const gltf = await this.loader.loadAsync(url);
-      const root = gltf.scene;
-      root.traverse((o) => {
-        if (o.isMesh) {
-          o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
-          for (const m of [].concat(o.material)) {
-            if (m.map) m.map.anisotropy = 8;
-            if ('envMapIntensity' in m) m.envMapIntensity = 1;
-          }
-          o.frustumCulled = false;
-          o.castShadow = true;
-          o.receiveShadow = true;
-        }
-      });
-      const box = new THREE.Box3().setFromObject(root);
-      const size = box.getSize(new THREE.Vector3());
-      const s = height / Math.max(size.y, size.x * 0.8, size.z * 0.8, 1e-3);
-      root.scale.setScalar(s);
-      const box2 = new THREE.Box3().setFromObject(root);
-      const c = box2.getCenter(new THREE.Vector3());
-      root.position.set(-c.x, -box2.min.y, -c.z);
-      const wrap = new THREE.Group();
-      wrap.add(root);
-      const clips = gltf.animations ?? [];
-      return {
-        object: wrap,
-        height: box2.max.y - box2.min.y,
-        clips,
-        attackClip: clips.find((c) => !/faint|dizzy|down|die|dead|sleep|hurt|damage|idle/i.test(c.name)) ?? null,
-        faintClip: clips.find((c) => /faint|dizzy|down|die|dead|sleep/i.test(c.name)) ?? null,
-      };
-    } catch (err) {
-      console.warn('3D model unavailable:', err?.message ?? err);
-      return null;
-    }
+  #model(url, height) {
+    return loadModel(this.loader, url, height);
   }
 
   /**

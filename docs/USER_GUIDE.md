@@ -182,6 +182,11 @@ The **Collection** page shows:
 - **Table:** one row per card with name, set, number, rarity, variant, quantity, condition and value. Click a column heading to sort by it.
 - **Density:** **Compact**, **Comfortable** or **Large** tiles.
 - **Official / My photos:** shows the official picture or your own photo on each tile. The other one appears as a small inset.
+- **3D Pop-out** (the switch next to Official / My photos): each card stands on a glowing pedestal in its type's colour, with sparkles and a frosted panel for its details:
+  - a few cards have prepared artwork of the Pokémon bursting out of the card (for now: Ethan's Typhlosion DRI 190, Mega Dragalge ex CRI 104, Mega Slowbro ex PBL 031, Team Rocket's Spidops DRI 020);
+  - every other Pokémon card shows its 3D model (the same models as PokéBattles) stepping out of the card. Each Pokémon is drawn the first time it scrolls into view, which can take a moment, and is then saved, so it appears instantly afterwards on every device;
+  - Trainer and Energy cards, and Pokémon without a 3D model, stand on the pedestal as they are;
+  - it only works with **Official** pictures: **My photos** and **Select** show the plain gallery. Your choice is remembered.
 - **Group copies:** several copies of the same card and variant show as one tile with **×2**, **×3**…. Turn it off to see each copy.
 
 The collection loads 60 cards at a time and loads more as you scroll, so large collections stay fast.
