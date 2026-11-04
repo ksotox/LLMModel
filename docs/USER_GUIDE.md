@@ -335,6 +335,21 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - The 3D models come from the free, fan-made Pokémon 3D API (about 1,000 Pokémon). Each is downloaded the first time it's shown, then kept on your computer, so it opens instantly and works offline next time.
 - A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
 - On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
+- **Graphics** (top right of the battle):
+  - **High:** detailed shadows, soft shading where things meet (ambient occlusion), a glow on attack effects, and the densest grass and forest.
+  - **Standard:** lighter, for phones and older computers.
+  - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
+  - The app picks a level for your device the first time and remembers your choice.
+- **The setting:** the battles take place outdoors, in an open landscape:
+  - a blue sky with drifting clouds and a real-looking sun (a pink sunset in dark mode);
+  - hills rising to rocky, snow-capped peaks, fading into a blue haze, with mist in the valleys;
+  - a small lake with rippling water that reflects the sky and glints in the sun;
+  - woods of pines and leafy trees, old stone pillars and walls, rocks;
+  - thick grass bending in gusts of wind, patches of flowers, pollen drifting in the air;
+  - a dirt battle field with chalk lines inside a ring of cut stone blocks.
+- **The battle view** looks across the field from behind your Pokémon and drifts slowly. When a hit lands, the screen flashes and the camera shakes (both turned off if your device asks for reduced motion). An attacker steps back before it lunges; a fainted Pokémon topples over.
+- The name plates are frosted glass, and each attack button has an edge in the Pokémon's type colour.
+- **The Pokémon models** are the same game-style models as before (the 3D API has no more detailed ones). What changed is how they're lit (sunlight, sky light and soft shadows) and the world around them.
 
 ---
 

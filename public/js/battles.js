@@ -188,10 +188,11 @@ function arenaShell(title, onBack) {
   const controls = h('div.bt-controls');
   const skip = h('button.btn.small.bt-skip', { type: 'button' }, 'Skip intro ⏭');
   const frame = h('div.stage-frame', host, hud, skip);
+  const graphics = h('span.bt-graphics');
   const el = h('div.bt-arena',
-    h('div.bt-arena-head', h('button.btn.small.ghost', { type: 'button', onclick: onBack }, '← Choose again'), h('h2', title)),
+    h('div.bt-arena-head', h('button.btn.small.ghost', { type: 'button', onclick: onBack }, '← Choose again'), h('h2', title), graphics),
     frame, message, controls);
-  return { el, host, hud, message, controls, skip, frame };
+  return { el, host, hud, message, controls, skip, frame, graphics };
 }
 
 /** Typewriter text in the message box; resolves when it's done (and a beat to read it). */
@@ -230,6 +231,16 @@ function plate(fighter, side, label) {
   return { el, update };
 }
 
+/** High (shadows, ambient occlusion, glow, dense grass), Standard, or Basic for computers without a graphics card. Remembered. */
+function graphicsToggle(a, stage) {
+  if (!stage.setQuality) return;
+  const sel = h('select', { 'aria-label': 'Graphics quality' },
+    h('option', { value: 'high' }, 'Graphics: High'), h('option', { value: 'standard' }, 'Graphics: Standard'), h('option', { value: 'basic' }, 'Graphics: Basic (fastest)'));
+  sel.value = stage.quality;
+  sel.addEventListener('change', () => stage.setQuality(sel.value));
+  clear(a.graphics, sel);
+}
+
 function cleanupOnLeave(stage) {
   const done = () => {
     window.removeEventListener('hashchange', done);
@@ -264,6 +275,7 @@ async function startShowcase(root, sel, onBack) {
   clear(root, a.el);
   const stage = await makeStage(a.host, 'showcase');
   const cleanup = cleanupOnLeave(stage);
+  graphicsToggle(a, stage);
   const me = makeFighter(sel.entry.battle, { name: sel.card.name });
   const dummy = makeFighter({ hp: 999, types: ['Colorless'] }, { name: 'Practice target' });
   let busy = false;
@@ -347,7 +359,7 @@ function moveButton(attack, me, foe, onClick, practice = false) {
     onclick: onClick,
   },
   h('span.move-top', h('span.move-name', attack.name), h('b.move-dmg', damageLabel(attack))),
-  h('span.move-bottom', costPips(attack.cost),
+  h('span.move-bottom', costPips(attack.cost), h('span.move-type', me.types[0] ?? 'Colorless'),
     !practice && h('small', enough ? `~${est} dmg` : `needs ${cost} energy`)),
   attack.effect && h('span.move-effect', attack.effect));
 }
@@ -361,6 +373,7 @@ async function startBattle(root, picks, mode, onBack) {
   clear(root, a.el);
   const stage = await makeStage(a.host, 'battle');
   const cleanup = cleanupOnLeave(stage);
+  graphicsToggle(a, stage);
   a.skip.hidden = false;
   a.skip.onclick = () => stage.skip();
   say(a.message, 'Getting the cards ready…', { hold: 0 });

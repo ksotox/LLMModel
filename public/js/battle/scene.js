@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildWorld, preferredQuality, saveQuality } from './world.js';
 
 export const TYPE_COLORS = {
   Grass: 0x4caf50, Fire: 0xff6d1f, Water: 0x2f8cff, Lightning: 0xffd21f, Psychic: 0xb44cff, Fighting: 0xd2691e,
@@ -122,25 +123,22 @@ function nameCardTexture(name, color) {
   return t;
 }
 
-function sky(dark) {
+/** The platforms' stone: grey with lighter and darker flecks. */
+function stoneTexture() {
   const c = document.createElement('canvas');
-  c.width = 4;
-  c.height = 256;
+  c.width = c.height = 256;
   const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 0, 256);
-  if (dark) {
-    grad.addColorStop(0, '#0b1023');
-    grad.addColorStop(0.6, '#1e2a4a');
-    grad.addColorStop(1, '#2d3b5e');
-  } else {
-    grad.addColorStop(0, '#7cc4ff');
-    grad.addColorStop(0.6, '#cfe9ff');
-    grad.addColorStop(1, '#f6fbff');
+  g.fillStyle = '#b9b5ac';
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    const v = 120 + Math.floor(Math.random() * 110);
+    g.fillStyle = `rgba(${v},${v - 4},${v - 10},${0.25 + Math.random() * 0.4})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1 + Math.random() * 3);
   }
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 4, 256);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(3, 1);
   return t;
 }
 
@@ -181,36 +179,39 @@ export class BattleStage {
     this.renderer.domElement.className = 'stage-canvas';
     this.overlay = document.createElement('div');
     this.overlay.className = 'stage-overlay';
-    host.append(this.renderer.domElement, this.overlay);
+    // A soft dark vignette at the edges, and a white flash when a hit lands.
+    this.vignette = document.createElement('div');
+    this.vignette.className = 'stage-vignette';
+    this.flashEl = document.createElement('div');
+    this.flashEl.className = 'stage-flash';
+    host.append(this.renderer.domElement, this.vignette, this.flashEl, this.overlay);
+    this.calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.shakeAmount = 0;
 
     this.scene = new THREE.Scene();
-    this.scene.background = sky(dark);
-    this.camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 100);
+    this.camera = new THREE.PerspectiveCamera(mode === 'showcase' ? 40 : 46, 16 / 9, 0.1, 4000);
     if (mode === 'showcase') {
-      this.camera.position.set(0, 3.0, 4.4);
+      this.camera.position.set(0, 2.0, 5.0);
       this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-      this.controls.target.set(0, 0.6, 0);
+      this.controls.target.set(0, 0.9, 0);
       this.controls.enablePan = false;
       this.controls.minDistance = 2.5;
       this.controls.maxDistance = 9;
       this.controls.maxPolarAngle = Math.PI * 0.49;
       this.controls.update();
     } else {
-      this.camera.position.set(0.5, 3.2, 6.4);
-      this.camera.lookAt(0.2, 0.45, -0.3);
+      // A three-quarter view from behind your Pokémon (front left) across the field to the opponent,
+      // with the lake, woods and peaks behind; it drifts slowly, and shakes when a hit lands.
+      this.camBase = new THREE.Vector3(-4.4, 2.3, 6.4);
+      this.camLook = new THREE.Vector3(0.7, 1.45, -1.6);
+      this.camera.position.copy(this.camBase);
+      this.camera.lookAt(this.camLook);
     }
 
-    this.scene.add(new THREE.HemisphereLight(dark ? 0x8ea4ff : 0xffffff, dark ? 0x1a1a2e : 0x9db38a, dark ? 1.4 : 1.8));
-    const sun = new THREE.DirectionalLight(0xffffff, dark ? 1.4 : 2.2);
-    sun.position.set(3, 6, 4);
-    this.scene.add(sun);
+    // The world: physical sky and sun, sky lighting, soft shadows, grass field, arena, trees, haze.
+    this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, quality: preferredQuality(this.renderer) });
     this.flash = new THREE.PointLight(0xffffff, 0, 6);
     this.scene.add(this.flash);
-
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshStandardMaterial({ color: dark ? 0x24304a : 0x9fd89a, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.02;
-    this.scene.add(ground);
 
     this.dot = softCircleTexture();
     this.backTexture = cardBackTexture();
@@ -240,6 +241,7 @@ export class BattleStage {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.world?.resize(w, h);
   }
 
   frame() {
@@ -265,7 +267,20 @@ export class BattleStage {
       }
     }
     this.controls?.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.camBase) {
+      const t = now / 1000;
+      this.shakeAmount = this.shakeAmount < 0.004 ? 0 : this.shakeAmount * 0.88 ** (dt * 60);
+      const k = this.shakeAmount;
+      const drift = this.calm ? 0 : 1;
+      this.camera.position.set(
+        this.camBase.x + Math.sin(t * 0.2) * 0.2 * drift + (Math.random() - 0.5) * k,
+        this.camBase.y + Math.sin(t * 0.27) * 0.07 * drift + (Math.random() - 0.5) * k * 0.5,
+        this.camBase.z,
+      );
+      this.camera.lookAt(this.camLook);
+    }
+    this.world.update(now / 1000);
+    this.world.render();
     this.#placeAnchors();
   }
 
@@ -303,6 +318,15 @@ export class BattleStage {
     return this.skipping ? Promise.resolve() : new Promise((r) => setTimeout(r, ms));
   }
 
+  /** Graphics quality: "high" (shadows, ambient occlusion, bloom, dense grass) or "standard". */
+  get quality() { return this.world.quality; }
+
+  setQuality(q) {
+    this.world.setQuality(q);
+    saveQuality(this.world.quality);
+    this.resize();
+  }
+
   /** Fast-forward the summon sequence (the "Skip" button) until `resume()`. */
   skip() {
     this.skipping = true;
@@ -316,15 +340,15 @@ export class BattleStage {
   #platform(pos, color) {
     const k = this.cardW * 0.95;
     const group = new THREE.Group();
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95 * k, 1.05 * k, 0.12, 48), new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.8 }));
+    this.platformTex ??= stoneTexture();
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95 * k, 1.05 * k, 0.12, 48), new THREE.MeshStandardMaterial({ map: this.platformTex, color: 0xf2e6d2, roughness: 0.85, envMapIntensity: 0.45 }));
     disc.position.y = 0.06;
+    disc.castShadow = true;
+    disc.receiveShadow = true;
     const rim = new THREE.Mesh(new THREE.TorusGeometry(1.0 * k, 0.035, 8, 64), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.12;
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 32), new THREE.MeshBasicMaterial({ map: this.dot, color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.125;
-    group.add(disc, rim, shadow);
+    group.add(disc, rim);
     group.position.copy(pos);
     this.scene.add(group);
     return group;
@@ -351,7 +375,13 @@ export class BattleStage {
       root.traverse((o) => {
         if (o.isMesh) {
           o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
+          for (const m of [].concat(o.material)) {
+            if (m.map) m.map.anisotropy = 8;
+            if ('envMapIntensity' in m) m.envMapIntensity = 1;
+          }
           o.frustumCulled = false;
+          o.castShadow = true;
+          o.receiveShadow = true;
         }
       });
       const box = new THREE.Box3().setFromObject(root);
@@ -393,13 +423,14 @@ export class BattleStage {
     const CARD_W = this.cardW;
     const CARD_H = this.cardH;
     const geo = roundedCardGeometry(CARD_W, CARD_H, 0.05);
-    const faceMat = new THREE.MeshStandardMaterial({ map: front, roughness: 0.45, metalness: 0.1, transparent: true, side: THREE.FrontSide });
+    const faceMat = new THREE.MeshStandardMaterial({ map: front, roughness: 0.32, metalness: 0.05, transparent: true, side: THREE.FrontSide });
     const backMat = new THREE.MeshStandardMaterial({ map: this.backTexture, roughness: 0.6, transparent: true, side: THREE.FrontSide });
     const face = new THREE.Mesh(geo, faceMat);
     const back = new THREE.Mesh(geo, backMat);
     back.rotation.y = Math.PI;
     face.position.z = 0.004;
     back.position.z = -0.004;
+    for (const m of [face, back]) { m.castShadow = true; m.receiveShadow = true; }
     card.add(face, back);
     card.visible = false;
     this.scene.add(card);
@@ -423,6 +454,7 @@ export class BattleStage {
       standBack.rotation.y = Math.PI;
       standCard.position.set(0, CARD_H / 2 * 1.25, 0.004);
       standBack.position.set(0, CARD_H / 2 * 1.25, -0.004);
+      for (const m of [standCard, standBack]) m.castShadow = true;
       stand.add(standCard, standBack);
       stand.scale.setScalar(1.25);
       fighterObject = stand;
@@ -473,6 +505,7 @@ export class BattleStage {
     const inner = new THREE.Group();
     inner.position.y = r;
     inner.add(bottom, band, ring, button, lid);
+    inner.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     group.add(inner);
     // Face the camera with its button.
     group.userData.radius = r;
@@ -595,7 +628,10 @@ export class BattleStage {
     const to = this.slots[1 - slot]?.base?.clone() ?? this.position(1 - slot);
     const dir = to.clone().sub(from).setY(0).normalize();
     if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
-    await this.tween(260, (t) => s.body.position.set(from.x + dir.x * 0.7 * t, s.body.position.y, from.z + dir.z * 0.7 * t), ease.out);
+    // Wind up (a step back), then lunge forward and let the move fly.
+    const step = (k) => s.body.position.set(from.x + dir.x * k, s.body.position.y, from.z + dir.z * k);
+    await this.tween(130, (t) => step(-0.3 * t), ease.out);
+    await this.tween(220, (t) => step(-0.3 + 1.0 * t), ease.out);
     const projectile = this.#projectile(from.clone().setY(0.9), to.clone().setY(0.8), color, type);
     await this.tween(260, (t) => s.body.position.set(from.x + dir.x * 0.7 * (1 - t), s.body.position.y, from.z + dir.z * 0.7 * (1 - t)));
     await projectile;
@@ -607,6 +643,7 @@ export class BattleStage {
     if (!s) return;
     this.float(slot, amount > 0 ? `-${amount}` : 'No damage', weakness ? 'damage weak' : amount > 0 ? 'damage' : 'miss');
     if (amount <= 0) return this.wait(300);
+    this.#impact(weakness ? 0.24 : 0.17);
     const mats = [];
     s.body.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if ('emissive' in m) mats.push([m, m.emissive.clone(), m.emissiveIntensity]); });
     const x0 = s.base.x;
@@ -660,9 +697,11 @@ export class BattleStage {
     const mats = [];
     s.body.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) { m.transparent = true; mats.push(m); } });
     const y0 = s.body.position.y;
+    const z0 = s.body.rotation.z;
+    // Topple over sideways and sink, fading away.
     await this.tween(1100, (t) => {
-      s.body.position.y = y0 - t * 0.5;
-      s.body.rotation.z = t * 0.5 * (s.slot === 0 ? -1 : 1);
+      s.body.position.y = y0 - t * 0.6;
+      s.body.rotation.z = z0 + t * 1.35 * (s.slot === 0 ? -1 : 1);
       for (const m of mats) m.opacity = 1 - t;
       s.faceMat.opacity = 1 - t * 0.45;
     });
@@ -670,6 +709,14 @@ export class BattleStage {
   }
 
   // ---- effects ----
+
+  /** A hit lands: the camera shakes and the screen flashes white for a moment. */
+  #impact(shake) {
+    if (this.calm) return;
+    this.shakeAmount = Math.max(this.shakeAmount, shake);
+    this.flashEl.classList.add('on');
+    setTimeout(() => this.flashEl.classList.remove('on'), 70);
+  }
 
   #points(count, color, size) {
     const geo = new THREE.BufferGeometry();
@@ -794,6 +841,7 @@ export class BattleStage {
       disc.position.set(0, 1.25, 0.01 * i);
       group.add(disc);
     });
+    group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     group.position.copy(pos);
     group.lookAt(this.position(0).setY(0));
     this.scene.add(group);
@@ -803,6 +851,7 @@ export class BattleStage {
   dispose() {
     this.renderer.setAnimationLoop(null);
     this.observer.disconnect();
+    this.world.dispose();
     this.controls?.dispose();
     this.draco.dispose();
     this.scene.traverse((o) => {
@@ -812,6 +861,8 @@ export class BattleStage {
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.overlay.remove();
+    this.vignette.remove();
+    this.flashEl.remove();
   }
 }
 

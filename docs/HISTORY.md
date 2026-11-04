@@ -401,6 +401,33 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - the details float as a banner above the Pokémon (card thumbnail, name, set and number, type icon, HP) and follow the camera;
   - the camera looks down at the card;
   - the models are sized to about the card's width.
+- **More realistic look** (owner's request):
+  - **No better models exist.** The Pokémon 3D API only publishes its compressed, game-style models, so realism comes from rendering.
+  - **Lighting (`public/js/battle/world.js`, all generated in code):**
+    - a physically based sky and sun (dusk in dark mode), with light from that sky on every surface;
+    - soft sun shadows from the Pokémon, cards, Poké Balls and platforms;
+    - neutral tone mapping (ACES washed out the models' reds) and distance haze.
+  - **Environment:** gently rolling grass land; a dirt battle field with chalk lines and a stone ring; 16,000 instanced grass blades swaying in a wind shader; smooth rocks and boulders, pine and broadleaf trees, distant hills; stone platforms.
+  - **Art direction:** the owner then shared an open-world game screenshot as a reference. Added:
+    - a deeper blue sky with a drifting cloud dome (an fBm shader);
+    - snow-capped mountain ranges and green ridges built from ridged noise and coloured by height, with aerial-perspective haze and mist banks;
+    - layered hills, an instanced forest in clumps, cut-stone blocks around the field, ruined pillars and walls, flower patches.
+    - Everything is procedural; none of that game's assets or landmarks are used.
+  - **Graphics levels:**
+    - **High:** GTAO ambient occlusion, bloom (bright effects only; a too-low threshold at first washed out the whole picture) and the densest vegetation, at 1.5× pixels;
+    - **Standard:** no post-processing, fewer blades, smaller shadows;
+    - **Basic:** no shadows, no sky lighting, Lambert materials, no grass, flowers or clouds, 0.75× resolution;
+    - **defaults:** software renderers get Basic; phones and ≤ 4-core machines get Standard. The choice is remembered.
+    - Measured in a software renderer: 1.1 s → 0.3 s per frame for Basic. The e2e's 3D steps got longer time limits because it runs without a GPU.
+  - **Camera:** lowered so the horizon, mountains and sky are in view.
+  - **The owner's "Hi-Fi v4" mock-up** (a single-page three.js battle the owner made, attached as HTML) was then merged in, rewritten for the app's three.js version and pipeline (colour space, tone mapping, fog):
+    - **Land:** one heightfield from the arena to ridged peaks, replacing the separate green ridges. It is coloured by height and slope (meadow and dirt, sand, rock, snow); a shader swaps the grass texture for its plain brightness on bare ground.
+    - **Lake:** water with Fresnel sky reflection, sun glint and moving noise ripples.
+    - **Grass:** the instanced grass shader, placed where the fixed camera looks, with gusts, root shading and backlight. High has 60k blades, Standard 20k (it was 16k / 5k).
+    - **Trees and air:** layered-cone pines in the forest, drifting pollen, and mist banks laid along the view.
+    - **Battle view and hits:** a three-quarter camera with idle drift; hits shake the camera and flash the screen (both off with reduced motion); attacks wind up before the lunge; a fainted Pokémon topples.
+    - **Panels:** frosted-glass HP plates, a vignette, move buttons with a type-coloured edge and a type label, and two-column moves on phones.
+    - **Left out:** the mock-up's two placeholder creatures and its made-up moves and levels. The battles keep the cards' real models and card rules.
 - **Page:** picker with form choice and mode switch; the summon intro with floating card details (they shrink to a tag on phones); the showcase (orbit, practice target); the battle (HP and energy plates, typewriter messages, move buttons with cost pips and expected damage, turn banner, win screen with rematch).
 - **Found while testing:**
   - a Pokémon with a single 3D form crashed the showcase;

@@ -75,7 +75,7 @@ The service gets the user's two photos and the card's locally cached official pi
 | [@tesseract.js-data/eng](https://github.com/naptha/tessdata) | 1.0.0 | English OCR model, served by the app |
 | [@tesseract.js-data/jpn](https://github.com/naptha/tessdata) | 1.0.0 | Japanese OCR model (~2 MB), loaded only when a Japanese card is read |
 | [heic2any](https://github.com/alexcorvi/heic2any) | 0.0.4 | Converts iPhone HEIC photos to JPEG in the browser (loaded only when one is uploaded) |
-| [three](https://threejs.org/) | 0.180.0 | PokéBattles 3D stage: glTF + Draco loaders, orbit controls (served from node_modules at `/vendor/three`, with an import map) |
+| [three](https://threejs.org/) | 0.180.0 | PokéBattles 3D stage: glTF + Draco loaders, orbit controls, the physical `Sky`, post-processing (GTAO, bloom) and `mergeVertices` from its addons (served from node_modules at `/vendor/three`, with an import map) |
 | `node:sqlite` | built into Node ≥ 22.5 | The collection database |
 | `node:crypto` (scrypt) | built in | Profile passwords and session tokens |
 | [Playwright](https://playwright.dev/) | preinstalled | Browser e2e test (not a project dependency) |

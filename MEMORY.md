@@ -83,8 +83,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   tcgcsv were blocked, so live behaviour is verified by the owner running `npm run check:live`.
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
-## Current state (2026-11-02)
-- `main` holds PRs #1–#11. Branch (PR #12): pre-grade report + slab, then PokéBattles. 175 unit + 9 Python tests + e2e pass.
+## Current state (2026-11-04)
+- `main` holds PRs #1–#12. Branch: PokéBattles realism + Hi-Fi v4 look. 175 unit + 9 Python + e2e tests pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -94,8 +94,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId re-read from cached raw TCGdex/dataset card),
   `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
-  (engine = original simple rules, pure + seeded; scene = three.js stage, summon-from-card intro, FlatStage fallback).
-  Models are Nintendo IP from a fan project: never commit them.
+  (engine = simple rules, pure + seeded; scene = stage + summon intro; world = sky/land/lake/grass shader/IBL, High/Standard/Basic;
+  look from owner's Hi-Fi v4 mock-up, minus its placeholder creatures).
+  Models are Nintendo IP (fan project): never commit them.
 - **Pre-grading (experimental):** `server/grading/` (Express router, `card_grading_reports` table, photos in
   `data/uploads/grading/<uuid>/`, orphan sweep after any card delete) → optional Python FastAPI
   `services/grading/app.py` on 127.0.0.1:8765 using MIT Viridian (`third_party/viridian`, gitignored, pinned in
