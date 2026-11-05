@@ -522,9 +522,16 @@ try {
   }
   await page.locator('.bt-result h3', { hasText: /wins|draw/ }).waitFor();
   assert.ok(await page.locator('.hp-text', { hasText: /^0\// }).count() >= 1, 'one side ends at 0 HP');
+  // Then it asks: the same battle again, or a different opponent (keeping your Pokémon)?
+  await page.locator('.bt-next', { hasText: 'Battle Linoone again, or choose a different opponent for Voltorb?' }).waitFor();
+  assert.ok(await page.getByRole('button', { name: '↻ Same battle again' }).isVisible());
+  await page.getByRole('button', { name: '⇄ Different opponent' }).click();
+  await page.locator('.bt-slot.empty.wanted', { hasText: 'Pick a new opponent for Voltorb' }).waitFor();
+  assert.equal(await page.locator('.bt-slot strong').first().textContent(), 'Voltorb', 'your Pokémon stays chosen');
+  assert.equal(await page.locator('.bt-tile.picked').count(), 1);
 
   step('PokéBattles: two players take turns choosing moves; a card without a 3D model fights as its card');
-  await page.getByRole('button', { name: 'Choose again', exact: true }).click();
+  await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click(); // let go of the kept Pokémon
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-tile', { hasText: 'ビリリダマ' }).click();
   await page.getByRole('button', { name: 'Two players' }).click();

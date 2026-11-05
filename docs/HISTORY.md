@@ -476,6 +476,16 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - the output stays sRGB, not the reference's linear output, because three.js r180 decodes the models' and cards' sRGB textures, so linear output would show them too dark;
   - ACES makes saturated reds a little duller than the earlier neutral tone mapping, as accepted with the request.
 
+## Phase 21: After a battle: same battle again, or a different opponent
+
+- **Asked for:** turn-based battles where you choose the move, and when a Pokémon reaches 0 HP, a question whether to pick a different opponent or play the same battle again. Turn-based move choice already existed (attacks, abilities, Rest; vs Computer or two players).
+- **Added:**
+  - the result panel asks "Battle <opponent> again, or choose a different opponent for <your Pokémon>?";
+  - **Same battle again** replays it (the old Rematch);
+  - **Different opponent** returns to the picker with your Pokémon still chosen, the same mode, and the empty opponent slot highlighted;
+  - **Choose both again** starts over.
+- **Tests:** the e2e checks the question and both choices, and that your Pokémon stays chosen.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

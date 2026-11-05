@@ -177,3 +177,6 @@
   .move-btn { transition: none; }
   .move-btn:hover:not(:disabled) { transform: none; }
 }
+.bt-next { margin: 4px 0 10px; font-weight: 700; }
+.bt-slot.empty.wanted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.bt-slot.empty.wanted span { color: var(--accent); font-weight: 700; }

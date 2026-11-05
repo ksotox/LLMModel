@@ -326,7 +326,10 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 **Two cards: Battle.**
 - Name plates show each Pokémon's HP and energy. The message box tells what happens.
 - On your turn, pick an attack, an ability, or **Rest**. With **vs Computer** the computer plays the other side; with **Two players** the box says whose turn it is.
-- The battle ends when one Pokémon reaches 0 HP. **Rematch** plays again; **Choose again** goes back.
+- The battle ends when one Pokémon reaches 0 HP. It then asks what's next:
+  - **Same battle again:** the same two Pokémon, from full HP;
+  - **Different opponent:** back to the list with your Pokémon still chosen; pick a new opponent and press **Battle!**;
+  - **Choose both again:** start over.
 
 **The rules** are simple ones made for this app from each card's own data. They aren't the official card game rules (tap **How PokéBattles work** for the summary):
 - HP is the card's HP.

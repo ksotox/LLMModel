@@ -84,7 +84,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
 ## Current state (2026-11-04)
-- `main` holds PRs #1–#13. Branch: battle environment ported from the Hi-Fi v4 reference. 179 unit + 9 Python + e2e pass.
+- `main` holds PRs #1–#14. Branch: after a battle: same again or new opponent. 179 unit + 9 Python + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas

@@ -51,11 +51,15 @@ function infoPanel(entry) {
 
 let activeCleanup = null;
 
-export async function renderBattles(root) {
+/**
+ * The picker. After a battle, "Different opponent" comes back here with `keep` (your Pokémon,
+ * still chosen) and the same mode, so only a new opponent has to be picked.
+ */
+export async function renderBattles(root, { keep = null, mode: startMode = 'cpu' } = {}) {
   activeCleanup?.();
   activeCleanup = null;
-  const selected = []; // [{ id, entry? , form }]
-  let mode = 'cpu';
+  const selected = keep ? [{ id: keep.id, card: keep.card, entry: keep.entry, form: keep.form }] : []; // [{ id, entry? , form }]
+  let mode = startMode;
   const list = h('div.bt-picker', h('p.muted', 'Loading your Pokémon…'));
   const filter = h('input.search', { type: 'search', placeholder: 'Search your Pokémon…', 'aria-label': 'Search Pokémon' });
   const tray = h('div.bt-tray');
@@ -98,7 +102,7 @@ export async function renderBattles(root) {
     clear(tray,
       h('div.bt-slots', [0, 1].map((i) => {
         const s = selected[i];
-        if (!s) return h('div.bt-slot.empty', h('span', i === 0 ? 'Choose your Pokémon' : 'Add an opponent (optional)'));
+        if (!s) return h('div.bt-slot.empty', { class: keep && i === 1 ? 'wanted' : '' }, h('span', i === 0 ? 'Choose your Pokémon' : keep ? `Pick a new opponent for ${keep.card.name} below` : 'Add an opponent (optional)'));
         const forms = s.entry?.models.forms ?? [];
         const formSel = forms.length > 1 && h('select', { 'aria-label': `3D form for ${s.card.name}`, onchange: (e) => { s.form = e.target.value; } },
           forms.map((f) => h('option', { value: f.form, selected: f.form === s.form }, FORM_LABELS[f.form] ?? f.name)));
@@ -121,7 +125,9 @@ export async function renderBattles(root) {
       h('button.btn.primary.bt-start', {
         type: 'button',
         disabled: !ready,
-        onclick: () => (selected.length === 2 ? startBattle(root, selected, mode, () => renderBattles(root)) : startShowcase(root, selected[0], () => renderBattles(root))),
+        onclick: () => (selected.length === 2
+          ? startBattle(root, [...selected], mode, () => renderBattles(root), (picks, m) => renderBattles(root, { keep: picks[0], mode: m }))
+          : startShowcase(root, selected[0], () => renderBattles(root))),
       }, selected.length === 2 ? '⚔ Battle!' : selected.length === 1 ? '✨ Showcase' : 'Pick a Pokémon'));
   }
 
@@ -367,7 +373,7 @@ function moveButton(attack, me, foe, onClick, practice = false) {
 // ---------------------------------------------------------------------------
 // Battle: two Pokémon, vs the computer or two players
 
-async function startBattle(root, picks, mode, onBack) {
+async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const [p1, p2] = picks;
   const a = arenaShell(`${p1.card.name} vs ${p2.card.name}`, () => { cleanup(); onBack(); });
   clear(root, a.el);
@@ -462,9 +468,12 @@ async function startBattle(root, picks, mode, onBack) {
     clear(a.controls, h('div.bt-result',
       h('h3', w == null ? 'It’s a draw!' : mode === 'cpu' ? (w === 0 ? `🏆 You win with ${f[0].name}!` : `The computer’s ${f[1].name} wins!`) : `🏆 Player ${w + 1} wins with ${f[w].name}!`),
       h('p.muted', `${battle.round} round${battle.round === 1 ? '' : 's'} · ${f[0].name} dealt ${f[0].stats.dealt} · ${f[1].name} dealt ${f[1].stats.dealt}`),
+      h('p.bt-next', `Battle ${f[1].name} again, or choose a different opponent for ${f[0].name}?`),
       h('div.bt-row',
-        h('button.btn.primary', { type: 'button', onclick: () => { cleanup(); startBattle(root, picks, mode, onBack); } }, '↻ Rematch'),
-        h('button.btn', { type: 'button', onclick: () => { cleanup(); onBack(); } }, 'Choose again'))));
+        h('button.btn.primary', { type: 'button', onclick: () => { cleanup(); startBattle(root, picks, mode, onBack, onNewOpponent); } }, '↻ Same battle again'),
+        h('button.btn', { type: 'button', onclick: () => { cleanup(); onNewOpponent(picks, mode); } }, '⇄ Different opponent'),
+        h('button.btn.ghost', { type: 'button', onclick: () => { cleanup(); onBack(); } }, 'Choose both again'))));
+    a.controls.querySelector('.btn.primary')?.focus();
   };
 
   const controlsFor = () => {
