@@ -84,7 +84,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
 ## Current state (2026-11-04)
-- `main` holds PRs #1–#12. Branch: PokéBattles Hi-Fi v4 look, 3D Pop-out gallery. 179 unit + 9 Python + e2e pass.
+- `main` holds PRs #1–#13. Branch: battle environment ported from the Hi-Fi v4 reference. 179 unit + 9 Python + e2e pass.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -94,7 +94,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
-  (engine = rules, pure + seeded; scene = stage + summon; world = sky/land/lake/grass/IBL, High/Standard/Basic;
+  (engine = rules, pure + seeded; scene = stage + summon; world = v4 sky dome/fog/land/lake/grass, High/Standard/Basic;
   look from owner's Hi-Fi v4 mock-up, minus its creatures).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model

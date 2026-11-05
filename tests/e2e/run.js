@@ -559,7 +559,8 @@ try {
   assert.ok(fs.existsSync(savedPicture), 'the picture is saved for every device');
   await shot('30-popout-gallery');
   let uploads = 0;
-  const countUploads = (r) => { if (r.method() === 'PUT' && r.url().includes('/api/popout/pictures/')) uploads++; };
+  // Voltorb's picture was saved above, so it isn't drawn again. (Other Pokémon may still have been drawing when the page reloaded.)
+  const countUploads = (r) => { if (r.method() === 'PUT' && r.url().includes('/api/popout/pictures/regular/100')) uploads++; };
   page.on('request', countUploads);
   await page.reload();
   const again = page.locator('.card-tile.pfx-on', { hasText: 'Voltorb' }).first();

@@ -1,19 +1,13 @@
-// The PokéBattles world around the fighters: a physically based sky with a sun (dusk in dark mode)
-// and drifting clouds, light from that sky on every surface (image-based lighting), soft sun
-// shadows, haze, one land surface from the arena to snowy peaks, a lake, dense grass that bends in
-// gusts of wind, pine and broadleaf woods, ruins, flowers and pollen, plus post-processing on "High"
-// (ambient occlusion, bloom on effects). The look follows the owner's "Hi-Fi v4" battle mock-up.
+// The PokéBattles world around the fighters, ported from the owner's "Hi-Fi v4" battle reference:
+// a sky dome that follows the camera (gradient, sun disc and glow, drifting fBm clouds), fog in the
+// sky's horizon colour (FogExp2), a hemisphere light and an angled sun with soft shadows under ACES
+// tone mapping, one land mesh from the arena to snowy ridged mountains (vertex colours), a lake,
+// instanced shader grass bending in gusts, pine and broadleaf woods, ruins, flowers, pollen and mist.
 //
 // Everything here is generated in code (procedural textures and shapes): no downloaded assets.
 
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
 
@@ -136,58 +130,64 @@ function terrainHeight(x, z, flat = 16) {
   const d = Math.hypot(x, z);
   let h = (fbm(x * 0.035, z * 0.035, 4) - 0.48) * 1.8 * smooth(flat, flat + 14, d);
   h += smooth(flat + 14, 110, d) * (fbm(x * 0.011 + 7.3, z * 0.011 - 2.1, 5) - 0.4) * 16;
-  h += smooth(160, 300, d) * ridged(x * 0.0055 + 3.1, z * 0.0055 + 9.4, 5) * 78;
+  h += smooth(150, 270, d) * ridged(x * 0.0055 + 3.1, z * 0.0055 + 9.4, 5) * 85; // mountains rising with distance (a little lower than the reference: our camera is lower)
   const lake = 1 - smooth(LAKE.r * 0.5, LAKE.r * 1.3, lakeDistance(x, z));
   return h * (1 - lake) - 2.4 * lake;
 }
 
 /**
- * Colour the land by height and slope: meadow (with dirt patches), sand at the lake shore, rock on
- * steep slopes, snow on the peaks. `aBare` says how much of the grass texture to drop (0 = meadow).
+ * Colour the land by height and slope, as in the Hi-Fi v4 reference: two meadow greens, dirt
+ * patches, sand at the lake shore, rock on steep slopes and high up, snow on the peaks.
+ * The reference's colours are display (sRGB) values.
  */
 function paintTerrain(geo, dark) {
   const pos = geo.attributes.position;
   const nor = geo.attributes.normal;
   const colors = new Float32Array(pos.count * 3);
-  const bare = new Float32Array(pos.count);
-  const dirt = new THREE.Color(1.15, 0.84, 0.55);
-  const sand = new THREE.Color(0xb5a37a);
-  const rock = new THREE.Color(dark ? 0x5c5862 : 0x7d7a74);
-  const snow = new THREE.Color(dark ? 0xdccfe3 : 0xf1f4f9);
+  const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+  const meadowA = dark ? srgb(0.09, 0.15, 0.07) : srgb(0.10, 0.20, 0.05);
+  const meadowB = dark ? srgb(0.17, 0.23, 0.10) : srgb(0.20, 0.31, 0.08);
+  const dirt = srgb(0.32, 0.27, 0.17);
+  const rock = dark ? srgb(0.33, 0.31, 0.36) : srgb(0.38, 0.39, 0.40);
+  const snow = dark ? srgb(0.88, 0.80, 0.90) : srgb(0.93, 0.95, 0.99);
+  const sand = srgb(0.58, 0.53, 0.40);
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
     const z = pos.getZ(i);
     const ny = nor.getY(i);
-    c.setScalar(0.82 + fbm(x * 0.05, z * 0.05, 3) * 0.36);
-    c.lerp(dirt, smooth(0.55, 0.78, fbm(x * 0.02 + 40, z * 0.02, 4)) * 0.45);
-    const sandW = lakeDistance(x, z) < LAKE.r * 1.6 ? smooth(0.15, -0.6, y) : 0;
-    const rockW = Math.max(smooth(0.86, 0.66, ny), smooth(16, 32, y) * 0.85);
-    const snowW = smooth(34, 50, y + fbm(x * 0.03, z * 0.03, 3) * 12) * smooth(0.45, 0.75, ny);
-    c.lerp(sand, sandW).lerp(rock, rockW).lerp(snow, snowW);
+    c.copy(meadowA).lerp(meadowB, fbm(x * 0.05, z * 0.05, 3));
+    c.lerp(dirt, smooth(0.55, 0.78, fbm(x * 0.02 + 40, z * 0.02, 4)) * 0.55);
+    if (lakeDistance(x, z) < LAKE.r * 1.6) c.lerp(sand, smooth(0.15, -0.6, y));
+    c.lerp(rock, Math.max(smooth(0.86, 0.66, ny), smooth(17, 32, y) * 0.85));
+    c.lerp(snow, smooth(42, 60, y + fbm(x * 0.03, z * 0.03, 3) * 12) * smooth(0.45, 0.78, ny));
     colors.set([c.r, c.g, c.b], i * 3);
-    bare[i] = Math.min(1, Math.max(sandW, rockW, snowW));
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('aBare', new THREE.BufferAttribute(bare, 1));
 }
 
-/** Swap the grass texture for its plain brightness where the land is rock, sand or snow. */
-function bareGroundShader(lum) {
-  return (shader) => {
-    shader.uniforms.uLum = { value: lum };
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aBare;\nvarying float vBare;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBare = aBare;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vBare;\nuniform float uLum;')
-      .replace('#include <map_fragment>', `#ifdef USE_MAP
-        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-        float grey = dot( sampledDiffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) / uLum;
-        diffuseColor *= vec4( mix( sampledDiffuseColor.rgb, vec3( grey ), vBare ), sampledDiffuseColor.a );
-      #endif`);
-  };
+/** The reference's detail texture: light grey speckles that break up the vertex colours. */
+function speckleTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const r = rng(57);
+  g.fillStyle = '#e6e6e6';
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1800; i++) {
+    const v = Math.floor(170 + r() * 85);
+    g.fillStyle = `rgba(${v},${v},${v},0.35)`;
+    g.beginPath();
+    g.arc(r() * 256, r() * 256, 1 + r() * 5, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(100, 100);
+  t.anisotropy = 8;
+  return t;
 }
 
 // Shared GLSL value noise for the water and grass shaders.
@@ -195,22 +195,91 @@ const GLSL_NOISE = `
   float nHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   float nValue(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(nHash(i), nHash(i + vec2(1.0, 0.0)), u.x), mix(nHash(i + vec2(0.0, 1.0)), nHash(i + vec2(1.0, 1.0)), u.x), u.y); }
+  float nFbm(vec2 p) { float v = 0.0, a = 0.5; mat2 r = mat2(1.6, 1.2, -1.2, 1.6); for (int i = 0; i < 5; i++) { v += a * nValue(p); p = r * p; a *= 0.5; } return v; }
   float nFbm3(vec2 p) { float v = 0.0, a = 0.5; mat2 r = mat2(1.6, 1.2, -1.2, 1.6); for (int i = 0; i < 3; i++) { v += a * nValue(p); p = r * p; a *= 0.5; } return v / 0.875; }
 `;
 
+/**
+ * The colours the sky, fog and water share. Like the reference, the custom shaders work with
+ * display (sRGB) values, so the fog meets the sky's horizon exactly.
+ */
+function palette(dark) {
+  const c = (r, g, b) => new THREE.Color(r, g, b); // raw display values for the shaders
+  return dark
+    ? { horizon: c(0.86, 0.62, 0.58), zenith: c(0.17, 0.17, 0.36), glow: c(1.0, 0.62, 0.38), sunCol: c(1.0, 0.74, 0.52), cloudShade: c(0.38, 0.32, 0.48), cloudLit: c(1.0, 0.76, 0.64), deep: c(0.06, 0.08, 0.14) }
+    : { horizon: c(0.74, 0.80, 0.86), zenith: c(0.22, 0.43, 0.78), glow: c(1.0, 0.86, 0.66), sunCol: c(1.0, 0.94, 0.85), cloudShade: c(0.58, 0.63, 0.72), cloudLit: c(1.0, 0.98, 0.95), deep: c(0.05, 0.17, 0.21) };
+}
+
+/**
+ * The sky dome from the reference: a horizon-to-zenith gradient, the sun's disc and glow, and
+ * drifting fBm clouds lit from the sun's side. It follows the camera, so it never gets closer.
+ */
+function skyDome({ colors, sunDir }) {
+  const uniforms = {
+    uTime: { value: 0 },
+    uClouds: { value: 1 },
+    uSunDir: { value: sunDir.clone().normalize() },
+    uZenith: { value: colors.zenith },
+    uHorizon: { value: colors.horizon },
+    uGlow: { value: colors.glow },
+    uCloudShade: { value: colors.cloudShade },
+    uCloudLit: { value: colors.cloudLit },
+  };
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+    uniforms,
+    vertexShader: `varying vec3 vDir;
+      void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform float uTime, uClouds; uniform vec3 uSunDir, uZenith, uHorizon, uGlow, uCloudShade, uCloudLit;
+      varying vec3 vDir;
+      ${GLSL_NOISE}
+      void main() {
+        vec3 d = normalize(vDir); float h = d.y; float s = max(dot(d, uSunDir), 0.0);
+        float t = pow(clamp(h, 0.0, 1.0), 0.5);
+        vec3 col = mix(uHorizon, uZenith, t);
+        col = mix(col, uGlow, pow(s, 5.0) * 0.5 * (1.0 - t * 0.5));
+        col += uGlow * pow(s, 32.0) * 0.35;
+        if (h > 0.0 && uClouds > 0.5) {
+          vec2 uv = d.xz / (h + 0.1) * 0.9 + vec2(uTime * 0.006, uTime * 0.002);
+          float n = nFbm(uv) * 0.65 + nFbm(uv * 2.7 + 5.2) * 0.35;
+          vec2 us = uv + uSunDir.xz * 0.06;
+          float ns = nFbm(us) * 0.65 + nFbm(us * 2.7 + 5.2) * 0.35;
+          float cover = smoothstep(0.45, 0.72, n);
+          float lit = clamp(0.55 + (n - ns) * 4.0, 0.0, 1.0);
+          vec3 cc = mix(uCloudShade, uCloudLit, lit);
+          cc += uGlow * pow(s, 6.0) * 0.6 * (1.0 - cover * 0.5);
+          col = mix(col, cc, cover * smoothstep(0.02, 0.3, h));
+        }
+        col += vec3(1.0, 0.97, 0.9) * smoothstep(0.9990, 0.9996, s) * 1.5;
+        if (h < 0.0) col = mix(uHorizon, uHorizon * 0.85, smoothstep(0.0, 0.2, -h));
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1200, 48, 24), mat);
+  mesh.renderOrder = -1;
+  mesh.frustumCulled = false;
+  return { mesh, uniforms };
+}
+
 /** The lake: rippling water that reflects the sky (more at grazing angles) with a glint of sun. */
-function lake({ dark, sunDir, sunColor, horizon }) {
+function lake({ colors, sunDir }) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
+    toneMapped: false,
     fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+    uniforms: {
+      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       uTime: { value: 0 },
       uSun: { value: sunDir.clone().normalize() },
-      uSunCol: { value: sunColor.clone() },
-      uZenith: { value: new THREE.Color(dark ? 0x3a3f75 : 0x3d74c6) },
-      uHorizon: { value: horizon.clone() },
-      uDeep: { value: new THREE.Color(dark ? 0x141a2a : 0x0d2b36) },
-    }]),
+      uSunCol: { value: colors.sunCol },
+      uZenith: { value: colors.zenith },
+      uHorizon: { value: colors.horizon },
+      uDeep: { value: colors.deep },
+    },
     vertexShader: `
       varying vec3 vW;
       #include <common>
@@ -239,8 +308,6 @@ function lake({ dark, sunDir, sunColor, horizon }) {
         vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.8, 0.0, 1.0));
         vec3 col = mix(uDeep, sky, fr) + uSunCol * pow(max(dot(R, uSun), 0.0), 220.0) * 2.5;
         gl_FragColor = vec4(col, 0.94);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
         #include <fog_fragment>
       }`,
   });
@@ -294,88 +361,6 @@ function dotTexture() {
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
-}
-
-/**
- * A mountain range seen from far away: ridged noise shaped into peaks, coloured by height
- * (meadow → rock → snow). `snow` is the height fraction above which it's white.
- */
-function mountainRange({ width, depth, height, seed, snow = 0.62, dark = false }) {
-  const geo = new THREE.PlaneGeometry(width, depth, 150, 46);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const meadow = new THREE.Color(dark ? 0x34472f : 0x4f7d3a);
-  const forest = new THREE.Color(dark ? 0x26361f : 0x35602c);
-  const rock = new THREE.Color(dark ? 0x5c5862 : 0x7d7a74);
-  const white = new THREE.Color(dark ? 0xd9cfe0 : 0xf7f9fc);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const back = 1 - Math.abs(z / (depth / 2)); // highest along the middle of the range
-    const edge = Math.min(1, (width / 2 - Math.abs(x)) / (width * 0.18)); // taper at the ends
-    const r = ridged(x * 0.011 + seed, z * 0.02 + seed * 0.7);
-    const hgt = Math.max(0, r * height * back * back * Math.max(0, edge)) + fbm(x * 0.05, z * 0.05) * 3;
-    pos.setY(i, hgt);
-    const t = hgt / height;
-    const jitter = (fbm(x * 0.08 + seed, z * 0.08) - 0.5) * 0.18;
-    if (t + jitter > snow) c.copy(white);
-    else if (t + jitter > snow - 0.08) c.copy(rock).lerp(white, (t + jitter - (snow - 0.08)) / 0.08);
-    else if (t + jitter > 0.22) c.copy(forest).lerp(rock, Math.min(1, (t + jitter - 0.22) / 0.2));
-    else c.copy(meadow).lerp(forest, (t + jitter) / 0.22);
-    colors.set([c.r, c.g, c.b], i * 3);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
-}
-
-/** Drifting clouds on a dome above everything (noise-shaped cumulus, lit from the sun's side). */
-function cloudDome({ dark, sunDir }) {
-  const uniforms = {
-    uTime: { value: 0 },
-    uSun: { value: sunDir.clone().normalize() },
-    uLit: { value: new THREE.Color(dark ? 0xffb38a : 0xffffff) },
-    uShade: { value: new THREE.Color(dark ? 0x5b4a6b : 0xb8c4d6) },
-    uCover: { value: dark ? 0.5 : 0.53 },
-    uBright: { value: dark ? 0.9 : 1.7 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    transparent: true,
-    depthWrite: false,
-    fog: false,
-    side: THREE.BackSide,
-    vertexShader: `varying vec3 vDir;
-      void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform float uTime; uniform vec3 uSun; uniform vec3 uLit; uniform vec3 uShade; uniform float uCover; uniform float uBright;
-      varying vec3 vDir;
-      float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float n(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(h(i), h(i + vec2(1, 0)), u.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), u.x), u.y); }
-      float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 6; i++) { s += a * n(p); p = p * 2.02 + 11.3; a *= 0.5; } return s; }
-      void main() {
-        if (vDir.y < 0.0) discard;
-        vec2 p = vDir.xz / (vDir.y + 0.12) * 1.15 + vec2(uTime * 0.006, uTime * 0.002);
-        float d = fbm(p);
-        float cover = smoothstep(uCover, uCover + 0.22, d);
-        float horizon = smoothstep(0.0, 0.18, vDir.y);
-        float alpha = cover * horizon * 0.95;
-        if (alpha < 0.01) discard;
-        // Lit on the side facing the sun: compare the density a little further towards it.
-        float toward = fbm(p + normalize(uSun.xz + 1e-4) * 0.06);
-        float lit = clamp(0.55 + (d - toward) * 4.0, 0.0, 1.0);
-        float glow = pow(max(dot(normalize(vDir), uSun), 0.0), 6.0);
-        vec3 col = mix(uShade, uLit, lit) * uBright + uLit * glow * 0.6 * (1.0 - cover * 0.5);
-        gl_FragColor = vec4(col, alpha);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
-  });
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(1000, 48, 24), mat);
-  dome.renderOrder = -1;
-  return { mesh: dome, uniforms };
 }
 
 /** Cut stone blocks, a little worn and uneven, in a ring around the battle field. */
@@ -529,7 +514,7 @@ function forest(count, { minR, maxR, dark, seed = 61 }) {
     if (fbm(x * 0.02, z * 0.02) < 0.5) continue; // woods in clumps, meadows between
     if (inLake(x, z, 3)) continue;
     const y = terrainHeight(x, z);
-    if (y > 24) continue; // bare rock and snow above the tree line
+    if (y < -0.5 || y > 30) continue; // not in hollows, nor on the bare rock and snow up high
     p.set(x, y - 0.2, z);
     q.setFromAxisAngle(up, r() * Math.PI * 2);
     if (r() < 0.42) {
@@ -582,7 +567,7 @@ function mist(dark, tex, view) {
  * fixed camera (`view`) the blades go where it looks, densest close by and a little bigger far
  * away; otherwise they spread around the field.
  */
-function grassField(count, { inner, outer, dark, view, sunDir, seed = 7 }) {
+function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7 }) {
   const blade = new THREE.PlaneGeometry(1, 1, 1, 5);
   blade.translate(0, 0.5, 0);
   const geo = new THREE.InstancedBufferGeometry();
@@ -624,7 +609,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, seed = 7 }) {
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uTime: { value: 0 },
       uSun: { value: sunDir.clone().normalize() },
-      uSunCol: { value: dark ? new THREE.Color(1.0, 0.72, 0.5) : new THREE.Color(1.0, 0.94, 0.85) },
+      uSunCol: { value: colors.sunCol },
       uSky: { value: dark ? new THREE.Color(0.36, 0.33, 0.48) : new THREE.Color(0.5, 0.58, 0.72) },
       uTint: { value: dark ? new THREE.Color(0.66, 0.62, 0.72) : new THREE.Color(1, 1, 1) },
     }]),
@@ -672,10 +657,9 @@ function grassField(count, { inner, outer, dark, view, sunDir, seed = 7 }) {
         float back = pow(max(dot(-V, uSun), 0.0), 3.0);
         col += vec3(0.45, 0.6, 0.12) * uSunCol * back * vH * 0.8;
         col += vec3(0.05, 0.06, 0.02) * smoothstep(0.5, 0.8, vGust) * vH;
-        // Worked out in display colours (like a painted reference); converted to linear light here.
-        gl_FragColor = vec4(pow(col * uTint, vec3(2.2)), 1.0);
+        // As in the reference: display colours, tone mapped, then the fog mixed in (three's own order).
+        gl_FragColor = vec4(col * uTint, 1.0);
         #include <tonemapping_fragment>
-        #include <colorspace_fragment>
         #include <fog_fragment>
       }`,
   });
@@ -796,69 +780,50 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     view = { x: camera.position.x, z: camera.position.z, fx: dir.x, fz: dir.z };
   }
 
-  // Neutral tone mapping keeps the models' colours true (filmic curves wash out reds and yellows).
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = dark ? 0.72 : 0.92;
+  // The reference's colour pipeline: filmic (ACES) tone mapping at exposure 1, soft sun shadows.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene.environment = null;
 
-  // Sky (physical atmosphere) and the sun.
-  const sky = new Sky();
-  sky.scale.setScalar(4000);
-  const u = sky.material.uniforms;
-  u.turbidity.value = dark ? 8 : 2.4;
-  u.rayleigh.value = dark ? 2.6 : 1.5;
-  u.mieCoefficient.value = dark ? 0.008 : 0.003;
-  u.mieDirectionalG.value = dark ? 0.86 : 0.78;
-  const elevation = dark ? 3.5 : 44;
-  const azimuth = dark ? 235 : 150;
-  const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
-  u.sunPosition.value.copy(sunDir);
-  scene.add(sky);
+  // Sky dome (follows the camera) with the sun low over the field; at dusk in dark mode.
+  const colors = palette(dark);
+  const sunDir = dark
+    ? new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(84), THREE.MathUtils.degToRad(235))
+    : new THREE.Vector3(0.75, 0.32, -0.55).normalize();
+  const sky = skyDome({ colors, sunDir });
+  scene.add(sky.mesh);
 
-  // Light from the sky on every surface (reflections and soft fill).
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new THREE.Scene();
-  const envSky = new Sky();
-  envSky.scale.setScalar(4000);
-  for (const k of Object.keys(u)) envSky.material.uniforms[k].value = u[k].value?.clone?.() ?? u[k].value;
-  envScene.add(envSky);
-  const env = pmrem.fromScene(envScene, 0.02).texture;
-  scene.environment = env;
-  scene.environmentIntensity = dark ? 0.55 : 0.85;
-  envSky.material.dispose();
-  envSky.geometry.dispose();
+  // Fog in the sky's exact horizon colour, thickening with distance (FogExp2, as in the reference).
+  const haze = new THREE.Color().setRGB(colors.horizon.r, colors.horizon.g, colors.horizon.b, THREE.SRGBColorSpace);
+  scene.fog = new THREE.FogExp2(haze, 0.0042);
 
-  // Aerial perspective: things fade to a soft blue with distance (the mountains most of all).
-  const haze = new THREE.Color(dark ? 0x8e7a8f : 0xb9d3ea);
-  scene.fog = new THREE.Fog(haze, 60, 1150);
-
-  const sun = new THREE.DirectionalLight(dark ? 0xffb27a : 0xfff4e0, dark ? 2.2 : 3.2);
-  sun.position.copy(sunDir).multiplyScalar(dark ? 20 : 16);
+  // Light: sky/ground hemisphere light and an angled sun with soft shadows; no ambient or sky (IBL) light.
+  // (Intensities are the reference's ×π: three.js now uses physical light units.)
+  const sun = new THREE.DirectionalLight(dark ? 0xffb27a : 0xfff0d8, (dark ? 1.2 : 1.55) * Math.PI);
+  sun.position.copy(sunDir).multiplyScalar(30);
   if (dark) sun.position.y = Math.max(sun.position.y, 6); // a low sun still needs to light the arena
   sun.castShadow = true;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   const sc = sun.shadow.camera;
-  sc.left = -9; sc.right = 9; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 60;
+  sc.left = -10; sc.right = 10; sc.top = 10; sc.bottom = -10; sc.near = 1; sc.far = 80;
   scene.add(sun, sun.target);
-  const hemi = new THREE.HemisphereLight(dark ? 0x8c9bd9 : 0xcfe7ff, dark ? 0x2a2433 : 0x5b6b3a, dark ? 0.35 : 0.45);
+  const hemi = new THREE.HemisphereLight(dark ? 0x9a9ad0 : 0xc4d8ff, dark ? 0x3a3326 : 0x4c5a2c, (dark ? 0.5 : 0.65) * Math.PI);
   scene.add(hemi);
 
   // Ground: rolling grass land, flat around the arena.
-  const groundGeo = new THREE.PlaneGeometry(640, 640, 220, 220);
+  // One mesh from the arena out to the mountains (fewer segments on phones).
+  const phone = matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
+  const segments = phone ? 170 : 260;
+  const groundGeo = new THREE.PlaneGeometry(800, 800, segments, segments);
   groundGeo.rotateX(-Math.PI / 2);
   const gp = groundGeo.attributes.position;
   for (let i = 0; i < gp.count; i++) gp.setY(i, terrainHeight(gp.getX(i), gp.getZ(i)) - 0.03);
   groundGeo.computeVertexNormals();
   paintTerrain(groundGeo, dark);
-  const grassTex = track(noiseTexture({
-    base: dark ? '#3c5530' : '#5f9a3e', seed: 3, repeat: 170,
-    tones: dark ? ['rgba(48,74,38,ALPHA)', 'rgba(70,92,48,ALPHA)', 'rgba(36,56,30,ALPHA)', 'rgba(88,98,58,ALPHA)'] : ['rgba(84,140,56,ALPHA)', 'rgba(118,166,70,ALPHA)', 'rgba(70,118,46,ALPHA)', 'rgba(140,160,80,ALPHA)', 'rgba(96,120,60,ALPHA)'],
-  }));
-  const groundMat = new THREE.MeshStandardMaterial({ map: grassTex, vertexColors: true, roughness: 0.95 });
-  // The grass texture's average brightness (linear), so rock and snow keep its detail but not its green.
-  groundMat.onBeforeCompile = bareGroundShader(dark ? 0.077 : 0.259);
+  const groundMat = new THREE.MeshStandardMaterial({ map: track(speckleTexture()), vertexColors: true, roughness: 0.95 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   const bigSurfaces = [ground];
   ground.receiveShadow = true;
@@ -923,63 +888,29 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(trees);
   bigSurfaces.push(trees);
 
-  // Snow-capped ranges on the far horizon, behind the land's own hills and peaks, fading into the haze.
-  const hills = new THREE.Group();
-  const hr = rng(29);
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2 + hr() * 0.25;
-    const d = 380 + hr() * 120;
-    const range = mountainRange({ width: 420 + hr() * 200, depth: 160, height: 120 + hr() * 90, seed: i * 7.3, dark, snow: 0.5 + hr() * 0.08 });
-    range.position.set(Math.cos(a) * d, -6, Math.sin(a) * d);
-    range.lookAt(0, -6, 0);
-    hills.add(range);
-    bigSurfaces.push(range);
-  }
-  scene.add(hills);
   const woods = forest(1400, { minR: 40, maxR: 190, dark });
   scene.add(woods);
   bigSurfaces.push(woods);
   const mistBanks = mist(dark, track(cloudPuffTexture()), view);
   scene.add(mistBanks);
-  const clouds = cloudDome({ dark, sunDir });
-  scene.add(clouds.mesh);
-  const water = lake({ dark, sunDir, sunColor: sun.color, horizon: haze });
+  const water = lake({ colors, sunDir });
   scene.add(water.mesh);
 
   // Swaying grass around the field (fewer blades on "Standard", none on "Basic"), flowers, pollen.
-  const grass = grassField(60000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir });
+  const grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors });
   scene.add(grass.mesh);
   const flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
   const air = pollen(600, { dark, tex: track(dotTexture()), view });
   scene.add(air.points);
 
-  // Post-processing for "High": ambient occlusion, bloom on bright effects, then filmic output.
-  let composer = null;
-  let gtao = null;
-  let bloom = null;
-  const size = new THREE.Vector2();
-  const makeComposer = () => {
-    renderer.getSize(size);
-    composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    gtao = new GTAOPass(scene, camera, size.x, size.y);
-    gtao.blendIntensity = 0.85;
-    gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.2, scale: 1.0, samples: 12 });
-    composer.addPass(gtao);
-    // Only really bright things (attack effects, the flash) glow; the sky and ground don't.
-    bloom = new UnrealBloomPass(size.clone(), 0.22, 0.25, 1.35);
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-  };
-
   let current = null;
   const setQuality = (q) => {
     current = ['high', 'standard', 'basic'].includes(q) ? q : 'standard';
     const high = current === 'high';
     const basic = current === 'basic';
-    renderer.setPixelRatio(basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 1.5 : 1.25));
-    clouds.mesh.visible = !basic;
+    renderer.setPixelRatio(basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5));
+    sky.uniforms.uClouds.value = basic ? 0 : 1;
     mistBanks.visible = !basic;
     renderer.shadowMap.enabled = !basic;
     sun.castShadow = !basic;
@@ -987,10 +918,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     sun.shadow.radius = high ? 4 : 2;
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
-    // Basic: no sky lighting (image-based light is the costliest part without a graphics card) and
-    // cheaper materials on the big surfaces; a brighter fill light makes up for it.
-    scene.environment = basic ? null : env;
-    hemi.intensity = basic ? (dark ? 0.9 : 1.6) : (dark ? 0.35 : 0.45);
+    // Basic: cheaper materials on the big surfaces.
     for (const root of bigSurfaces) {
       root.traverse((mesh) => {
         if (!mesh.isMesh || mesh.material?.type !== (mesh.userData.full ? mesh.userData.full.type : 'MeshStandardMaterial')) return;
@@ -1005,7 +933,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     }
     scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; }); // shadows / lighting changes recompile
     grass.mesh.visible = !basic;
-    grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 60000 : 20000);
+    grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 95000 : 28000); // the reference's desktop / phone counts
     air.points.visible = !basic;
     air.points.geometry.setDrawRange(0, high ? 600 : 250);
     flowers.count = high ? 3000 : basic ? 0 : 1000;
@@ -1014,15 +942,6 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       kind.count = high ? kind.userData.max : Math.round(kind.userData.max * (basic ? 0.25 : 0.5));
     }
     trees.traverse((o) => { if (o.isMesh) o.castShadow = high; });
-    if (high && !composer) makeComposer();
-    if (!high && composer) {
-      composer.dispose?.();
-      gtao?.dispose?.();
-      bloom?.dispose?.();
-      composer = gtao = bloom = null;
-    }
-    renderer.getSize(size);
-    composer?.setSize(size.x, size.y);
   };
   setQuality(quality);
   let last = null;
@@ -1035,21 +954,16 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       const dt = Math.min(0.1, Math.max(0, seconds - (last ?? seconds)));
       last = seconds;
       grass.uniforms.uTime.value = seconds;
-      clouds.uniforms.uTime.value = seconds;
+      sky.uniforms.uTime.value = seconds;
+      sky.mesh.position.copy(camera.position); // the sky moves with the camera
       water.uniforms.uTime.value = seconds;
       if (air.points.visible) air.update(seconds, dt);
     },
     render() {
-      if (composer) composer.render();
-      else renderer.render(scene, camera);
+      renderer.render(scene, camera);
     },
-    resize(w, h) { composer?.setSize(w, h); },
+    resize() {},
     dispose() {
-      composer?.dispose?.();
-      gtao?.dispose?.();
-      bloom?.dispose?.();
-      env.dispose();
-      pmrem.dispose();
       for (const d of disposables) d.dispose?.();
     },
   };

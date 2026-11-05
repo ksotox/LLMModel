@@ -460,6 +460,22 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Tests:** `popout.test.js` (4): keys, effects, `registerArtwork`, the model lookup, pictures (signature, size, path tricks, first one kept). The e2e covers: switch on, Voltorb's picture drawn and saved, no upload after reload, a Trainer with no Pokémon, My photos and Select plain, switch off.
 - **Found while testing:** in a 390 px window the pop-out grid fell back to one column (the "Comfortable" minimum width). It's now two columns on phones unless "Large" is chosen.
 
+## Phase 20: The battle environment ported from the Hi-Fi v4 reference
+
+- **Asked for:** port the reference's environment rendering into the battle scene, without touching creatures, UI or battle logic. That meant its grass, sky dome, FogExp2 in the sky's horizon colour, ACES at exposure 1 with hemisphere and sun lighting (no strong ambient), mountains as part of the terrain mesh with vertex colours, pollen, mist and a vignette, plus a mobile path.
+- **Changed in `world.js`:**
+  - **Sky:** the physical `Sky`, the separate cloud dome and the sky light (IBL) are replaced by the reference's sky-dome shader (gradient, sun disc and glow, fBm clouds), which follows the camera.
+  - **Fog:** `FogExp2(horizon, 0.0042)`.
+  - **Light:** the reference's hemisphere light and angled sun (intensities ×π for three's physical light units), with no ambient or IBL light.
+  - **Land:** one 800-unit mesh (170 segments on phones, 260 elsewhere) with the reference's vertex-colour palette and grey speckle detail texture. The separate far mountain ranges are removed, and the ridged peaks are 85 high instead of 120, because our camera sits lower.
+  - **Grass:** 95k / 28k blades, as in the reference.
+  - **High:** loses GTAO and bloom (the reference has no post-processing), and its pixel ratio cap goes from 1.5 to 2.
+- **Colour pipeline:**
+  - the custom shaders (sky, water, grass) work in display colours exactly like the reference, with tone mapping first and three's fog chunk after;
+  - the fog colour equals the sky's horizon on screen;
+  - the output stays sRGB, not the reference's linear output, because three.js r180 decodes the models' and cards' sRGB textures, so linear output would show them too dark;
+  - ACES makes saturated reds a little duller than the earlier neutral tone mapping, as accepted with the request.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

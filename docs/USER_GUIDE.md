@@ -341,8 +341,8 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
 - On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
 - **Graphics** (top right of the battle):
-  - **High:** detailed shadows, soft shading where things meet (ambient occlusion), a glow on attack effects, and the densest grass and forest.
-  - **Standard:** lighter, for phones and older computers.
+  - **High:** the sharpest picture, detailed shadows, and the densest grass and forest.
+  - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
   - The app picks a level for your device the first time and remembers your choice.
 - **The setting:** the battles take place outdoors, in an open landscape:
