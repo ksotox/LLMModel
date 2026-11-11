@@ -522,7 +522,7 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - **Linux:** `npm test`, e2e and the benchmark, keeping the results and any failure screenshot.
   - **Windows:** `npm test`.
   - `playwright` 1.63.0 is now a devDependency; the desktop updater installs with `--omit=dev`.
-  - The first run showed two picture tests reaching the real image hosts the catalog guesses (blocked in the sandbox, open on GitHub). `mockCatalog` now downloads from the mock server only.
+  - The first run showed two picture tests reaching the real image hosts the catalog guesses (blocked in the sandbox, open on GitHub). `mockCatalog` now downloads from the mock server only. It also showed that a PokemonPriceTracker picture's size was read from its whole address, so a port such as `:38001` ranked a 200w picture as an 800w one; only the key and path count now. On the Windows runner, CRLF checkouts pushed `MEMORY.md` over its budget; the size test counts `\n` line endings.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

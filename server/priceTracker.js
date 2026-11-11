@@ -117,13 +117,18 @@ function imageLinks(raw) {
   const found = [];
   const walk = (obj, depth) => {
     for (const [key, value] of Object.entries(obj ?? {})) {
-      if (typeof value === 'string' && /ima?ge?|picture/i.test(key) && /^https?:\/\//i.test(value)) found.push(`${key} ${value}`);
+      if (typeof value === 'string' && /ima?ge?|picture/i.test(key) && /^https?:\/\//i.test(value)) found.push({ key, url: value });
       else if (value && typeof value === 'object' && !Array.isArray(value) && /ima?ge?/i.test(key) && depth < 2) walk(value, depth + 1);
     }
   };
   walk(raw, 0);
-  const size = (s) => (/1000|large|hi-?res|800|full|original/i.test(s) ? 0 : /400|medium/i.test(s) ? 1 : 2);
-  return [...new Set(found.sort((a, b) => size(a) - size(b)).map((s) => s.slice(s.indexOf(' ') + 1)))];
+  // The size is read from the key and the file's path, never the host: a port such as :38001
+  // would otherwise make a small picture look like an "800" one.
+  const size = ({ key, url }) => {
+    const s = `${key} ${URL.canParse(url) ? new URL(url).pathname : url}`;
+    return /1000|large|hi-?res|800|full|original/i.test(s) ? 0 : /400|medium/i.test(s) ? 1 : 2;
+  };
+  return [...new Set(found.sort((a, b) => size(a) - size(b)).map((l) => l.url))];
 }
 
 export function normalizeCard(raw, { printing = null } = {}) {
