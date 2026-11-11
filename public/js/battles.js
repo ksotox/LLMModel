@@ -187,18 +187,73 @@ async function makeStage(host, mode) {
 const modelUrl = (sel) => sel.entry.models.forms.find((f) => f.form === sel.form)?.url ?? null;
 const cardUrls = (sel) => [sel.card.official_url?.startsWith('/') ? sel.card.official_url : null, sel.card.photo_url];
 
+/**
+ * The battle screen: the stage fills the window and the controls lie over it as glass panels
+ * (the app's menu bar is hidden meanwhile). Top left: the opponent's HP plate (in `hud`); top
+ * right: Back, graphics, full screen; bottom dock: your HP plate, the message, then the moves
+ * (or, when the battle is over, the result with the question what to do next).
+ */
 function arenaShell(title, onBack) {
   const host = h('div.stage-host');
   const hud = h('div.stage-hud');
   const message = h('div.bt-message', { role: 'status', 'aria-live': 'polite' });
   const controls = h('div.bt-controls');
-  const skip = h('button.btn.small.bt-skip', { type: 'button' }, 'Skip intro ⏭');
-  const frame = h('div.stage-frame', host, hud, skip);
+  const detail = h('div.bt-detail', { hidden: true });
+  const plateSlot = h('div.bt-dock-plate');
+  const skip = h('button.btn.small.bt-skip', { type: 'button', hidden: true }, 'Skip intro ⏭');
+  const frame = h('div.stage-frame', host, hud);
   const graphics = h('span.bt-graphics');
-  const el = h('div.bt-arena',
-    h('div.bt-arena-head', h('button.btn.small.ghost', { type: 'button', onclick: onBack }, '← Choose again'), h('h2', title), graphics),
-    frame, message, controls);
-  return { el, host, hud, message, controls, skip, frame, graphics };
+  const dock = h('div.bt-dock', plateSlot, detail, message, controls);
+  const el = h('div.bt-arena');
+  const full = el.requestFullscreen && h('button.btn.small.bt-full', {
+    type: 'button', title: 'Full screen', 'aria-label': 'Full screen',
+    onclick: () => (document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen().catch(() => {})),
+  }, '⛶');
+  el.append(frame, h('h2.bt-title', title),
+    h('div.bt-top', h('button.btn.small.bt-back', { type: 'button', onclick: onBack }, '← Back'), graphics, full || ''),
+    skip, dock);
+  document.body.classList.add('battle-mode');
+
+  // The stage keeps the Pokémon clear of the dock: it is told how tall the dock gets.
+  let stage = null;
+  let tallest = 0;
+  const report = () => {
+    tallest = Math.max(tallest, dock.offsetHeight);
+    frame.style.setProperty('--dock', `${tallest}px`);
+    stage?.setInset?.(tallest);
+  };
+  const watcher = new ResizeObserver(report);
+  watcher.observe(dock);
+  const onResize = () => { tallest = 0; report(); };
+  window.addEventListener('resize', onResize);
+
+  /** Full card text for a move, shown above the message box; the same button closes it. */
+  let detailFor = null;
+  const hideDetail = () => {
+    detail.hidden = true;
+    detailFor?.setAttribute('aria-expanded', 'false');
+    detailFor = null;
+  };
+  const showDetail = (button, name, text) => {
+    const again = detailFor === button;
+    hideDetail();
+    if (again) return;
+    clear(detail, h('button', { type: 'button', 'aria-label': 'Close', onclick: hideDetail }, '✕'), h('strong', name), text);
+    detail.hidden = false;
+    detailFor = button;
+    button.setAttribute('aria-expanded', 'true');
+  };
+
+  return {
+    el, host, hud, message, controls, skip, frame, graphics, plateSlot, showDetail, hideDetail,
+    setStage(st) { stage = st; report(); },
+    dispose() {
+      watcher.disconnect();
+      window.removeEventListener('resize', onResize);
+      if (document.fullscreenElement === el) document.exitFullscreen().catch(() => {});
+      document.body.classList.remove('battle-mode');
+    },
+  };
 }
 
 /** Typewriter text in the message box; resolves when it's done (and a beat to read it). */
@@ -237,19 +292,22 @@ function plate(fighter, side, label) {
   return { el, update };
 }
 
-/** High (shadows, ambient occlusion, glow, dense grass), Standard, or Basic for computers without a graphics card. Remembered. */
+/** High (sharpest, densest grass), Standard, or Basic for computers without a graphics card. Remembered. */
 function graphicsToggle(a, stage) {
   if (!stage.setQuality) return;
   const sel = h('select', { 'aria-label': 'Graphics quality' },
-    h('option', { value: 'high' }, 'Graphics: High'), h('option', { value: 'standard' }, 'Graphics: Standard'), h('option', { value: 'basic' }, 'Graphics: Basic (fastest)'));
+    h('option', { value: 'high' }, 'High'), h('option', { value: 'standard' }, 'Standard'), h('option', { value: 'basic' }, 'Basic'));
+  sel.title = 'Graphics: High is the sharpest; Basic is the fastest, for computers without a graphics card';
   sel.value = stage.quality;
   sel.addEventListener('change', () => stage.setQuality(sel.value));
-  clear(a.graphics, sel);
+  clear(a.graphics, h('label', h('span.bt-graphics-label', 'Graphics '), sel));
 }
 
-function cleanupOnLeave(stage) {
+function cleanupOnLeave(stage, shell) {
+  shell.setStage(stage);
   const done = () => {
     window.removeEventListener('hashchange', done);
+    shell.dispose();
     try { stage.dispose(); } catch { /* already gone */ }
     if (activeCleanup === done) activeCleanup = null;
   };
@@ -280,7 +338,7 @@ async function startShowcase(root, sel, onBack) {
   const a = arenaShell(`${sel.card.name}`, () => { cleanup(); onBack(); });
   clear(root, a.el);
   const stage = await makeStage(a.host, 'showcase');
-  const cleanup = cleanupOnLeave(stage);
+  const cleanup = cleanupOnLeave(stage, a);
   graphicsToggle(a, stage);
   const me = makeFighter(sel.entry.battle, { name: sel.card.name });
   const dummy = makeFighter({ hp: 999, types: ['Colorless'] }, { name: 'Practice target' });
@@ -343,9 +401,10 @@ async function startShowcase(root, sel, onBack) {
   });
 
   clear(a.controls,
-    h('div.move-grid', sel.entry.battle.attacks.map((atk) => moveButton(atk, me, dummy, () => tryAttack(atk), true))),
-    sel.entry.battle.abilities.length > 0 && h('div.move-grid', sel.entry.battle.abilities.map((ab) => h('button.move-btn.ability', { type: 'button', onclick: () => tryAbility(ab) },
-      h('span.move-name', `✦ ${ab.name}`), h('span.move-effect', ab.effect || 'Ability')))),
+    h('div.move-grid', sel.entry.battle.attacks.map((atk) => moveButton(a, atk, me, dummy, () => tryAttack(atk), true))),
+    sel.entry.battle.abilities.length > 0 && h('div.move-grid.side', sel.entry.battle.abilities.map((ab) => sideButton(a, {
+      kind: 'ability', name: `✦ ${ab.name}`, note: ab.effect || 'Ability', info: ab.effect, onClick: () => tryAbility(ab),
+    }))),
     h('div.bt-row',
       formSel && h('label.bt-form', '3D form ', formSel),
       h('button.btn.small', { type: 'button', onclick: () => { if (!busy) summonCurrent(); } }, '↻ Summon again')));
@@ -353,21 +412,40 @@ async function startShowcase(root, sel, onBack) {
   await summonCurrent();
 }
 
-function moveButton(attack, me, foe, onClick, practice = false) {
+/** A small ⓘ beside a move that opens its full card text above the message box. */
+function infoButton(a, name, text) {
+  return h('button.move-info', {
+    type: 'button', 'aria-label': `Card text for ${name}`, 'aria-expanded': 'false',
+    onclick: (e) => a.showDetail(e.currentTarget, name, text),
+  }, 'i');
+}
+
+/** An attack: name and damage, cost pips, type and expected damage, and the first line of its card text. */
+function moveButton(a, attack, me, foe, onClick, practice = false) {
   const cost = attackCost(attack);
   const enough = practice || me.energy >= cost;
   const est = expectedDamage(me, foe, attack);
-  return h('button.move-btn', {
-    type: 'button',
-    disabled: !enough,
-    title: attack.effect || attack.name,
-    style: { '--move': typeHex(me.types[0]) },
-    onclick: onClick,
-  },
-  h('span.move-top', h('span.move-name', attack.name), h('b.move-dmg', damageLabel(attack))),
-  h('span.move-bottom', costPips(attack.cost), h('span.move-type', me.types[0] ?? 'Colorless'),
-    !practice && h('small', enough ? `~${est} dmg` : `needs ${cost} energy`)),
-  attack.effect && h('span.move-effect', attack.effect));
+  return h('div.move', { class: attack.effect ? 'has-info' : '' },
+    h('button.move-btn', {
+      type: 'button',
+      disabled: !enough,
+      title: attack.effect || attack.name,
+      style: { '--move': typeHex(me.types[0]) },
+      onclick: onClick,
+    },
+    h('span.move-top', h('span.move-name', attack.name), h('b.move-dmg', damageLabel(attack))),
+    h('span.move-bottom', costPips(attack.cost), h('span.move-type', me.types[0] ?? 'Colorless'),
+      !practice && h('small', enough ? `~${est} dmg` : `needs ${cost} energy`)),
+    attack.effect && h('span.move-effect', attack.effect)),
+    attack.effect && infoButton(a, attack.name, attack.effect));
+}
+
+/** An ability or Rest: a name and one line of explanation. */
+function sideButton(a, { kind, name, note, info, disabled = false, onClick }) {
+  return h('div.move', { class: info ? 'has-info' : '' },
+    h('button.move-btn', { type: 'button', class: kind, disabled, title: info || note, onclick: onClick },
+      h('span.move-name', name), h('span.move-effect', note)),
+    info && infoButton(a, name, info));
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +456,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const a = arenaShell(`${p1.card.name} vs ${p2.card.name}`, () => { cleanup(); onBack(); });
   clear(root, a.el);
   const stage = await makeStage(a.host, 'battle');
-  const cleanup = cleanupOnLeave(stage);
+  const cleanup = cleanupOnLeave(stage, a);
   graphicsToggle(a, stage);
   a.skip.hidden = false;
   a.skip.onclick = () => stage.skip();
@@ -405,7 +483,8 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   );
   battle = newBattle();
   const plates = battle.fighters.map((f, i) => plate(f, i, i === 0 ? 'Player 1' : mode === 'cpu' ? 'Computer' : 'Player 2'));
-  a.hud.append(plates[1].el, plates[0].el);
+  a.hud.append(plates[1].el);
+  a.plateSlot.append(plates[0].el);
   const refresh = () => plates.forEach((p) => p.update());
   const name = (i) => battle.fighters[i].name;
   const banner = h('div.turn-banner');
@@ -465,7 +544,8 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const showResult = (e) => {
     const w = e.winner;
     const f = battle.fighters;
-    clear(a.controls, h('div.bt-result',
+    a.hideDetail();
+    clear(a.controls, h('div.bt-result', { role: 'group', 'aria-label': 'Battle result' },
       h('h3', w == null ? 'It’s a draw!' : mode === 'cpu' ? (w === 0 ? `🏆 You win with ${f[0].name}!` : `The computer’s ${f[1].name} wins!`) : `🏆 Player ${w + 1} wins with ${f[w].name}!`),
       h('p.muted', `${battle.round} round${battle.round === 1 ? '' : 's'} · ${f[0].name} dealt ${f[0].stats.dealt} · ${f[1].name} dealt ${f[1].stats.dealt}`),
       h('p.bt-next', `Battle ${f[1].name} again, or choose a different opponent for ${f[0].name}?`),
@@ -482,17 +562,19 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
     const foe = battle.fighters[1 - who];
     clear(a.controls,
       h('p.bt-whose', mode === 'pvp' ? `Player ${who + 1}: choose ${me.name}’s move` : `Choose ${me.name}’s move`),
-      h('div.move-grid', me.attacks.map((atk, i) => moveButton(atk, me, foe, () => choose({ type: 'attack', index: i })))),
-      h('div.move-grid',
-        me.abilities.map((ab, i) => h('button.move-btn.ability', {
-          type: 'button', disabled: me.usedAbilities.includes(i), title: ab.effect, onclick: () => choose({ type: 'ability', index: i }),
-        }, h('span.move-name', `✦ ${ab.name}`), h('span.move-effect', me.usedAbilities.includes(i) ? 'Already used' : 'Power up your next attack (+50%), once per battle'))),
-        h('button.move-btn.rest', { type: 'button', disabled: me.energy >= MAX_ENERGY, onclick: () => choose({ type: 'rest' }) },
-          h('span.move-name', '☾ Rest'), h('span.move-effect', `+1 energy (${me.energy}/${MAX_ENERGY})`))));
+      h('div.move-grid', me.attacks.map((atk, i) => moveButton(a, atk, me, foe, () => choose({ type: 'attack', index: i })))),
+      h('div.move-grid.side',
+        me.abilities.map((ab, i) => sideButton(a, {
+          kind: 'ability', name: `✦ ${ab.name}`, info: ab.effect, disabled: me.usedAbilities.includes(i),
+          note: me.usedAbilities.includes(i) ? 'Already used' : 'Powers up your next attack (+50%), once',
+          onClick: () => choose({ type: 'ability', index: i }),
+        })),
+        sideButton(a, { kind: 'rest', name: '☾ Rest', note: `+1 energy (${me.energy}/${MAX_ENERGY})`, disabled: me.energy >= MAX_ENERGY, onClick: () => choose({ type: 'rest' }) })));
   };
 
   const choose = async (action) => {
-    clear(a.controls, h('p.muted.bt-whose', '…'));
+    a.hideDetail();
+    clear(a.controls, h('p.bt-whose', '…'));
     try {
       await play(act(battle, action));
     } catch (err) {
@@ -504,7 +586,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const next = async () => {
     if (battle.over) return;
     if (mode === 'cpu' && battle.turn === 1) {
-      clear(a.controls, h('p.muted.bt-whose', `${battle.fighters[1].name} is thinking…`));
+      clear(a.controls, h('p.bt-whose', `${battle.fighters[1].name} is thinking…`));
       await stage.wait(650);
       await play(act(battle, cpuChoice(battle)));
       return next();

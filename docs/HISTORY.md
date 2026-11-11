@@ -486,6 +486,19 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - **Choose both again** starts over.
 - **Tests:** the e2e checks the question and both choices, and that your Pokémon stays chosen.
 
+## Phase 22: Battle graphics and app layout plan; stage 1, the full-window battle screen
+
+- **Asked for:** a plan to improve the battle scene's graphics and the overall layout. The owner chose: the whole app's layout; a battle screen that fills the window with the controls on top (as in the Hi-Fi v4 mock-up); and all four graphics areas (bigger Pokémon and a closer camera, attack effects per type, better scenery, lighting polish).
+- **Plan, four stages, one PR each:** (1) full-window battle screen; (2) battle graphics; (3) app menu and frame (a bottom tab bar on phones); (4) the collection page's controls and the other pages.
+- **Stage 1, built:**
+  - **Shell:** `arenaShell` (`public/js/battles.js`) makes the arena `position: fixed; inset: 0` and adds `body.battle-mode`, which hides the top bar. Leaving (Back, a menu link, the browser's back button) removes it.
+  - **Overlays, frosted glass in the app's light or dark theme:** opponent plate top left; Back, Graphics and full screen top right; a bottom dock (at most 900 px wide) with your plate, the message, and the moves: a 2-column attack grid plus a side column for abilities and Rest (underneath on phones).
+  - **Card text:** one line on the button; a small **i** opens the full text above the message box.
+  - **Result:** the result and its question take the moves' place in the dock, so the winner stays in view. (The plan said a panel in the middle of the screen; there it covered the Pokémon.)
+  - **Camera (`scene.js` `#fitCamera`):** in a narrow window the battle camera widens its lens (46° to 72°), then steps back, so both Pokémon stay in view; the picture is shifted up by half the dock's height (a view offset that glides when the dock grows), so the controls cover ground, not Pokémon. The camera is fitted before the world is built, so the grass is placed for where it really stands.
+  - The flat card stage (no WebGL) keeps its cards above the dock.
+- **Tests:** the e2e checks that the menu is hidden in a battle and back afterwards, that the moves are in view with nothing to scroll, and that a move's card text opens and closes.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
