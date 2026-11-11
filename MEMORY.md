@@ -83,8 +83,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   tcgcsv were blocked, so live behaviour is verified by the owner running `npm run check:live`.
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
-## Current state (2026-11-04)
-- `main` holds PRs #1–#14. Plan (docs/HISTORY phase 22): 1 full-window battle (done) 2 graphics 3 menu 4 pages.
+## Current state (2026-11-11)
+- `main` holds PRs #1–#15. **Next work: `docs/ROADMAP.md`** (approved; M0–M11, one PR each; none built yet).
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas

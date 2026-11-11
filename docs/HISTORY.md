@@ -499,6 +499,13 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - The flat card stage (no WebGL) keeps its cards above the dock.
 - **Tests:** the e2e checks that the menu is hidden in a battle and back afterwards, that the moves are in view with nothing to scroll, and that a move's card text opens and closes.
 
+## Phase 23: Roadmap for the scanner, 3D Pop-out for every card, and animated moves
+
+- **Asked for:** an architecture plan to execute later, covering a better card scanner, automatic 3D for every card in 3D Pop-out mode, more realistic move animations, and the remaining architecture gaps.
+- **The owner chose:** 3D from each card's own artwork (free, on the PC; no 360° AI models, no cloud service); a live camera scanner on the phone plus better detection in photos; free local AI models with a classic fallback; and the earlier plan's unbuilt stages (battle graphics, phone bottom menu, collection page) folded in after the new work.
+- **Result:** `docs/ROADMAP.md`, with milestones M0–M11, one draft PR each. Nothing in it is built yet. The earlier plan's stage 1 (full-window battle screen) is already merged (PR #15).
+- **Checked while planning:** the bundled OpenCV.js has `grabCut`, `inpaint`, `HoughLinesP`, `CLAHE`, `distanceTransform`, `ORB`, `findHomography` and `readNetFromONNX`, so the classic fallbacks need no new library.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
