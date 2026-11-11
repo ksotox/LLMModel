@@ -316,9 +316,13 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 ## Tests
 
 ```bash
-npm test             # API tests
-npm run test:e2e     # browser walkthrough (needs Playwright + Chromium); SCREENSHOTS=1 refreshes docs/screenshots
+npm test             # unit and API tests
+npm run test:e2e     # browser walkthrough (Playwright + Chromium: npx playwright install chromium); SCREENSHOTS=1 refreshes docs/screenshots
+npm run bench:scan   # how well the scanner finds and identifies cards (--quick: find only; --strict: fail on missed targets)
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all three on every pull request (Linux), plus `npm test` on Windows.
+`node scripts/make-scan-set.mjs <folder>` writes the benchmark's synthetic photos to a folder to look at.
 
 The pre-grading adapter has its own Python tests: `.venv-grading/bin/python -m unittest services.grading.test_adapter` (Windows: `.venv-grading\Scripts\python.exe`).
 

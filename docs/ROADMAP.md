@@ -13,7 +13,7 @@ The owner's choices:
 - **AI models:** free models, downloaded once and run on the owner's devices, with a classic fallback.
 - **Earlier plan:** its unbuilt stages (battle graphics, phone bottom menu, tidier collection page) are folded in after the new work.
 
-**Status (2026-11-11):** approved by the owner; nothing in it is built yet. Build the milestones in order, starting at M0, one draft PR each. Tick a milestone off in the table below when its PR is merged.
+**Status (2026-11-11):** approved by the owner. M0 is built (in PR #16, not merged yet); the rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
 
 ## Where things stand (facts the executor needs)
 - **Repo:** `ksotox/LLMModel`, branch `claude/pokemon-collection-catalog-aw6vsc`, `main` at PR #15. Node ≥ 22.5, Express 5, `node:sqlite`, vanilla ES modules with no build step, three.js 0.180 served from `/vendor/three`.
@@ -102,13 +102,32 @@ The owner's choices:
 - **`npm run bench:scan`** runs the real pipeline in headless Chromium over:
   - the photos in `docs/reference/`;
   - a synthetic set (`scripts/make-scan-set.mjs`): fixture cards pasted on backgrounds with tilt, blur, glare, sleeves and binder grids, with known corners and identities;
-  - the owner's own labelled photos in `data/scan-bench/` (git-ignored), labelled on a small page.
+  - the owner's own labelled photos in `data/scan-bench/` (git-ignored), listed in `data/scan-bench/labels.json` (same format as `tests/fixtures/scan/reference.json`; a page to label them comes with M1).
 - **Reports:** detection recall and precision (corner error ≤ 2% of card width), top-1 identification, confident-wrong count, and time per card.
 - **Targets:**
   - synthetic detection recall ≥ 95%;
   - binder pages ≥ 8 of 9 cards;
   - confident-wrong = 0;
   - no main-thread task over 100 ms while scanning.
+- **Baseline (M0, 2026-11-11, today's `vision.js` and `ocr.js`, mock catalog, headless Chromium):**
+
+  | Group | Photos | Cards | Found | Precision | Corner error | Read correct | Sure but wrong |
+  |---|---|---|---|---|---|---|---|
+  | reference | 3 | 5 | 100% | 100% | 0.06% | 100% | 0 |
+  | synthetic-single | 6 | 6 | 17% | 17% | 1.43% | 1 of 1 | 0 |
+  | synthetic-row | 5 | 15 | 7% | 11% | 1.51% | 1 of 1 | 0 |
+  | synthetic-binder | 3 | 27 | 96% | 96% | 0.92% | 46% | 0 |
+  | synthetic-dark | 4 | 8 | 100% | 100% | 0.86% | 63% | 0 |
+  | synthetic-glare | 4 | 8 | 0% | 0% | — | — | 0 |
+  | synthetic-sleeve | 4 | 8 | 13% | 25% | 1.11% | 1 of 1 | 0 |
+  | synthetic-blur | 4 | 8 | 0% | 0% | — | — | 0 |
+
+  Synthetic recall overall: 46% (target 95%). The misses were checked on overlays and are real detector faults, not label errors:
+  - on wood, an edge snaps to the card's shadow or an inner line (3–7% corner error);
+  - on a light desk the card isn't separated at all, and the whole photo is returned;
+  - glare and blur break the outline.
+
+  Finding takes about 230 ms a photo; reading a card about 640 ms.
 
 ## Workstream B: 3D Pop-out for every card
 
@@ -254,7 +273,7 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 ## Milestones (one draft PR each, in this order)
 | # | Milestone | Contains | Done |
 |---|---|---|---|
-| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | |
+| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | built, PR #16 |
 | M1 | Detection v2 | A1, with the benchmark targets met | |
 | M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline | |
 | M3 | Phone live scanner | A3 (HTTPS and the scanner screen); S1's localhost-by-default switch | |

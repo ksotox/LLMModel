@@ -1,0 +1,66 @@
+# Runs the tests on every pull request and on pushes to main, so a PR's "checks passed" means
+# the code was actually tested. (Python pre-grading tests need the optional Viridian setup and
+# are run by hand: see scripts/grading-setup.sh.)
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests, browser walkthrough and scan benchmark (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+      - name: Unit and API tests
+        run: npm test
+      - name: Browser walkthrough (e2e)
+        run: npm run test:e2e
+        env:
+          FAIL_SHOT: e2e-failure.png
+      - name: Scan benchmark (report only; targets are met in roadmap M1)
+        run: npm run bench:scan
+      - name: Keep the benchmark results and any failure screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            data/scan-bench/results/
+            e2e-failure.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  windows:
+    name: Unit and API tests (Windows, like the desktop app)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - run: npm test

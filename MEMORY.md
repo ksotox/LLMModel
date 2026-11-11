@@ -18,8 +18,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 
 ## Run / test
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
-- `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough.
-  `SCREENSHOTS=1` refreshes `docs/screenshots/`. Both use local mocks (no network).
+- `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough (`SCREENSHOTS=1`
+  refreshes `docs/screenshots/`). `npm run bench:scan`: scanner accuracy. All use local mocks; CI runs them on PRs.
 - **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (`desktop/Pokedex.cs`, csc.exe) into
   `%LOCALAPPDATA%\Pokedex`; it runs `launcher.mjs` (self-updating): newest commit via `<repo>.git/info/refs`, codeload
   zip, swap `LLMModel-main` (keeps `.previous`, moves `data/` and the grading setup, reuses `node_modules` if the lock
@@ -84,7 +84,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
 
 ## Current state (2026-11-11)
-- `main` holds PRs #1–#15. **Next work: `docs/ROADMAP.md`** (approved; M0–M11, one PR each; none built yet).
+- `main` has PRs #1–#15. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 built (PR #16): migrations,
+  `workers/rpc.js`, `ai/runtime.js` + `server/aiModels.js`, `bench:scan` (baseline 46%), CI. Next: M1.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -106,8 +107,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   regions, surface map, findings; `gradingReport.js`: slab (flip/tilt/PNG), breakdown, scan. Label every result "Experimental CV estimate — not professional grading.";
   no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
-- **See `docs/CODE_REVIEW.md`** (B1–B6 fixed; D1–D3, P1–P3, S1–S2, R1–R3, T1–T9). Biggest: R1 legacy dataset
-  (pull-chance rarity counts), T1 no CI, S1 listens on all interfaces, P1 sequential lookups. Users read `docs/USER_GUIDE.md`.
+- Open gaps: the table in `docs/ROADMAP.md` (replaces CODE_REVIEW.md's open list). Users read `docs/USER_GUIDE.md`.
 - Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`. Fix any parser gaps
   using their real responses.
 - Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.

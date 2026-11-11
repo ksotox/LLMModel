@@ -1,0 +1,25 @@
+{
+  "about": "Labelled card corners (photo pixels, TL TR BR BL) and identities for the photos in docs/reference/, used by npm run bench:scan. Corners checked by eye on overlays (2026-11-11). Froakie's top edge runs off the photo.",
+  "photos": [
+    {
+      "file": "docs/reference/three-cards.jpg",
+      "cards": [
+        { "name": "Voltorb", "tcgIds": ["sv02-066", "ptcg:sv2-66"], "corners": [[62, 253], [620, 224], [640, 1019], [32, 1048]] },
+        { "name": "Punk Helmet", "tcgIds": ["me02-092", "ptcg:me2-92"], "corners": [[690, 282], [1254, 264], [1293, 1059], [707, 1067]] },
+        { "name": "Linoone", "tcgIds": ["sv03-168", "ptcg:sv3-168"], "corners": [[1329, 255], [1881, 280], [1930, 1053], [1343, 1047]] }
+      ]
+    },
+    {
+      "file": "docs/reference/voltorb-reverse-holo.jpg",
+      "cards": [
+        { "name": "Voltorb", "tcgIds": ["sv02-066", "ptcg:sv2-66"], "corners": [[265, 289], [1208, 301], [1178, 1632], [230, 1619]] }
+      ]
+    },
+    {
+      "file": "docs/reference/froakie-promo.webp",
+      "cards": [
+        { "name": "Froakie", "tcgIds": ["mep-060", "ptcg:mep-60"], "corners": [[0, 0], [680, 1], [764, 904], [74, 964]] }
+      ]
+    }
+  ]
+}

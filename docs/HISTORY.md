@@ -506,6 +506,23 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Result:** `docs/ROADMAP.md`, with milestones M0–M11, one draft PR each. Nothing in it is built yet. The earlier plan's stage 1 (full-window battle screen) is already merged (PR #15).
 - **Checked while planning:** the bundled OpenCV.js has `grabCut`, `inpaint`, `HoughLinesP`, `CLAHE`, `distanceTransform`, `ORB`, `findHomography` and `readNetFromONNX`, so the classic fallbacks need no new library.
 
+## Phase 24: Roadmap M0, foundations
+
+- **Versioned migrations:** `server/migrations.js` runs each change once, in a transaction with its `PRAGMA user_version` bump; a failure rolls both back. Migration 1 is the baseline: the column checks `openDb` used to make on every start, kept idempotent so databases from any earlier version end up the same. A database newer than the app (after the desktop updater rolls back) is opened as it is, with a warning.
+- **Workers:** `public/js/workers/rpc.js` (`connect` / `serve` / `transfer`) lets the page call a Web Worker like an async library, with buffer transfer, progress, timeouts and cancel. Unit-tested over a `MessageChannel`.
+- **AI runtime:** `onnxruntime-web` 1.30.0 (MIT) served at `/vendor/ort`; `public/js/ai/runtime.js` (WebGPU where available, else WebAssembly; one thread, because cross-origin isolation would block official card pictures from other sites).
+  - **Model store:** `server/aiModels.js` and `/api/ai/models` download each listed model once, with a size cap and a SHA-256 check. The hash is either in the manifest or pinned on first download, because Hugging Face can't be reached from the build sandbox.
+  - The manifest is empty until M1 and M5 add models.
+  - **Tests:** an e2e step runs a hand-written ONNX model (`tests/helpers/tiny-onnx.js`) on the page and in a module worker.
+- **Scan benchmark:** `npm run bench:scan`, `scripts/scan-bench/` and `scripts/make-scan-set.mjs`.
+  - **Labels:** `tests/fixtures/scan/reference.json` (5 cards, corners checked on overlays).
+  - **Synthetic set:** 30 photos of real card faces pasted with perspective onto wood, light, patterned and dark tables, rows, binder pages, with glare, sleeves and blur.
+  - **Baseline** (recorded in ROADMAP A4): reference 100%, binder 96%, synthetic overall 46%, and 0 confident-but-wrong. M1 has to reach 95%.
+- **CI:** `.github/workflows/ci.yml`:
+  - **Linux:** `npm test`, e2e and the benchmark, keeping the results and any failure screenshot.
+  - **Windows:** `npm test`.
+  - `playwright` 1.63.0 is now a devDependency; the desktop updater installs with `--omit=dev`.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

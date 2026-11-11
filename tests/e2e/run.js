@@ -18,6 +18,7 @@ import { EbayClient } from '../../server/ebay.js';
 import { Models3D } from '../../server/models3d.js';
 import { PriceTrackerClient } from '../../server/priceTracker.js';
 import { mockCatalog, startMockSources } from '../helpers/mock-sources.js';
+import { addModel } from '../helpers/tiny-onnx.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -623,6 +624,29 @@ try {
   await page.locator('.card-tile').nth(5).waitFor();
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
+
+  step('AI runtime: a model runs in the page and in a background worker (served locally, no CDN)');
+  const ai = await page.evaluate(async (model) => {
+    const { loadOrt } = await import('/js/ai/runtime.js');
+    const { connect } = await import('/js/workers/rpc.js');
+    const { ort, providers } = await loadOrt();
+    const t = (v) => new ort.Tensor('float32', Float32Array.from(v), [3]);
+    const session = await ort.InferenceSession.create(Uint8Array.from(model), { executionProviders: providers });
+    const onPage = [...(await session.run({ a: t([1, 2, 3]), b: t([10, 20, 30]) })).c.data];
+    const src = `import { serve } from '${location.origin}/js/workers/rpc.js';
+      import { loadOrt } from '${location.origin}/js/ai/runtime.js';
+      serve({ async add({ model }) {
+        const { ort, providers } = await loadOrt();
+        const s = await ort.InferenceSession.create(model, { executionProviders: providers });
+        const t = (v) => new ort.Tensor('float32', Float32Array.from(v), [3]);
+        return [...(await s.run({ a: t([1, 1, 1]), b: t([2, 2, 2]) })).c.data];
+      } });`;
+    const worker = connect(new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), { type: 'module' }));
+    const inWorker = await worker.call('add', { model: Uint8Array.from(model) }, { timeout: 60000 });
+    worker.close();
+    return { onPage, inWorker };
+  }, [...addModel(3)]);
+  assert.deepEqual(ai, { onPage: [11, 22, 33], inWorker: [3, 3, 3] });
 
   step('mobile layout');
   await page.setViewportSize({ width: 390, height: 844 });
