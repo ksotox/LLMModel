@@ -132,7 +132,11 @@ describe('parts of cards', () => {
       for (let t = 0; t <= 1; t += 0.002) grad[Math.round(p.y + (q.y - p.y) * t) * W + Math.round(p.x + (q.x - p.x) * t)] = 100;
     }
     for (let x = 50; x <= 113; x++) grad[84 * W + x] = 100; // the picture's frame across the middle
-    assert.equal(runsOn(card, grad, W, H), false);
-    assert.equal(runsOn(rect(50, 40, 63, 44), grad, W, H), true);
+    assert.equal(runsOn(card, grad, W, H), -1);
+    const half = rect(50, 40, 63, 44);
+    const side = runsOn(half, grad, W, H);
+    assert.equal(side, 2, 'the bottom side lies inside the card');
+    const { completePart } = await import('../public/js/vision/snap.js');
+    assert.ok(near(completePart(half, side), card, 0.01), 'and the whole card is worked out from it');
   });
 });

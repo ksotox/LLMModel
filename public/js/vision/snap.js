@@ -94,7 +94,8 @@ export function edgeSupport(quad, grad, W, H, typical) {
  * Whether the outline looks like part of something bigger: past one of its sides, both neighbouring
  * edges carry on (a card's top half ends at its picture's frame, while the card's own left and right
  * edges continue). Past a real card's corner the edge stops and the table begins. Checks a stretch
- * from `gap` to `gap + reach` (fractions of the edge's length) beyond each corner.
+ * from `gap` to `gap + reach` (fractions of the edge's length) beyond each corner. Returns the side
+ * they carry on past, or -1.
  */
 export function runsOn(quad, grad, W, H, { gap = 0.04, reach = 0.1, share = 0.5, band = 2 } = {}) {
   const sample = sampler(grad, W, H);
@@ -112,5 +113,25 @@ export function runsOn(quad, grad, W, H, { gap = 0.04, reach = 0.1, share = 0.5,
     return own[i] > 0 && s >= own[i] * share;
   };
   // Side j (corner j to j+1) is passed by edge j-1 going forward and edge j+1 going backward.
-  return [0, 1, 2, 3].some((j) => carriesOn((j + 3) % 4, true) && carriesOn((j + 1) % 4, false));
+  return [0, 1, 2, 3].find((j) => carriesOn((j + 3) % 4, true) && carriesOn((j + 1) % 4, false)) ?? -1;
+}
+
+/**
+ * The whole card a part belongs to: its side `j` lies inside the card, so the two edges beside it
+ * are extended past it until the outline has a card's shape (63:88), whichever way round fits.
+ */
+export function completePart(quad, j, aspect = 63 / 88) {
+  const a = quad[j];
+  const b = quad[(j + 1) % 4];
+  const aFrom = quad[(j + 3) % 4]; // the far ends of the two edges that carry on
+  const bFrom = quad[(j + 2) % 4];
+  const across = dist(aFrom, bFrom);
+  const now = (dist(aFrom, a) + dist(bFrom, b)) / 2;
+  const length = [across / aspect, across * aspect].filter((l) => l > now * 1.15).sort((x, y) => x - y)[0];
+  if (!length) return null;
+  const extend = (from, to) => lerp(from, to, length / (dist(from, to) || 1));
+  const out = [...quad];
+  out[j] = extend(aFrom, a);
+  out[(j + 1) % 4] = extend(bFrom, b);
+  return out;
 }

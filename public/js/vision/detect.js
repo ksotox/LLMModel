@@ -2,12 +2,13 @@
 // kept, then each is snapped onto the card's real edges. Works on raw RGBA pixels with the OpenCV
 // module passed in, so it runs in the page, in a Web Worker, and in Node.
 
-import { bbox, dist, overlap, readingOrder } from './geometry.js';
+import { bbox, dist, overlap, polygonArea, readingOrder } from './geometry.js';
 import { collectCandidates } from './contours.js';
-import { edgeSupport, runsOn, snapToEdges } from './snap.js';
+import { completePart, edgeSupport, runsOn, snapToEdges } from './snap.js';
 import { brightness } from './strategies/brightness.js';
 import { edges } from './strategies/edges.js';
-import { background } from './strategies/background.js';
+import { background, tableDistance } from './strategies/background.js';
+import { peelSleeve } from './sleeve.js';
 import { lines, straightEdges } from './strategies/lines.js';
 import { fitSidesToLines } from './lines.js';
 
@@ -78,7 +79,7 @@ export function dropGroupsAndParts(candidates) {
  * Returns quads in that image's pixels (TL/TR/BR/BL), in reading order. Empty when nothing
  * card-shaped was found. `strategies` names the ways of finding outlines to use.
  */
-export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colourEdges = true, fitLines = true, debug = null } = {}) {
+export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colourEdges = true, fitLines = true, sleeves = true, debug = null } = {}) {
   const W = image.width;
   const H = image.height;
   const pad = 12;
@@ -107,11 +108,18 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
   };
   let straight = null;
   prep.straight = () => (straight ??= straightEdges(prep));
+  let table = null;
+  prep.table = () => (table ??= tableDistance(lab.data, W, H));
   let grad;
+  let light = null;
   try {
     for (const name of strategies) STRATEGIES[name](prep);
     grad = gradient(cv, colourEdges ? lab : gray);
     if (fitLines) prep.straight();
+    if (sleeves) {
+      light = new Uint8Array(W * H);
+      for (let i = 0; i < light.length; i++) light[i] = lab.data[i * 3];
+    }
   } finally {
     for (const m of [src, gray, lab, padded, blurred, kernel]) m.delete();
   }
@@ -130,7 +138,8 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
   // Snap every candidate onto the real edges, then rank it: card-like, large, and with a clear edge
   // on every side. An outline made of a shadow, a binder pocket or a pattern on the table has at
   // least one faint side; a card's own outline doesn't.
-  for (const c of candidates) {
+  const completed = [];
+  const settle = (c) => {
     // Nudge each side onto the strongest edge nearby. Outlines from the table's colour include the
     // card's shadow, so they may move further inwards. Also try straightening the sides onto real
     // straight edges first (fixes an outline with a corner cut off), and keep whichever version has
@@ -143,9 +152,25 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
     const pick = supports[1] > supports[0] ? 1 : 0;
     c.quad = versions[pick];
     c.support = supports[pick];
-    c.part = runsOn(c.quad, grad, W, H);
+    // A card in a sleeve: take the card inside, not the sleeve's rim. It keeps the rank the sleeve's
+    // clear outline earned (the card's own edge under the plastic is fainter).
+    const peeled = sleeves ? peelSleeve(c.quad, grad, light, W, H) : null;
+    if (peeled) {
+      c.sleeve = true;
+      c.quad = clamp(snapToEdges(peeled, grad, W, H, { inwards: 0.008, outwards: 0.008 }));
+    }
+    const side = runsOn(c.quad, grad, W, H);
+    c.part = side >= 0;
     c.rank = c.score * Math.sqrt(c.area) * c.support * (c.part ? 0.3 : 1);
-  }
+    // A part of a card (its top half, say) shows where the whole card is: try that too.
+    if (c.part && !c.completed) {
+      const whole = completePart(c.quad, side);
+      if (whole) completed.push({ quad: whole, area: polygonArea(whole), score: c.score, label: `${c.label}+`, completed: true });
+    }
+  };
+  candidates.forEach(settle);
+  completed.forEach(settle);
+  candidates.push(...completed);
   if (debug) Object.assign(debug, { candidates: candidates.map((c) => ({ ...c })), grad, W, H });
   candidates = dropGroupsAndParts(candidates.filter((c) => c.rank > 0));
 
