@@ -127,7 +127,7 @@ export function completePart(quad, j, aspect = 63 / 88) {
   const bFrom = quad[(j + 2) % 4];
   const across = dist(aFrom, bFrom);
   const now = (dist(aFrom, a) + dist(bFrom, b)) / 2;
-  const length = [across / aspect, across * aspect].filter((l) => l > now * 1.15).sort((x, y) => x - y)[0];
+  const length = [across / aspect, across * aspect].filter((l) => l > now * 1.3).sort((x, y) => x - y)[0];
   if (!length) return null;
   const extend = (from, to) => lerp(from, to, length / (dist(from, to) || 1));
   const out = [...quad];

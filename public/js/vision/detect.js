@@ -157,7 +157,7 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
     const peeled = sleeves ? peelSleeve(c.quad, grad, light, W, H) : null;
     if (peeled) {
       c.sleeve = true;
-      c.quad = clamp(snapToEdges(peeled, grad, W, H, { inwards: 0.008, outwards: 0.008 }));
+      c.quad = clamp(snapToEdges(peeled, grad, W, H, { inwards: 0.015, outwards: 0.005 }));
     }
     const side = runsOn(c.quad, grad, W, H);
     c.part = side >= 0;

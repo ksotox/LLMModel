@@ -41,13 +41,16 @@ export function peelSleeve(quad, grad, light, W, H, { from = 0.012, to = 0.07, s
     // Is this side a bright ridge? Compare it with 3 px either side of it.
     const on = Math.max(...[-1, 0, 1].map((o) => median(along(light, W, H, ...shift(o)))));
     if (on - Math.max(median(along(light, W, H, ...shift(-3.5))), median(along(light, W, H, ...shift(3.5)))) >= ridgeLift) ridgeCount++;
-    // The first strong edge inside it (a local peak of strength).
+    // The first strong edge inside it: a peak of strength after a dip (the rim's own inner flank,
+    // falling away from it, is not an edge of its own).
     const own = mean(along(grad, W, H, p, q));
-    let prev = -1;
+    let prev = Infinity;
+    let dipped = false;
     for (let o = size * from; o <= size * to; o += step) {
       const s = mean(along(grad, W, H, ...shift(o)));
       const next = mean(along(grad, W, H, ...shift(o + step)));
-      if (s >= own * strong && s >= prev && s >= next) return shift(o);
+      if (s < own * strong * 0.6) dipped = true;
+      if (dipped && s >= own * strong && s >= prev && s >= next) return shift(o);
       prev = s;
     }
     return null;
