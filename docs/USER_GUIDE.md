@@ -323,10 +323,18 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 
 **One card: Showcase.** Drag to turn the Pokémon around, and scroll or pinch to zoom. Tap one of its attacks to see it used on a practice target and how much damage it would do. Tap its ability to see it power up. **3D form** and **Summon again** replay it.
 
+**The battle screen** fills the whole window (the red menu is hidden until you leave):
+- **Top left:** the opponent's name plate. **Top right:** **← Back**, the **Graphics** choice and a full-screen button.
+- **Bottom:** your name plate, the message box, and your moves: attacks on the left, abilities and **Rest** on the right (underneath on a phone).
+- An attack shows the first line of its card text; tap the small **i** on it to read all of it.
+
 **Two cards: Battle.**
 - Name plates show each Pokémon's HP and energy. The message box tells what happens.
 - On your turn, pick an attack, an ability, or **Rest**. With **vs Computer** the computer plays the other side; with **Two players** the box says whose turn it is.
-- The battle ends when one Pokémon reaches 0 HP. **Rematch** plays again; **Choose again** goes back.
+- The battle ends when one Pokémon reaches 0 HP. It then asks what's next:
+  - **Same battle again:** the same two Pokémon, from full HP;
+  - **Different opponent:** back to the list with your Pokémon still chosen; pick a new opponent and press **Battle!**;
+  - **Choose both again:** start over.
 
 **The rules** are simple ones made for this app from each card's own data. They aren't the official card game rules (tap **How PokéBattles work** for the summary):
 - HP is the card's HP.
@@ -340,7 +348,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - The 3D models come from the free, fan-made Pokémon 3D API (about 1,000 Pokémon). Each is downloaded the first time it's shown, then kept on your computer, so it opens instantly and works offline next time.
 - A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
 - On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
-- **Graphics** (top right of the battle):
+- **Graphics** (top right of the battle screen):
   - **High:** the sharpest picture, detailed shadows, and the densest grass and forest.
   - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.

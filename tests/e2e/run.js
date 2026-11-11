@@ -502,11 +502,18 @@ try {
   await page.locator('canvas.stage-canvas').waitFor();
   await page.locator('.card-info-panel.slot-0.in', { hasText: 'Thunder Jolt' }).waitFor({ timeout: 90000 });
   await page.locator('.bt-message', { hasText: 'Drag to turn it around' }).waitFor({ timeout: 90000 });
-  await page.getByRole('button', { name: /Thunder Jolt/ }).click();
+  // The stage fills the window: the app's menu is hidden, and the moves are on screen without scrolling.
+  assert.ok(await page.locator('.topbar').isHidden(), 'the menu bar is hidden during a battle');
+  const inView = (sel) => page.locator(sel).first().evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; });
+  assert.ok(await inView('.move-btn'), 'the moves are in view');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight), 0, 'nothing to scroll');
+  await page.locator('.move-btn', { hasText: 'Thunder Jolt' }).click();
   await page.locator('.bt-message', { hasText: /It would deal (30|60) damage/ }).waitFor({ timeout: 90000 });
 
   step('PokéBattles: two cards battle the computer until one faints');
-  await page.getByRole('button', { name: '← Choose again' }).click();
+  await page.getByRole('button', { name: '← Back' }).click();
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  assert.ok(await page.locator('.topbar').isVisible(), 'the menu bar is back after leaving');
   await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click();
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
@@ -514,6 +521,14 @@ try {
   await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 90000 });
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
   await page.locator('.hp-plate.side-0').waitFor({ timeout: 90000 });
+  // A move's full card text opens from its ⓘ, above the message box, and closes again.
+  await page.locator('.move-grid .move-btn').first().waitFor({ timeout: 90000 });
+  if (await page.locator('.move-info').count()) {
+    await page.locator('.move-info').first().click();
+    await page.locator('.bt-detail:not([hidden])').waitFor();
+    await page.locator('.bt-detail button').click();
+    await page.locator('.bt-detail').waitFor({ state: 'hidden' });
+  }
   for (let i = 0; i < 40 && !(await page.locator('.bt-result').count()); i++) {
     await page.waitForFunction(() => document.querySelector('.bt-result') || document.querySelector('.move-grid .move-btn:not(:disabled)'), null, { timeout: 90000 });
     const move = page.locator('.move-grid .move-btn:not(:disabled)').first();
@@ -522,9 +537,16 @@ try {
   }
   await page.locator('.bt-result h3', { hasText: /wins|draw/ }).waitFor();
   assert.ok(await page.locator('.hp-text', { hasText: /^0\// }).count() >= 1, 'one side ends at 0 HP');
+  // Then it asks: the same battle again, or a different opponent (keeping your Pokémon)?
+  await page.locator('.bt-next', { hasText: 'Battle Linoone again, or choose a different opponent for Voltorb?' }).waitFor();
+  assert.ok(await page.getByRole('button', { name: '↻ Same battle again' }).isVisible());
+  await page.getByRole('button', { name: '⇄ Different opponent' }).click();
+  await page.locator('.bt-slot.empty.wanted', { hasText: 'Pick a new opponent for Voltorb' }).waitFor();
+  assert.equal(await page.locator('.bt-slot strong').first().textContent(), 'Voltorb', 'your Pokémon stays chosen');
+  assert.equal(await page.locator('.bt-tile.picked').count(), 1);
 
   step('PokéBattles: two players take turns choosing moves; a card without a 3D model fights as its card');
-  await page.getByRole('button', { name: 'Choose again', exact: true }).click();
+  await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click(); // let go of the kept Pokémon
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-tile', { hasText: 'ビリリダマ' }).click();
   await page.getByRole('button', { name: 'Two players' }).click();
@@ -543,7 +565,7 @@ try {
   await page.locator('.move-grid .move-btn:not(:disabled)').first().click();
   await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 90000 });
   assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
-  await page.getByRole('button', { name: '← Choose again' }).click();
+  await page.getByRole('button', { name: '← Back' }).click();
 
   step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
   await page.goto(`${base}/#/`);

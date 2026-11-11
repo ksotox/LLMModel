@@ -28,6 +28,9 @@ const ease = {
   back: (t) => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; },
 };
 
+// tan(half the horizontal angle) the battle camera needs to keep both Pokémon, with some room, in view.
+const FRAME_HALF_WIDTH = 0.42;
+
 /** True when this browser can draw WebGL. */
 export function webglAvailable() {
   try {
@@ -203,9 +206,11 @@ export class BattleStage {
       // with the lake, woods and peaks behind; it drifts slowly, and shakes when a hit lands.
       this.camBase = new THREE.Vector3(-4.4, 2.3, 6.4);
       this.camLook = new THREE.Vector3(0.7, 1.45, -1.6);
-      this.camera.position.copy(this.camBase);
-      this.camera.lookAt(this.camLook);
     }
+    this.dolly = 1; // how much further back the battle camera stands in a narrow window
+    this.inset = 0; // height (px) of the controls laid over the bottom of the stage
+    this.insetTarget = 0;
+    this.#fitCamera(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight)); // before the world is built around it
 
     // The world: physical sky and sun, sky lighting, soft shadows, grass field, arena, trees, haze.
     this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, quality: preferredQuality(this.renderer) });
@@ -236,9 +241,35 @@ export class BattleStage {
     const w = Math.max(1, this.host.clientWidth);
     const h = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.#fitCamera(w, h);
     this.world?.resize(w, h);
+  }
+
+  /**
+   * Frame the scene for a window of any shape. In a narrow (upright phone) window the battle
+   * camera first widens its lens, then steps back, so both Pokémon stay in view; and the picture
+   * is shifted up by half the height of the controls over its bottom edge, so they cover ground,
+   * not Pokémon.
+   */
+  #fitCamera(w, h) {
+    this.camera.aspect = w / h;
+    if (this.camBase) {
+      const need = FRAME_HALF_WIDTH / this.camera.aspect; // tan(half the vertical angle) that shows both sides
+      const half = Math.min(Math.max(need, Math.tan(THREE.MathUtils.degToRad(23))), Math.tan(THREE.MathUtils.degToRad(36)));
+      this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(half));
+      this.dolly = Math.max(1, need / half);
+      this.camera.position.copy(this.camLook).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly);
+      this.camera.lookAt(this.camLook);
+    }
+    const shift = Math.min(this.inset, h * 0.6) / 2;
+    if (shift > 0.5) this.camera.setViewOffset(w, h, 0, shift, w, h);
+    else this.camera.clearViewOffset();
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** The controls over the bottom of the stage are `px` tall: keep the Pokémon above them. */
+  setInset(px) {
+    this.insetTarget = Math.max(0, px);
   }
 
   frame() {
@@ -264,16 +295,19 @@ export class BattleStage {
       }
     }
     this.controls?.update();
+    if (Math.abs(this.insetTarget - this.inset) > 0.5) {
+      // Glide to the new framing when the controls appear or change height.
+      this.inset += (this.insetTarget - this.inset) * (this.calm || this.skipping ? 1 : Math.min(1, dt * 5));
+      this.#fitCamera(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight));
+    }
     if (this.camBase) {
       const t = now / 1000;
       this.shakeAmount = this.shakeAmount < 0.004 ? 0 : this.shakeAmount * 0.88 ** (dt * 60);
       const k = this.shakeAmount;
       const drift = this.calm ? 0 : 1;
-      this.camera.position.set(
-        this.camBase.x + Math.sin(t * 0.2) * 0.2 * drift + (Math.random() - 0.5) * k,
-        this.camBase.y + Math.sin(t * 0.27) * 0.07 * drift + (Math.random() - 0.5) * k * 0.5,
-        this.camBase.z,
-      );
+      this.camera.position.copy(this.camLook).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly);
+      this.camera.position.x += Math.sin(t * 0.2) * 0.2 * drift + (Math.random() - 0.5) * k;
+      this.camera.position.y += Math.sin(t * 0.27) * 0.07 * drift + (Math.random() - 0.5) * k * 0.5;
       this.camera.lookAt(this.camLook);
     }
     this.world.update(now / 1000);
@@ -842,6 +876,9 @@ export class FlatStage {
     host.append(this.el, this.overlay);
     this.slots = [null, null];
   }
+
+  /** The controls over the bottom are `px` tall: the cards stay above them. */
+  setInset(px) { this.el.style.setProperty('--dock', `${Math.max(0, px)}px`); }
 
   wait(ms) { return this.skipping ? Promise.resolve() : new Promise((r) => setTimeout(r, ms)); }
   skip() { this.skipping = true; }
