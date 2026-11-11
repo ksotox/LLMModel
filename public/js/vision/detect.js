@@ -2,7 +2,7 @@
 // kept, then each is snapped onto the card's real edges. Works on raw RGBA pixels with the OpenCV
 // module passed in, so it runs in the page, in a Web Worker, and in Node.
 
-import { bbox, dist, overlap, polygonArea, readingOrder } from './geometry.js';
+import { CARD_ASPECT, bbox, dist, overlap, polygonArea, readingOrder, sides } from './geometry.js';
 import { collectCandidates } from './contours.js';
 import { completePart, edgeSupport, runsOn, snapToEdges } from './snap.js';
 import { brightness } from './strategies/brightness.js';
@@ -31,12 +31,20 @@ function gradient(cv, image) {
     const ch = channels.get(c);
     cv.Sobel(ch, gx, cv.CV_32F, 1, 0, 3);
     cv.Sobel(ch, gy, cv.CV_32F, 0, 1, 3);
-    for (let i = 0; i < grad.length; i++) grad[i] += gx.data32F[i] ** 2 + gy.data32F[i] ** 2;
+    const dx = gx.data32F; // (a getter that makes a new view each time: read it once)
+    const dy = gy.data32F;
+    for (let i = 0; i < grad.length; i++) grad[i] += dx[i] * dx[i] + dy[i] * dy[i];
     ch.delete();
   }
   for (let i = 0; i < grad.length; i++) grad[i] = Math.sqrt(grad[i]);
   for (const m of [smooth, channels, gx, gy]) m.delete();
   return grad;
+}
+
+/** How far an outline's width:height is from a card's 63:88 (either way round). */
+function aspectOff(quad) {
+  const { w, h } = sides(quad);
+  return Math.abs(Math.min(w, h) / Math.max(w, h) - CARD_ASPECT);
 }
 
 /** Distance from point p to the line through a and b. */
@@ -118,7 +126,8 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
     if (fitLines) prep.straight();
     if (sleeves) {
       light = new Uint8Array(W * H);
-      for (let i = 0; i < light.length; i++) light[i] = lab.data[i * 3];
+      const bytes = lab.data;
+      for (let i = 0; i < light.length; i++) light[i] = bytes[i * 3];
     }
   } finally {
     for (const m of [src, gray, lab, padded, blurred, kernel]) m.delete();
@@ -147,7 +156,11 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
     const range = c.label === 'background' ? { inwards: 0.05, outwards: 0.03 } : {};
     const clamp = (q) => q.map((p) => ({ x: Math.min(W, Math.max(0, p.x)), y: Math.min(H, Math.max(0, p.y)) }));
     const versions = [clamp(snapToEdges(c.quad, grad, W, H, range))];
-    if (fitLines && c.label !== 'lines') versions.push(clamp(snapToEdges(fitSidesToLines(c.quad, straight), grad, W, H, range)));
+    if (fitLines && c.label !== 'lines') {
+      // Only when it keeps the card's shape: a neighbouring card's edge is straight and close too.
+      const fitted = clamp(snapToEdges(fitSidesToLines(c.quad, straight), grad, W, H, range));
+      if (aspectOff(fitted) <= Math.max(0.03, aspectOff(versions[0]))) versions.push(fitted);
+    }
     const supports = versions.map((q) => edgeSupport(q, grad, W, H, 1));
     const pick = supports[1] > supports[0] ? 1 : 0;
     c.quad = versions[pick];

@@ -23,6 +23,11 @@ async function identify(canvas) {
 
 /** Score one photo: detection against the labels, then reading each card that was found. */
 async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
+  // Long main-thread tasks while finding (the finder runs in a worker; the page should stay smooth).
+  const tasks = [];
+  const observer = typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+    ? new PerformanceObserver((list) => list.getEntries().forEach((e) => tasks.push(e.duration))) : null;
+  observer?.observe({ type: 'longtask' });
   const t0 = performance.now();
   let found = [];
   try {
@@ -31,6 +36,9 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
     console.warn('Card finder failed on', name, err);
   }
   const ms = performance.now() - t0;
+  await new Promise((r) => setTimeout(r, 0)); // let the observer report
+  observer?.disconnect();
+  const longestTask = Math.round(Math.max(0, ...tasks));
   const truths = cards.map((c) => c.corners);
   const { pairs, missed, extra } = matchQuads(truths, found.map((q) => q.map((p) => [p.x, p.y])), tolerance);
   const reads = [];
@@ -48,7 +56,7 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
       });
     }
   }
-  return { name, group, truths: truths.length, found: found.length, pairs, missed, extra, ms, reads };
+  return { name, group, truths: truths.length, found: found.length, pairs, missed, extra, ms, longestTask, reads };
 }
 
 /**

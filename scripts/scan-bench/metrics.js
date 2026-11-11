@@ -73,7 +73,8 @@ const median = (xs) => {
 
 /**
  * Totals over scene results. Each result: { group, truths, found, pairs, missed, extra, ms,
- * reads: [{ correct, confidence, ms }] }. Returns the overall line and one per group.
+ * longestTask (the longest main-thread task while finding, ms), reads: [{ correct, confidence, ms }] }.
+ * Returns the overall line and one per group.
  */
 export function summarize(results) {
   const line = (rs) => {
@@ -89,6 +90,7 @@ export function summarize(results) {
       precision: pct(hits, found),
       cornerError: median(errors),
       detectMs: median(rs.map((r) => r.ms)),
+      longestTask: Math.max(0, ...rs.map((r) => r.longestTask ?? 0)),
       read: reads.length,
       correct: pct(reads.filter((r) => r.correct).length, reads.length),
       confidentWrong: reads.filter((r) => !r.correct && r.confidence === 'high').length,
@@ -109,5 +111,6 @@ export function checkTargets(summary) {
     { target: 'synthetic detection recall ≥ 95%', value: pct(synth.hits, synth.cards), ok: pct(synth.hits, synth.cards) >= 0.95 },
     { target: 'binder pages: ≥ 8 of 9 cards found', value: g['synthetic-binder']?.recall ?? null, ok: (g['synthetic-binder']?.recall ?? 0) >= 8 / 9 },
     { target: 'confident but wrong = 0', value: summary.all.confidentWrong, ok: summary.all.confidentWrong === 0 },
+    { target: 'no main-thread task over 100 ms while finding cards', value: summary.all.longestTask, ok: summary.all.longestTask <= 100 },
   ];
 }
