@@ -413,13 +413,21 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
   });
 }
 
-/** A CardCatalog wired to the mock sources. */
+/**
+ * A CardCatalog wired to the mock sources. Picture downloads only reach the mock server: the
+ * catalog's guessed image addresses (images.scrydex.com, images.pokemontcg.io) are real hosts,
+ * and tests must give the same result offline and on a CI runner that can reach them.
+ */
 export function mockCatalog(mock, { timeoutMs = 3000 } = {}) {
-  return new CardCatalog({
+  const catalog = new CardCatalog({
     tcgdex: new TcgClient({ baseUrl: mock.tcgdexUrl, timeoutMs }),
     tcgdexJa: new TcgClient({ baseUrl: mock.tcgdexJaUrl, lang: 'ja', timeoutMs }),
     ptcg: new PtcgDataClient({ baseUrl: mock.ptcgUrl, timeoutMs }),
     tcgcsv: new TcgCsvClient({ baseUrl: mock.tcgcsvUrl, timeoutMs }),
     fx: new ExchangeRates({ baseUrl: mock.fxUrl, timeoutMs }),
   });
+  const local = new URL(mock.tcgdexUrl).host;
+  const download = catalog.download.bind(catalog);
+  catalog.download = (url) => (new URL(url, mock.tcgdexUrl).host === local ? download(url) : Promise.resolve(null));
+  return catalog;
 }

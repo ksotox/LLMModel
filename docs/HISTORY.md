@@ -522,6 +522,7 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - **Linux:** `npm test`, e2e and the benchmark, keeping the results and any failure screenshot.
   - **Windows:** `npm test`.
   - `playwright` 1.63.0 is now a devDependency; the desktop updater installs with `--omit=dev`.
+  - The first run showed two picture tests reaching the real image hosts the catalog guesses (blocked in the sandbox, open on GitHub). `mockCatalog` now downloads from the mock server only.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
