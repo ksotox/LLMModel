@@ -268,7 +268,7 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 
 | # | Gap | Why it matters | Fix |
 |---|---|---|---|
-| R1 | The Pokémon TCG dataset's API shuts down on **2027-03-01**; it is the only source of the rarity counts behind pull chances | new sets lose pull chances | compute rarity counts from TCGdex; do it before that date |
+| R1 | The Pokémon TCG dataset's API shuts down on **2027-03-01**; it is the only source of the rarity counts behind pull chances | new sets lose pull chances | **done in M2:** rarity counts and checklist rarities from TCGdex's exact-match filters, dataset as fallback |
 | T1 | No CI | "checks passed" on PRs means nothing ran | GitHub Actions: `npm test` and e2e on PRs, plus a `windows-latest` smoke test of the launcher |
 | N1 | No HTTPS | no phone camera; cookies not `Secure` | A3's listener |
 | N2 | OpenCV and Tesseract run on the main thread | the page freezes while reading cards | A1's worker |

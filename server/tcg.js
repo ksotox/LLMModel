@@ -66,6 +66,35 @@ export class TcgClient {
     return this.#get(`/cards/${encodeURIComponent(this.#tcgdexId(tcgId))}`);
   }
 
+  /** Every rarity name TCGdex uses, spelled its way ("Double rare", "ACE SPEC Rare"…). */
+  rarities() {
+    return this.#get('/rarities', 7 * DAY);
+  }
+
+  /**
+   * Which cards of a set have each of `rarities`: { rarity: [localId…] }. TCGdex's card list has
+   * no rarity, but filters by any field: `set=eq:<id>&rarity=eq:<name>` lists exactly those cards
+   * (without `eq:` a filter means "contains", which would count "Double rare" as "Rare").
+   */
+  async cardsByRarity(setId, rarities) {
+    const out = {};
+    let next = 0;
+    const one = async () => {
+      while (next < rarities.length) {
+        const rarity = rarities[next++];
+        const list = await this.#get(`/cards?set=eq:${encodeURIComponent(setId)}&rarity=eq:${encodeURIComponent(rarity)}`, 7 * DAY);
+        if (list?.length) out[rarity] = list.map((c) => c.localId);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, rarities.length) }, one));
+    return out;
+  }
+
+  /** How many cards of each of `rarities` a set has: { rarity: count }. */
+  async rarityCounts(setId, rarities) {
+    return Object.fromEntries(Object.entries(await this.cardsByRarity(setId, rarities)).map(([r, ids]) => [r, ids.length]));
+  }
+
   /** Set ids to try for a set code and/or printed set total. */
   async #candidateSets(setCode, total) {
     if (this.lang === 'en') {

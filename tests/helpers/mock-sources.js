@@ -60,6 +60,15 @@ const CARDS = {
       ['060', 'Froakie', { hp: 70, types: ['Water'], rarity: 'Promo', noImage: true }],
     ],
   },
+  // A whole set that TCGdex lists with rarities (the dataset fixtures don't have it): its pull
+  // chances come from TCGdex's rarity counts. `rarityCounts` stands in for the cards themselves.
+  me01: {
+    name: 'Mega Evolution', series: 'me', serieName: 'Mega Evolution', official: 132,
+    rarityCounts: {
+      Common: 54, Uncommon: 38, Rare: 15, 'Double rare': 13, 'Ultra Rare': 10, 'Illustration rare': 12, 'Special illustration rare': 9, 'Mega Hyper Rare': 1,
+    },
+    cards: [['086', 'Mega Lucario ex', { hp: 340, types: ['Fighting'], rarity: 'Double rare' }]],
+  },
   sv01: {
     name: 'Scarlet & Violet', series: 'sv', official: 198,
     cards: [['066', 'Voltorb', { hp: 60, types: ['Lightning'], rarity: 'Common', variants: [{ type: 'normal' }, { type: 'reverse' }, { type: 'reverse', foil: 'pokeball' }] }]],
@@ -278,7 +287,22 @@ export function startMockSources({ tcgdexDown = false, ebayApproved = true } = {
       const s = DB[decodeURIComponent(m[1])];
       if (!s) return json(404, { error: 'not found' });
       const id = decodeURIComponent(m[1]);
-      return json(200, { id, name: s.name, cardCount: { total: s.official + 20, official: s.official }, cards: s.cards.map((c) => brief(id, c)) });
+      return json(200, {
+        id, name: s.name, cardCount: { total: s.official + 20, official: s.official }, cards: s.cards.map((c) => brief(id, c)),
+        ...(s.serieName ? { serie: { id: s.series, name: s.serieName } } : {}),
+      });
+    }
+    if (url.pathname === `/v2/${lang}/rarities`) {
+      return json(200, ['ACE SPEC Rare', 'Common', 'Double rare', 'Hyper rare', 'Illustration rare', 'Mega Hyper Rare', 'Promo', 'Rare', 'Special illustration rare', 'Ultra Rare', 'Uncommon']);
+    }
+    if (url.pathname === `/v2/${lang}/cards` && url.searchParams.has('rarity')) {
+      // TCGdex filters by any field; `eq:` is an exact match. Only what rarityCounts() sends is mocked.
+      const exact = (p) => (url.searchParams.get(p) ?? '').replace(/^eq:/, '');
+      const s = DB[exact('set')];
+      const n = s?.rarityCounts?.[exact('rarity')] ?? 0;
+      // The set's listed cards of that rarity first, then stand-ins up to the count.
+      const listed = (s?.cards ?? []).filter((c) => c[2].rarity === exact('rarity')).map((c) => ({ id: `${exact('set')}-${c[0]}`, localId: c[0], name: c[1] }));
+      return json(200, [...listed, ...Array.from({ length: Math.max(0, n - listed.length) }, (_, i) => ({ id: `${exact('set')}-x${i}`, localId: `x${i}`, name: 'card' }))]);
     }
     if (url.pathname === `/v2/${lang}/cards`) {
       const q = (url.searchParams.get('name') ?? '').toLowerCase();

@@ -58,11 +58,18 @@ export async function setChecklist(catalog, store, userId, lang, setId, { values
   const official = set.cardCount?.official ?? null;
   const mine = store.cardsInSet(userId, code);
 
-  // Rarities come from the Pokémon TCG dataset (one file per set, English only).
+  // Rarities come from the Pokémon TCG dataset (one file per set, English only). Sets it doesn't
+  // have (new ones: it stops getting sets when its API closes, 2027-03-01) ask TCGdex, one
+  // filtered list per rarity name.
   const rarities = new Map();
   if (lang === 'en') {
     const ptcgSet = (await catalog.ptcg.sets().catch(() => [])).find((s) => s.ptcgoCode === code);
     for (const c of ptcgSet ? await catalog.ptcg.cards(ptcgSet.id).catch(() => []) : []) rarities.set(num(c.number), c.rarity ?? null);
+    if (!rarities.size) {
+      const names = (await catalog.tcgdex.rarities().catch(() => null)) ?? [];
+      const byRarity = await catalog.tcgdex.cardsByRarity(set.id, names).catch(() => ({}));
+      for (const [rarity, ids] of Object.entries(byRarity)) for (const id of ids) rarities.set(num(id), rarity);
+    }
   }
 
   const cards = set.cards.map((c) => {
