@@ -76,6 +76,7 @@ The red bar at the top has four buttons:
 | **Sets** | How complete each expansion is, with every card you own and still need |
 | **Pre-grade** | An experimental condition check of a card from a front and back photo |
 | **PokéBattles** | Your Pokémon cards come to life in 3D: try their moves, or battle two of them |
+| **Scan deck** | Scan many cards at once with the camera (or deck photos), check each one, then save them |
 | **Search** | Any Pokémon card, including ones you don't own yet |
 | **+ Add** | Add cards from photos (or packs) |
 
@@ -484,6 +485,23 @@ The app runs on your computer, and your phone opens it in its browser.
 Sign in with your profile on the phone too.
 
 **Away from home:** install **Tailscale** (free) on both the computer and the phone, and open `http://<computer-name>:3000`. Don't expose the app to the internet with port forwarding, even with a password.
+
+**Live camera on the phone (Scan deck):** phones only allow the camera on secure (HTTPS) pages. Without this, **Scan deck** still works with **Upload deck photos**.
+
+1. In PowerShell on the computer, get a certificate for its Tailscale name: `tailscale cert <computer-name>.<your-tailnet>.ts.net`. It writes a `.crt` and a `.key` file.
+2. Tell the app where they are, then restart it:
+   ```powershell
+   [Environment]::SetEnvironmentVariable("POKEDEX_TLS_CERT", "C:\path\to\<name>.crt", "User")
+   [Environment]::SetEnvironmentVariable("POKEDEX_TLS_KEY", "C:\path\to\<name>.key", "User")
+   ```
+   Set both. If only one is set, the app stops at start-up and says so.
+3. On the phone, open `https://<computer-name>.<your-tailnet>.ts.net:3443`. To use another port, set `HTTPS_PORT`.
+
+**Scanning tips:**
+- Lay the cards flat with space between them, start with 5–10 visible cards, and move slowly.
+- Check every card before saving: tick **I checked the card, finish and physical copy count**.
+- The picture check is a simple image fingerprint, so a card with similar artwork can look alike.
+- Accuracy on a real deck, and on an iPhone, hasn't been measured yet. Please report how it goes.
 
 ---
 

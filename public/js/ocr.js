@@ -146,7 +146,14 @@ const NAME_TIGHT = [0.15, 0.025, 0.6, 0.09];
 const TRAINER_NAME = [0.04, 0.085, 0.74, 0.135]; // Trainer and Energy cards print the name lower
 
 /** Read a straightened card. Returns { names: [...], lines: [...] } for /api/identify. */
-export async function readCardText(card) {
+let readQueue = Promise.resolve();
+export function readCardText(card) {
+  const task = readQueue.then(() => readCardTextNow(card));
+  readQueue = task.catch(() => {});
+  return task;
+}
+
+async function readCardTextNow(card) {
   const { worker } = await ocrWorker();
   const read = async (canvas, whitelist = '') => {
     await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: whitelist });

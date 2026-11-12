@@ -55,7 +55,7 @@ export function createAuth(store, { secureCookie = false } = {}) {
   const failed = (key) => failures.set(key, [...(failures.get(key) ?? []), Date.now()].slice(-10));
 
   const setCookie = (res, token) => {
-    res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secureCookie ? '; Secure' : ''}`);
+    res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secureCookie || res.req?.secure ? '; Secure' : ''}`);
   };
 
   return {

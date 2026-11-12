@@ -1,3 +1,4 @@
+import { printingFields, PRINTING_DEFAULTS, printingSummary } from './printing.js';
 // Adding to the collection: upload one or many card photos (optionally splitting a photo with several
 // cards in it) and, optionally, the pack / tin / kit / bundle they were pulled from.
 
@@ -196,7 +197,7 @@ const STATUS = {
 };
 
 // Same grouping as the server's: the official card (or name + set + number) and the printing.
-const dupKey = (c) => `${c.tcg_id ?? `${String(c.name ?? '').trim().toLowerCase()}|${String(c.set_code ?? '').toUpperCase()}|${String(c.number ?? '').replace(/^0+/, '')}`}#${c.variant ?? 'normal'}`;
+const dupKey = (c) => `${c.tcg_id ?? `${String(c.name ?? '').trim().toLowerCase()}|${String(c.set_code ?? '').toUpperCase()}|${String(c.number ?? '').replace(/^0+/, '')}`}#${c.variant ?? 'normal'}#${Object.entries(PRINTING_DEFAULTS).map(([k, v]) => c[k] ?? v).join('#')}`;
 
 export async function renderAddCards(root, meta, navigate, { packId } = {}) {
   warmUpCardFinder(); // load the card finder in the background before the first photo
@@ -321,6 +322,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       name: typed.name ?? '',
       set_code: typed.set_code ?? '',
       number: typed.number ?? '',
+      ...Object.fromEntries(Object.entries(PRINTING_DEFAULTS).map(([k, v]) => [k, previous[k] ?? v])),
       variant: previous.variant ?? 'normal',
       variantTouched: previous.variantTouched ?? false,
       packRef: previous.packTouched ? previous.packRef : defaultPack(),
@@ -567,6 +569,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         h('div.field-row',
           field('Variant', variant),
           field('Pulled from', card.packSelect)),
+        printingFields(card, h),
         variantHint,
         retakeAdvice(quality) && h('p.retake-note', { role: 'note' }, retakeAdvice(quality)),
         readNote,
@@ -669,10 +672,11 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
 
   const describe = (c) => {
     const d = details(c);
-    return [d.name, [d.set_code, d.number && (d.set_total ? `${d.number}/${d.set_total}` : d.number)].filter(Boolean).join(' '), d.variant !== 'normal' && (VARIANT_LABELS[d.variant] ?? d.variant)].filter(Boolean).join(' · ');
+    return [d.name, [d.set_code, d.number && (d.set_total ? `${d.number}/${d.set_total}` : d.number)].filter(Boolean).join(' '), d.variant !== 'normal' && (VARIANT_LABELS[d.variant] ?? d.variant), printingSummary(d)].filter(Boolean).join(' · ');
   };
   const details = (c) => ({
     name: c.name.trim() || c.match?.name, set_code: c.set_code.trim() || c.match?.setCode || null, ...splitNumber(c.number),
+    ...Object.fromEntries(Object.keys(PRINTING_DEFAULTS).map((k) => [k, c[k]])),
     variant: c.variant, tcg_id: c.match?.tcgId ?? null,
   });
 
@@ -754,6 +758,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
           name: c.name.trim() || m?.name,
           set_code: c.set_code.trim() || m?.setCode || null,
           ...splitNumber(c.number),
+          ...Object.fromEntries(Object.keys(PRINTING_DEFAULTS).map((k) => [k, c[k]])),
           variant: c.variant,
           pack_id: resolvePack(c.packRef),
           ...(m ? { tcg_id: m.tcgId, set_id: m.setId, set_name: m.setName, official_image_url: m.image } : {}),

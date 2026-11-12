@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { PRINTING_DEFAULTS } from '../public/js/printing.js';
 import { addColumn, migrate } from './migrations.js';
 
 const SCHEMA = `
@@ -137,15 +138,16 @@ export const STATUSES = ['keep', 'trade', 'sell'];
 
 // The same card (official card + printing), for grouping copies and spotting duplicates: the
 // official card id, or for cards not linked yet their name, set code and number.
-const keyOf = (a) => `COALESCE(${a}.tcg_id, LOWER(${a}.name) || '|' || IFNULL(UPPER(${a}.set_code), '') || '|' || IFNULL(LTRIM(${a}.number, '0'), '')) || '#' || IFNULL(${a}.variant, 'normal')`;
-const keyFromValues = () => "COALESCE(?, LOWER(?) || '|' || IFNULL(UPPER(?), '') || '|' || IFNULL(LTRIM(?, '0'), '')) || '#' || IFNULL(?, 'normal')";
-const keyValues = (c) => [c.tcg_id || null, c.name ?? '', c.set_code || null, c.number ? String(c.number).split('/')[0] : null, c.variant || null];
+const printingKey = (a) => Object.entries(PRINTING_DEFAULTS).map(([k, v]) => ` || '#' || COALESCE(${a}.${k}, '${v}')`).join('');
+const keyOf = (a) => `COALESCE(${a}.tcg_id, LOWER(${a}.name) || '|' || IFNULL(UPPER(${a}.set_code), '') || '|' || IFNULL(LTRIM(${a}.number, '0'), '')) || '#' || IFNULL(${a}.variant, 'normal')${printingKey(a)}`;
+const keyFromValues = () => "COALESCE(?, LOWER(?) || '|' || IFNULL(UPPER(?), '') || '|' || IFNULL(LTRIM(?, '0'), '')) || '#' || IFNULL(?, 'normal')" + Object.values(PRINTING_DEFAULTS).map((v) => ` || '#' || COALESCE(?, '${v}')`).join('');
+const keyValues = (c) => [c.tcg_id || null, c.name ?? '', c.set_code || null, c.number ? String(c.number).split('/')[0] : null, c.variant || null, ...Object.keys(PRINTING_DEFAULTS).map((k) => c[k] ?? null)];
 const truthy = (v) => v === true || v === '1' || v === 1 || v === 'true';
 
 export const PACK_KINDS = ['booster-pack', 'tin', 'kit', 'bundle', 'elite-trainer-box', 'collection-box', 'blister', 'booster-box', 'other'];
-export const VARIANTS = ['normal', 'reverse-holo', 'holo', 'full-art', 'promo', 'other'];
+export const VARIANTS = ['normal', 'reverse-holo', 'holo', 'full-art', 'metallic', 'lenticular', 'mirror', 'promo', 'other'];
 
-const CARD_FIELDS = ['name', 'set_code', 'set_id', 'set_name', 'number', 'set_total', 'variant', 'rarity', 'category', 'hp', 'types',
+const CARD_FIELDS = [...Object.keys(PRINTING_DEFAULTS), 'scan_token', 'name', 'set_code', 'set_id', 'set_name', 'number', 'set_total', 'variant', 'rarity', 'category', 'hp', 'types',
   'tcg_id', 'official_image_url', 'official_image_path', 'photo_path', 'pack_id', 'notes', ...Object.keys(CARD_MIGRATIONS)];
 const PACK_FIELDS = ['name', 'kind', 'set_name', 'notes', 'photo_path', 'user_id'];
 
@@ -164,6 +166,11 @@ export const MIGRATIONS = [
     addColumn(db, 'packs', 'user_id', 'INTEGER');
     db.exec('CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id, deleted_at)');
     addColumn(db, 'pricetracker_cache', 'picture_checked_at', 'TEXT');
+  },
+  (db) => {
+    for (const [key, value] of Object.entries(PRINTING_DEFAULTS)) addColumn(db, 'cards', key, `TEXT NOT NULL DEFAULT '${value}'`);
+    addColumn(db, 'cards', 'scan_token', 'TEXT');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_scan_token ON cards(user_id, scan_token) WHERE scan_token IS NOT NULL');
   },
 ];
 
@@ -221,6 +228,10 @@ class Store {
   }
 
   // ---- cards ----
+
+  scannedCard(userId, token) {
+    return token ? this.db.prepare('SELECT * FROM cards WHERE user_id IS ? AND scan_token = ?').get(userId, token) : null;
+  }
 
   insertCard(data) {
     return this.#insert('cards', CARD_FIELDS, data);
@@ -445,9 +456,9 @@ class Store {
 
   /** Today's price of the same card and printing, if another copy was already priced today. */
   sharedPrice(card, day) {
-    if (!card.tcg_id) return null;
+    if (!card.tcg_id || ['metallic', 'lenticular', 'mirror'].includes(card.variant) || Object.entries(PRINTING_DEFAULTS).some(([k, v]) => card[k] && card[k] !== v)) return null;
     return this.db.prepare(`SELECT rarity, pull_chance, pull_source, market_price, market_currency, market_low, market_high, market_source, market_updated
-      FROM cards WHERE tcg_id = ? AND IFNULL(variant, 'normal') = ? AND id <> ? AND substr(market_checked_at, 1, 10) = ? AND market_price IS NOT NULL
+      FROM cards WHERE tcg_id = ? AND IFNULL(variant, 'normal') = ? ${Object.entries(PRINTING_DEFAULTS).map(([k, v]) => `AND ${k} = '${v}'`).join(' ')} AND id <> ? AND substr(market_checked_at, 1, 10) = ? AND market_price IS NOT NULL
       ORDER BY market_checked_at DESC LIMIT 1`).get(card.tcg_id, card.variant || 'normal', card.id ?? -1, day) ?? null;
   }
 

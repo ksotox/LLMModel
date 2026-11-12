@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { PRINTING_OPTIONS, PRINTING_DEFAULTS, normalizeStamp } from '../public/js/printing.js';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -149,6 +150,8 @@ export function createApp({
 
   /** Rarity, estimated pull chance and market price. Never throws; missing parts stay empty. */
   const withMarket = async (card) => {
+    // Broad catalog prices cannot price a particular pattern, stamp or edition.
+    if (['metallic', 'lenticular', 'mirror'].includes(card.variant) || Object.entries(PRINTING_DEFAULTS).some(([k, v]) => card[k] && card[k] !== v)) return { ...card, market_price: null, market_low: null, market_high: null, market_currency: null, market_source: null, market_updated: null, market_checked_at: new Date().toISOString(), pull_chance: null, pull_source: null };
     let market;
     const checked = new Date().toISOString();
     try {
@@ -285,6 +288,12 @@ export function createApp({
     const name = String(c.name ?? '').trim();
     if (!name && !c.tcg_id) throw new HttpError(400, 'Every card needs a name (or a matched online card)');
     const card = { ...c, name };
+    for (const [key, values] of Object.entries(PRINTING_OPTIONS)) {
+      if (key === 'stamp' && card.stamp != null) { card.stamp = normalizeStamp(card.stamp); if (!card.stamp) throw new HttpError(400, 'Invalid stamp'); }
+      if (key !== 'stamp' && card[key] != null && !values.includes(card[key])) throw new HttpError(400, `Invalid ${key}`);
+      card[key] ??= PRINTING_DEFAULTS[key];
+    }
+    if (card.scan_token != null && !/^[a-zA-Z0-9-]{16,80}$/.test(card.scan_token)) throw new HttpError(400, 'Invalid scan token');
     if (card.variant && !VARIANTS.includes(card.variant)) card.variant = 'other';
     if (card.set_code) card.set_code = String(card.set_code).trim().toUpperCase();
     // Per-copy details: only known values, prices as numbers.
@@ -507,6 +516,22 @@ export function createApp({
     res.json({ ...result, match: withOwned(result.match), candidates: result.candidates.map(withOwned) });
   });
 
+  // Only catalog-owned image addresses, never a client-supplied download URL.
+  app.get('/api/catalog/cards/:id/scan-image', async (req, res) => {
+    const details = await catalog.details(req.params.id);
+    if (!details) throw new HttpError(404, 'Card not found');
+    const urls = [details.official_image_url, ...await catalog.fallbackImages(details).catch(() => [])].filter(Boolean);
+    for (const url of urls.slice(0, 3)) {
+      try {
+        const image = await catalog.download(url);
+        if (!/^image\/(png|jpeg|webp)$/.test(image.contentType) || image.buffer.length > 8 * 1024 * 1024) continue;
+        res.set('Cache-Control', 'private, max-age=86400').type(image.contentType).send(image.buffer);
+        return;
+      } catch { /* Try the next catalog source. */ }
+    }
+    throw new HttpError(404, 'Reference image unavailable');
+  });
+
   // Any card from the online sources, with rarity, pull chance and price (for the card search page).
   app.get('/api/catalog/cards/:id', async (req, res) => {
     let card;
@@ -672,7 +697,7 @@ export function createApp({
     const ids = req.query.ids ? String(req.query.ids).split(',') : undefined;
     const rows = store.listCards({ userId: req.user.id, ids, sort: 'set' });
     const cols = ['name', 'set_code', 'set_name', 'number', 'set_total', 'variant', 'language', 'rarity', 'condition', 'grade_company', 'grade',
-      'purchase_price', 'market_price', 'market_currency', 'storage_location', 'status', 'pack_name', 'notes', 'created_at', 'tcg_id'];
+      'purchase_price', 'market_price', 'market_currency', 'storage_location', 'status', 'pack_name', 'notes', 'created_at', 'tcg_id', ...Object.keys(PRINTING_DEFAULTS)];
     const cell = (v) => {
       const t = v == null ? '' : String(v);
       return /[",\n\r]|^[=+\-@]/.test(t) ? `"${t.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"` : t;
@@ -692,10 +717,14 @@ export function createApp({
   app.post('/api/cards', upload.any(), async (req, res) => {
     const files = filesByField(req);
     const input = parseList(req.body.cards, 'cards').map((c) => ({ ...cleanCard(c, req.user.id), user_id: req.user.id }));
+    const tokens = input.map((c) => c.scan_token).filter(Boolean);
+    if (new Set(tokens).size !== tokens.length) throw new HttpError(400, 'Each physical copy needs a distinct scan token');
     const prepared = [];
-    for (const card of input) prepared.push(await withOfficial(card));
-    const ids = insertWithPhotos(prepared, files, 'cards', (card) => store.insertCard({ ...card, user_id: req.user.id }));
-    const created = ids.map((id) => store.getCard(id));
+    for (const card of input) prepared.push(store.scannedCard(req.user.id, card.scan_token) ?? await withOfficial(card));
+    const fresh = prepared.filter((card) => !store.scannedCard(req.user.id, card.scan_token));
+    const ids = insertWithPhotos(fresh, files, 'cards', (card) => store.scannedCard(req.user.id, card.scan_token)?.id ?? store.insertCard({ ...card, user_id: req.user.id }));
+    const freshIds = new Map(fresh.map((card, i) => [card, ids[i]]));
+    const created = prepared.map((card) => store.getCard(store.scannedCard(req.user.id, card.scan_token)?.id ?? freshIds.get(card), req.user.id, { trash: true }));
     created.forEach(snapshotPrice);
     created.forEach((c) => tracker.rememberPictureSearch(c));
     // Each new card gets its diorama made in the background (by the browser, for free).
@@ -705,11 +734,12 @@ export function createApp({
 
   app.patch('/api/cards/:id', async (req, res) => {
     const existing = findCard(req.params.id, req);
+    if (req.body.scan_token !== undefined) throw new HttpError(400, 'Scan identity cannot be changed');
     let card = cleanCard({ ...existing, ...req.body, user_id: existing.user_id }, req.user.id);
     const relink = req.body.tcg_id !== undefined && req.body.tcg_id !== existing.tcg_id;
     const before = { ...existing, ...cleanNumber(existing), set_code: existing.set_code?.toUpperCase() ?? null };
     const moved = ['set_code', 'number', 'set_total'].some((k) => (card[k] ?? null) !== (before[k] ?? null));
-    const repriced = moved || (card.variant ?? null) !== (existing.variant ?? null);
+    const repriced = Object.keys(PRINTING_DEFAULTS).some((k) => card[k] !== existing[k]) || moved || (card.variant ?? null) !== (existing.variant ?? null);
     if (relink) {
       card = card.tcg_id ? await withOfficial(card) : { ...card, official_image_url: null, official_image_path: null };
     } else if (moved && existing.tcg_id) {
@@ -886,7 +916,7 @@ export function createApp({
   // Before saving new cards: how many of each the user already has (same official card and printing).
   app.post('/api/cards/duplicates', (req, res) => {
     const cards = Array.isArray(req.body?.cards) ? req.body.cards.slice(0, 500) : [];
-    const owned = store.ownedByKey(req.user.id, cards.map((c) => ({ ...c, ...cleanNumber(c), set_code: c.set_code ? String(c.set_code).toUpperCase() : null })));
+    const owned = store.ownedByKey(req.user.id, cards.map((c) => ({ ...c, stamp: normalizeStamp(c.stamp ?? 'none') ?? 'none', ...cleanNumber(c), set_code: c.set_code ? String(c.set_code).toUpperCase() : null })));
     res.json({ owned });
   });
 

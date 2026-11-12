@@ -1,3 +1,4 @@
+import { printingFields, printingSummary, PRINTING_DEFAULTS } from './printing.js';
 // Browsing views: the card collection, packs, a single pack, and the card detail dialog.
 
 import { api } from './api.js';
@@ -103,6 +104,7 @@ function cardTile(card, mode, onOpen, { compact = false, selecting = false, sele
       card.set_code && h('span.set-tag', card.set_code),
       card.language === 'ja' && h('span.lang-tag', { title: 'Japanese card' }, 'JP'),
       h('span', cardNumber(card) || card.set_name || '')),
+    printingSummary(card) && h('span.card-printing', printingSummary(card)),
     h('div.card-meta',
       h('div.card-market',
         card.rarity ? rarityBadge(card.rarity) : h('span.card-unmatched', { title: 'Open the card to link it to its official card' }, card.tcg_id ? 'No rarity yet' : 'Not matched yet'),
@@ -161,7 +163,7 @@ function cardTable(cards, { sort, onSort, onOpen, selecting, isSelected, onToggl
       h('td', c.set_code ?? c.set_name ?? ''),
       h('td', cardNumber(c)),
       h('td', c.rarity ? rarityBadge(c.rarity) : h('span.muted', '—')),
-      h('td', VARIANT_LABELS[c.variant] ?? c.variant ?? ''),
+      h('td', [VARIANT_LABELS[c.variant] ?? c.variant ?? '', printingSummary(c)].filter(Boolean).join(' · ')),
       h('td.num', c.quantity > 1 ? c.quantity : c.owned ?? 1),
       h('td', gradeLabel(c) ?? c.condition ?? h('span.muted', '—')),
       h('td.num', c.market_price != null ? formatPrice(c.market_price, c.market_currency) : h('span.muted', '—')))))));
@@ -684,11 +686,13 @@ export async function openCard(id, { onChange = () => {} } = {}) {
     const places = h('datalist', { id: 'storage-places' }, (meta.facets?.storage ?? []).map((p) => h('option', { value: p })));
     const status = h('select', [['keep', 'Keeping'], ['trade', 'For trade'], ['sell', 'For sale']].map(([v, t]) => h('option', { value: v }, t)));
     status.value = card.status ?? 'keep';
+    const printing = { ...card };
     const form = h('form.form',
       h('label.field', h('span', 'Name'), name),
       h('div.field-row', h('label.field', h('span', 'Set code'), code), h('label.field', h('span', 'Number'), num)),
       h('label.field', h('span', 'Set name'), setName),
       h('div.field-row', h('label.field', h('span', 'Variant'), variant), h('label.field', h('span', 'Pulled from'), pack)),
+      printingFields(printing, h),
       h('fieldset.inventory', h('legend', 'This copy'),
         h('div.field-row', h('label.field', h('span', 'Condition'), condition), h('label.field', h('span', 'Plans'), status)),
         h('div.field-row', h('label.field', h('span', 'Graded by'), gradeCompany), h('label.field', h('span', 'Grade'), grade)),
@@ -701,6 +705,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
       try {
         await refresh(await api.updateCard(card.id, {
           name: name.value, set_code: code.value, number: number || null, set_total: total || null,
+          ...Object.fromEntries(Object.keys(PRINTING_DEFAULTS).map((k) => [k, printing[k] ?? PRINTING_DEFAULTS[k]])),
           set_name: setName.value, variant: variant.value, pack_id: pack.value || null, notes: notes.value,
           condition: condition.value || null, status: status.value, grade_company: gradeCompany.value || null,
           grade: gradeCompany.value ? grade.value.trim() || null : null, purchase_price: cost.value === '' ? null : Number(cost.value),
@@ -771,7 +776,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
   }
 
   async function addCopy() {
-    const keep = ['name', 'set_code', 'set_name', 'number', 'set_total', 'variant', 'rarity', 'category', 'hp', 'types', 'tcg_id', 'official_image_url', 'language', 'pack_id'];
+    const keep = [...Object.keys(PRINTING_DEFAULTS), 'name', 'set_code', 'set_name', 'number', 'set_total', 'variant', 'rarity', 'category', 'hp', 'types', 'tcg_id', 'official_image_url', 'language', 'pack_id'];
     try {
       const [copy] = await api.createCards([Object.fromEntries(keep.map((k) => [k, card[k] ?? null]))]);
       changed = true;
@@ -793,6 +798,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
         row('Number', cardNumber(card)),
         row('Language', card.language === 'ja' ? 'Japanese' : null),
         row('Variant', VARIANT_LABELS[card.variant] ?? card.variant),
+        row('Printing details', printingSummary(card)),
         row('Category', card.category),
         row('HP', card.hp),
         row('Type', card.types),

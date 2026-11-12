@@ -589,6 +589,24 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - the card page shows the diorama, its state, and **Try again** / **Make a 3D diorama**.
 - **Tests:** server (import matching, one job per new card, price edits don't repeat it, relinking does, failure and retry, access), the generator's plain parts, and an e2e step: a card's diorama is made in the browser and shown in 3D Pop-out and on its page.
 
+## Phase 29: Live deck scanner (owner's patch)
+
+- **Applied:** the owner's patch `work/live-scanner.patch` (written for 75ec7b8). Everything applied as written except the `styles.css` hunk; its rules were appended by hand because M2 had changed the end of that file. The database migration is migration 2, the first after the baseline.
+- **Scan deck page** (`#/scan`, `public/js/scanner.js`, `public/js/scan/`):
+  - live camera or uploaded deck photos;
+  - stable-frame capture and repeat protection by artwork hash and catalog id;
+  - a review tray with + Copy / Separate printing, printing details, the "I checked…" review gate, session recovery in IndexedDB, and an exported accuracy report.
+- **Picture check:** perceptual hashes (64-bit) against catalog pictures from `/api/catalog/cards/:id/scan-image`, which fetches only catalog-owned addresses. It is not ONNX embeddings.
+- **Printing details** (`public/js/printing.js`): `foil_pattern`, `texture`, `stamp` (several, normalised) and `edition` are new card columns and part of the copy-grouping key. Prices and pull chances are left blank for special printings. New finishes: metallic, lenticular, mirror.
+- **Safe retries:** a scan save sends a `scan_token` per physical copy (unique per profile), so a lost response can be retried without duplicates.
+- **HTTPS:** optional, with `POKEDEX_TLS_KEY` + `POKEDEX_TLS_CERT` (+ `HTTPS_PORT`, default 3443). The session cookie is `Secure` on HTTPS requests.
+- **Validated:**
+  - `npm test`: 227 passed;
+  - `npm run test:scanner`: passed;
+  - `npm run test:e2e`: passed;
+  - `npm run bench:scan`: unchanged (93% found, 81% read, 0 confident-but-wrong).
+  - Accuracy on a physical deck and on an iPhone still needs checking by the owner.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
