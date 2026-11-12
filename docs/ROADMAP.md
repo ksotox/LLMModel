@@ -13,7 +13,7 @@ The owner's choices:
 - **AI models:** free models, downloaded once and run on the owner's devices, with a classic fallback.
 - **Earlier plan:** its unbuilt stages (battle graphics, phone bottom menu, tidier collection page) are folded in after the new work.
 
-**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is done (PR #17, merged); M2 is built (its own PR): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
+**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is done (PR #17), M2 is done (PR #18): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
 
 ## Where things stand (facts the executor needs)
 - **Repo:** `ksotox/LLMModel`, branch `claude/pokemon-collection-catalog-aw6vsc`, `main` at PR #15. Node ≥ 22.5, Express 5, `node:sqlite`, vanilla ES modules with no build step, three.js 0.180 served from `/vendor/three`.
@@ -315,7 +315,7 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 |---|---|---|---|
 | M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | done (PR #16) |
 | M1 | Detection v2 | A1, with the benchmark targets met | done (PR #17): 93% of 95%; orientation and the labelling page moved to M2 |
-| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | built: reading 72% → 81% (target 85%); R1 done; scanner tests page |
+| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | done (PR #18): reading 72% → 81% (target 85%); R1 done; scanner tests page |
 | M3 | Phone live scanner | A3 (HTTPS and the scanner screen); S1's localhost-by-default switch | |
 | M4 | Pop-out for all, classic | B1, B2, and B3 without AI; B4's grid display and queue | |
 | M5 | Pop-out with AI | B5's models for cut-out and depth; the relief picture and card-page parallax | |
