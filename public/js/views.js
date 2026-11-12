@@ -11,6 +11,7 @@ import {
 } from './ui.js';
 import { artworkForCard, isPopoutOn, popoutImageNodes, popoutToggle, setPopoutOn } from './pokemon-popout.js';
 import { watchModelSlot } from './popoutRender.js';
+import { dioramaSection, dioramaUrl, refreshDioramas } from './dioramas.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -75,18 +76,20 @@ function cardTile(card, mode, onOpen, { compact = false, selecting = false, sele
   const secondary = primary === official ? photo : official;
   const qty = card.quantity > 1 ? card.quantity : card.owned > 1 && !card.ids ? card.owned : 0;
   // 3D Pop-out: official pictures only, and not while selecting (plain tiles are easier to tick).
-  const popout = mode === 'official' && isPopoutOn() && Boolean(primary) && !selecting;
+  const popoutMode = mode === 'official' && isPopoutOn() && !selecting;
+  const diorama = popoutMode ? dioramaUrl(card) : null; // this copy's own diorama (assets/card-effects or made here)
+  const popout = popoutMode && (Boolean(primary) || Boolean(diorama));
   const popArt = popout ? artworkForCard(card) : null;
   return h('button.card-tile', {
     type: 'button',
-    class: [compact ? 'compact' : '', selected ? 'selected' : '', popout ? `pfx-on pfx-${popArt.effect}` : '', popArt?.scene ? 'pfx-scene-mode' : ''].join(' '),
+    class: [compact ? 'compact' : '', selected ? 'selected' : '', popout ? `pfx-on pfx-${popArt.effect}` : '', popArt?.scene || diorama ? 'pfx-scene-mode' : ''].join(' '),
     'aria-pressed': selecting ? String(selected) : undefined,
     onclick: () => (selecting ? onToggle(card) : onOpen(card)),
     'aria-label': `${card.name} ${cardNumber(card)}`,
   },
   h('div.card-img',
     popout
-      ? popoutImageNodes(h, card, primary, secondary, { compact, onModelSlot: watchModelSlot })
+      ? popoutImageNodes(h, card, primary, secondary, { compact, onModelSlot: watchModelSlot, diorama })
       : [
         primary ? h('img', { src: primary, alt: '', loading: 'lazy' }) : h('div.card-noimg', card.name),
         !compact && secondary && h('img.card-inset', { src: secondary, alt: '', loading: 'lazy', title: secondary === photo ? 'Your photo' : 'Official card' }),
@@ -283,7 +286,7 @@ export async function renderCollection(root, meta, navigate, params) {
     segmented('View', [['compact', 'Compact'], ['detailed', 'Detailed'], ['table', 'Table']], prefs.view, (v) => { prefs.view = v; savePrefs({ ...prefs }); renderViewControls(); draw(); }),
     prefs.view !== 'table' && segmented('Density', [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['large', 'Large']], prefs.density, (v) => { prefs.density = v; savePrefs({ ...prefs }); renderViewControls(); draw(); }),
     prefs.view !== 'table' && modeToggle(mode, (m) => { mode = m; draw(); }),
-    prefs.view !== 'table' && popoutToggle(h, isPopoutOn(), (on) => { setPopoutOn(on); draw(); }),
+    prefs.view !== 'table' && popoutToggle(h, isPopoutOn(), (on) => { setPopoutOn(on); (on ? refreshDioramas() : Promise.resolve()).then(draw); }),
     h('label.check', h('input', { type: 'checkbox', checked: prefs.group, onchange: (e) => { prefs.group = e.target.checked; savePrefs({ ...prefs }); load(); } }), ' Group copies'),
     h('button.btn.small', { type: 'button', class: selecting ? 'active' : '', onclick: () => { selecting = !selecting; if (!selecting) selected.clear(); renderViewControls(); draw(); } }, selecting ? 'Done selecting' : 'Select'));
 
@@ -331,10 +334,18 @@ export async function renderCollection(root, meta, navigate, params) {
     drawBulkBar();
   };
 
+  // A diorama finished (made on this device): show it in the 3D Pop-out grid.
+  const onDioramas = () => {
+    if (!results.isConnected) { window.removeEventListener('dioramas-changed', onDioramas); return; }
+    if (isPopoutOn()) draw();
+  };
+  window.addEventListener('dioramas-changed', onDioramas);
+
   const load = async () => {
     page = 1;
     loading = true;
     try {
+      if (isPopoutOn()) await refreshDioramas();
       const res = await api.cardsPage(query(1));
       loaded = res.cards;
       total = res.total;
@@ -551,6 +562,7 @@ export async function renderPack(root, meta, navigate, id) {
   const reload = () => renderPack(root, meta, navigate, id);
 
   const load = async () => {
+    if (isPopoutOn()) await refreshDioramas();
     const cards = await api.cards({ packId: pack.id, q: search.value });
     clear(results, cardGrid(cards, mode, (c) => openCard(c.id, { onChange: reload }),
       h('div.empty', h('p', search.value ? 'No cards match your search.' : 'No cards linked to this pack yet.'),
@@ -841,6 +853,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
         h('p.muted', [card.set_code, cardNumber(card)].filter(Boolean).join(' · ')),
         view === 'edit' ? null : marketSection(),
         info,
+        view === 'edit' ? null : diorama,
         extra),
       priceHistory,
       ebay);
@@ -848,6 +861,7 @@ export async function openCard(id, { onChange = () => {} } = {}) {
 
   // Created once, so it keeps its state (filters, chart view) when the rest of the dialog redraws.
   const priceHistory = historySection(card);
+  const diorama = dioramaSection(card);
   const ebay = ebaySection(card);
   render();
   // Prices move: refresh in the background when the stored one is missing or more than a day old.

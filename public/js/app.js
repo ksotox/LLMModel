@@ -8,6 +8,7 @@ import { clear, h } from './ui.js';
 import { renderSet, renderSets } from './sets.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
 import { renderScanTests } from './scanLabels.js';
+import { startDioramaMaker } from './dioramas.js';
 
 const main = document.getElementById('view');
 let renderSeq = 0;
@@ -92,10 +93,14 @@ function signedIn(user, { reroute = true } = {}) {
   document.body.classList.remove('signed-out');
   applyTheme(user?.settings?.theme);
   if (loginRequired) accountMenu(account, user, { onSignOut: () => signedOut(), onUserChange: (u) => { currentUser = u; window.currentUser = u; } });
+  // New cards' 3D Pop-out dioramas are made in the background on this device (dioramas.js).
+  stopDioramas = startDioramaMaker();
   if (reroute) route();
 }
+let stopDioramas = () => {};
 
 function signedOut() {
+  stopDioramas();
   currentUser = null;
   document.body.classList.add('signed-out');
   clear(account);

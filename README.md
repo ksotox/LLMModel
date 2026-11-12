@@ -182,6 +182,16 @@ With 100 credits, that's roughly 30 cards refreshed a day. Every answer is also 
 
 > PokemonPriceTracker's API layout differs between its docs pages, so the app reads several layouts. If something doesn't show up with your key, the card page shows the error message it received.
 
+## Card dioramas (3D Pop-out)
+
+In 3D Pop-out, a card with its own diorama shows it: the card on a glowing pedestal, with its character bursting out of it.
+- **The 27 delivered dioramas** are in `assets/card-effects/` as WebP copies of the delivered PNGs, with `manifest.json`. They were made for the owner's collection, so their ids are the collection's own card ids. On start-up, each is copied into `data/card-effects/`, but only for the card with that id and the same name or card id. Copies 7 and 17, both Armarouge, each keep their own.
+- **New cards** get a diorama made for free on this device:
+  - **How:** `public/js/dioramaMaker.js` draws it with canvas from the card's official picture. The character is cut out of the artwork with OpenCV's GrabCut. The pedestal, holo frame, ribbons and particles use the card's type colours.
+  - **No paid service:** no AI image service or key is involved.
+  - **Jobs:** the server keeps one per card (`server/cardDioramas.js`: pending → ready or failed). A card's job is made once per identity. Changing its price or storage never makes it again; relinking it to another card does. A failure waits for **Try again** on the card's page.
+  - **When:** the app makes them in the background while it's open and visible.
+
 ## How cards are cut out and read
 
 Both run inside your browser, so your photos aren't sent to any outside service. The tools are served by the app itself: [OpenCV.js](https://docs.opencv.org/) for finding cards and [Tesseract.js](https://tesseract.projectnaptha.com/) for reading text, about 25 MB downloaded once and then cached by the browser.

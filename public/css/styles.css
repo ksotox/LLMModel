@@ -893,3 +893,8 @@ a.set-tile[href]:hover { transform: translateY(-2px); }
 .scan-test-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-bottom: 12px; }
 .scan-test-card { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: start; }
 .scan-test-card img { width: 72px; border-radius: 6px; }
+
+/* ---------- Card dioramas (card page) ---------- */
+.diorama-section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+.diorama-section > strong { width: 100%; }
+.diorama-thumb { width: 160px; max-width: 45%; border-radius: 10px; background: var(--surface-2); }

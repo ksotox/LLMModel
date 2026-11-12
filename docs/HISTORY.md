@@ -562,6 +562,33 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - `bench:scan` reads these photos as the `own` group (it follows `DATA_DIR`).
   - The benchmark gained an upside-down group.
 
+## Phase 28: Card dioramas in 3D Pop-out (owner's card-effects package)
+
+- **The package:** 27 diorama PNGs (made with an image model, outside the app), the owner's card records, a manifest, and a Python generator for OpenAI's paid image API.
+- **The owner's choices:**
+  - store the 27 as WebP in the repository (about 10 MB instead of 70 MB);
+  - show them in 3D Pop-out;
+  - make new ones with a free method of our own, so the paid generator isn't used.
+- **Delivered dioramas:**
+  - `assets/card-effects/<id>.webp` + `manifest.json`; every PNG's SHA-256 was checked against the package's manifest first.
+  - `CardDioramas.importBundled()` copies each into `data/card-effects/` only for the collection card with that id and the same name or card id.
+  - The ids are the owner's own collection ids; two Armarouge copies keep separate pictures.
+- **Free generator** (`public/js/dioramaMaker.js`):
+  - **Look:** lavender studio, metal pedestal with a glowing ring and Poké Ball emblem, the card in a holographic frame, ribbons and particles in the type's colours, and a small card at the lower right.
+  - **Cut-out:** OpenCV GrabCut on the picture window, keeping the largest shape, and rejected when it takes the whole background (more than 52% of the window, or along its edges).
+  - **Speed:** 1–4 s per card in the browser.
+- **Jobs** (`server/cardDioramas.js`, table `card_dioramas`, created in the schema rather than a numbered migration):
+  - a new card is queued once; a fingerprint of name, card id, category, types and picture decides when to make it again (never for price or storage);
+  - stale uploads are refused (409); a claimed job is leased for 3 minutes;
+  - a failure stays failed until **Try again**;
+  - only the card's owner sees its jobs and pictures;
+  - dioramas of purged cards are removed.
+- **In the app:**
+  - `public/js/dioramas.js` runs the maker in the background while the app is visible and is woken when cards are saved;
+  - 3D Pop-out shows a copy's diorama as a finished scene, ahead of the 3D model;
+  - the card page shows the diorama, its state, and **Try again** / **Make a 3D diorama**.
+- **Tests:** server (import matching, one job per new card, price edits don't repeat it, relinking does, failure and retry, access), the generator's plain parts, and an e2e step: a card's diorama is made in the browser and shown in 3D Pop-out and on its page.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

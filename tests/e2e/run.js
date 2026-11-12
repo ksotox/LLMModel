@@ -592,6 +592,8 @@ try {
   await page.getByRole('button', { name: '← Back' }).click();
 
   step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
+  // (Cards without a diorama: the list of dioramas is emptied for this step; the next one has them.)
+  await page.route('**/api/card-effects', (r) => r.fulfill({ json: { cards: {} } }));
   await page.goto(`${base}/#/`);
   await page.locator('.card-tile').nth(5).waitFor();
   await page.locator('.pfx-toggle').click();
@@ -623,6 +625,20 @@ try {
   await page.getByRole('button', { name: 'Done selecting' }).click();
   await page.locator('.pfx-toggle').click();
   await page.waitForFunction(() => document.querySelectorAll('.card-tile').length === 6 && !document.querySelector('.card-tile.pfx-on, .pfx-grid'));
+  await page.unroute('**/api/card-effects');
+
+  step('dioramas: each new card gets one made on this device (free), shown in 3D Pop-out and on its page');
+  await page.locator('.pfx-toggle').click();
+  const dioramaTile = page.locator('.card-tile.pfx-on.pfx-scene-mode', { hasText: 'Voltorb' }).first();
+  await dioramaTile.locator('img.pfx-scene[src*="/api/card-effects/images/"]').waitFor({ timeout: 180000 });
+  const made = fs.readdirSync(path.join(dataDir, 'card-effects')).filter((f) => f.endsWith('.webp'));
+  assert.ok(made.length >= 1, 'saved in the data folder');
+  await shot('31-dioramas');
+  await dioramaTile.click();
+  await page.locator('dialog .diorama-section img.diorama-thumb').waitFor({ timeout: 30000 });
+  await page.keyboard.press('Escape');
+  await page.locator('.pfx-toggle').click();
+  await page.waitForFunction(() => !document.querySelector('.pfx-grid'));
 
   step('restart the server: everything is still there');
   await srv.stop();

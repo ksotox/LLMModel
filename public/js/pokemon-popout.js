@@ -1,7 +1,8 @@
 // "3D Pop-out" for the card gallery (from the owner's artwork pop-out package). With the switch on,
 // each tile shows its card standing on a glowing pedestal with an aura and sparkles, and the
 // Pokémon coming out of it:
-//   1. cards with prepared scene art (registerArtwork; four ship with the app) show that scene;
+//   1. a copy with its own diorama (delivered, or made on this device: dioramas.js) shows it; cards
+//      with prepared scene art (registerArtwork; four ship with the app) show that scene;
 //   2. other Pokémon cards get their 3D model drawn standing in front of the card (popoutRender.js);
 //   3. anything else (Trainers, Energy, no model, no WebGL) keeps the tilted card with its glow.
 // Pure helpers at the top (no DOM), so tests can import them.
@@ -84,8 +85,9 @@ export function popoutToggle(h, on, onChange) {
  * The picture part of a tile with the pop-out on (the rest of the tile is unchanged).
  * `onModelSlot(img, card)` is called with the empty image that the 3D picture will fill.
  */
-export function popoutImageNodes(h, card, cardImage, secondaryImage, { compact = false, onModelSlot } = {}) {
-  const art = artworkForCard(card);
+export function popoutImageNodes(h, card, cardImage, secondaryImage, { compact = false, onModelSlot, diorama = null } = {}) {
+  // A copy's own diorama (server/cardDioramas.js) is a finished scene, like the prepared ones.
+  const art = diorama ? { ...artworkForCard(card), scene: diorama } : artworkForCard(card);
   const scene = Boolean(art.scene);
   let modelSlot = null;
   if (!scene && !art.foreground && hasPokemon(card) && onModelSlot) {
