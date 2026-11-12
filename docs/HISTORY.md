@@ -545,6 +545,23 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Quality:** `vision/quality.js` measures each cut-out card's blur (Laplacian variance), glare (blown-out share) and size, and the Add page shows "Retake suggested: …" with a tip. Thresholds come from the benchmark.
 - **Benchmark:** synthetic detection 46% → 93% (target 95%; misses: patterned cloth with sleeves or blur). The reference photos stay at 100%; `bench:scan` now also reports the longest main-thread task. Orientation by read confidence and the labelling page moved to M2.
 
+## Phase 26: Roadmap M2, reading v2 and rarity counts from TCGdex
+
+- **R1, rarity counts from TCGdex:** the Pokémon TCG dataset gets no new sets after its API closes (2027-03-01).
+  - TCGdex's card list has no rarity, but its filters do exact matches: `/cards?set=eq:<id>&rarity=eq:<name>`, one per name from `/rarities`. This was confirmed in TCGdex's own `QueryEngine/parsers.ts`: without `eq:` a value means "contains".
+  - `catalog.rarityProfile()` uses TCGdex when it lists the whole set (counted cards ≥ 90% of the total), else the dataset.
+  - Checklists ask TCGdex for rarities when the dataset lacks the set.
+- **Reading:**
+  - the set line is located by its text (`vision/textline.js`, row-wise contrast) and read beside the fixed band;
+  - name-only search when no set code was read;
+  - a one-digit-off number in a matching set suggests the card for checking (never auto-linked);
+  - unmatched cards are read turned round automatically.
+  - Cards read correctly went from 72% to 81%. Two ideas were measured and dropped (see ROADMAP A5).
+- **Scanner tests (owner):** Profile → Scanner tests (`#/scan-tests`) marks the cards in your own photos with the crop editor, pre-filled by the scanner's reading. Save keeps the photo and labels in `<data>/scan-bench/` (`/api/scan-labels`, owner only).
+  - This is the one place the server keeps a whole photo. The owner chose it, and it is noted in MEMORY.md's rules.
+  - `bench:scan` reads these photos as the `own` group (it follows `DATA_DIR`).
+  - The benchmark gained an upside-down group.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

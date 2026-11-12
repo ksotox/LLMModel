@@ -648,6 +648,27 @@ try {
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
 
+  step('scanner tests (owner): mark the cards in your own photo, save it for the benchmark, delete it');
+  await page.goto(`${base}/#/profile`);
+  await page.getByRole('link', { name: 'Open scanner tests' }).click();
+  await page.getByRole('heading', { name: 'Scanner tests' }).waitFor();
+  await page.getByText('No test photos yet.').waitFor();
+  await page.locator('input[type=file]:not([capture])').setInputFiles(REF('three-cards.jpg'));
+  await page.getByRole('button', { name: 'Use these 3 cards' }).click();
+  await page.getByRole('heading', { name: 'Check each card' }).waitFor({ timeout: 120000 });
+  const names = await page.locator('.scan-test-card').getByLabel('Name').evaluateAll((els) => els.map((e) => e.value));
+  assert.deepEqual(names, ['Voltorb', 'Punk Helmet', 'Linoone'], 'pre-filled from the scanner’s reading');
+  await page.getByRole('button', { name: 'Save to my scanner tests' }).click();
+  await page.locator('.scan-test', { hasText: 'Voltorb, Punk Helmet, Linoone' }).waitFor();
+  const labels = JSON.parse(fs.readFileSync(path.join(dataDir, 'scan-bench', 'labels.json'), 'utf8'));
+  assert.equal(labels.photos[0].cards.length, 3, 'saved where bench:scan reads them');
+  await shot('17-scanner-tests');
+  await page.locator('.scan-test').getByRole('button', { name: 'Delete' }).click();
+  await page.locator('dialog').getByRole('button', { name: 'Delete' }).click();
+  await page.getByText('No test photos yet.').waitFor();
+  await page.goto(`${base}/#/`);
+  await page.locator('.card-tile').first().waitFor();
+
   step('AI runtime: a model runs in the page and in a background worker (served locally, no CDN)');
   const ai = await page.evaluate(async (model) => {
     const { loadOrt } = await import('/js/ai/runtime.js');

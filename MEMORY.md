@@ -54,7 +54,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Free sources only.** No scraping of eBay or other sites (against their terms). eBay sold data
   comes from the official Insights API (needs eBay approval) or from the user copying and pasting
   eBay's own sold search.
-- **Photos stay in the browser** for detection and OCR. The server only gets the cropped card and text readings.
+- **Photos stay in the browser** for detection and OCR; the server gets cropped cards and text. Owner-approved
+  exception: Profile → Scanner tests saves a photo to `data/scan-bench/` on Save (`server/scanLabels.js`).
 - **Never overwrite what the user typed** with automatic readings. Auto-match only when the name agrees.
 - **Pull chance and prices are estimates.** Say so in the UI.
 - **Prices are shown in USD only** (owner's choice): TCGplayer via TCGdex → tcgcsv → Cardmarket EUR converted
@@ -78,22 +79,20 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `data/` left in `.previous` goes to `<app>.rescued-data-*`, never deleted. Keep these properties.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
 - `node:sqlite` warns as experimental; npm scripts pass `--disable-warning=ExperimentalWarning`.
-- PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
-  history and sales. Not yet verified against the live API.
-- The cloud sandbox used so far could only reach GitHub and npm. TCGdex, eBay, PokemonPriceTracker and
-  tcgcsv were blocked, so live behaviour is verified by the owner running `npm run check:live`.
+- PokemonPriceTracker docs show inconsistent layouts; `normalizeCard` deep-searches (unverified live).
+- The cloud sandbox reaches only GitHub and npm: the owner checks live sources with `npm run check:live`.
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
-## Current state (2026-11-11)
-- `main` has PRs #1–#16. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 (#16): migrations, `workers/rpc.js`,
-  `ai/runtime.js` + `server/aiModels.js`, `bench:scan`, CI. M1 built: detection 46% → 93% (target 95%). Next: M2.
+## Current state (2026-11-12)
+- `main` has PRs #1–#16 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
+  M1 = PR #17 (detection 46% → 93%). M2 built: TCGdex rarity counts, reading 72% → 81%, scanner tests.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
 - Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
-- Set rarities (IR filter, reverse-holo goal) are English-only; missing value costs one price lookup per card.
+- Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
   (engine = rules, pure + seeded; scene = stage + summon; world = v4 sky dome/fog/land/lake/grass, High/Standard/Basic;

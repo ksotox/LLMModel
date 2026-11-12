@@ -164,6 +164,9 @@ export async function renderProfile(root, { user, onUserChange }) {
       h('p.small.muted', 'Browsers other than Safari can’t open HEIC photos. With this on, they are converted in your browser before the cards are found (it takes a few seconds per photo).')),
     h('section.panel', h('h2', 'Your profile'), saveName),
     h('section.panel', h('h2', 'Password'), passwordForm),
-    user.is_owner && h('section.panel', h('h2', 'Profiles'), h('p.muted', 'Everyone gets their own collection. Only you (the owner) can add or remove profiles.'), profiles));
+    user.is_owner && h('section.panel', h('h2', 'Profiles'), h('p.muted', 'Everyone gets their own collection. Only you (the owner) can add or remove profiles.'), profiles),
+    user.is_owner && h('section.panel', h('h2', 'Scanner tests'),
+      h('p.muted', 'Mark the cards in a few of your own photos, to measure how well the scanner does on photos like yours.'),
+      h('a.btn', { href: '#/scan-tests' }, 'Open scanner tests')));
   if (user.is_owner) loadProfiles();
 }

@@ -885,3 +885,11 @@ a.set-tile[href]:hover { transform: translateY(-2px); }
   .topbar .nav a { white-space: nowrap; }
   .view-controls .segmented button { padding: 7px 9px; }
 }
+
+/* ---------- Scanner tests (owner) ---------- */
+.scan-tests { display: grid; gap: 10px; }
+.scan-test { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center; }
+.scan-test img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--surface-2); }
+.scan-test-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-bottom: 12px; }
+.scan-test-card { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: start; }
+.scan-test-card img { width: 72px; border-radius: 6px; }

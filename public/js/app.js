@@ -7,6 +7,7 @@ import { renderBattles } from './battles.js';
 import { clear, h } from './ui.js';
 import { renderSet, renderSets } from './sets.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
+import { renderScanTests } from './scanLabels.js';
 
 const main = document.getElementById('view');
 let renderSeq = 0;
@@ -39,6 +40,9 @@ async function route() {
     if (parts[0] === 'profile') {
       setActiveNav('');
       await renderProfile(root, { user: currentUser, onUserChange: (u) => signedIn(u, { reroute: false }) });
+    } else if (parts[0] === 'scan-tests') {
+      setActiveNav('');
+      await renderScanTests(root, { user: currentUser });
     } else if (parts[0] === 'sets' && parts[1] && parts[2]) {
       setActiveNav('sets');
       await renderSet(root, meta, navigate, parts[1], decodeURIComponent(parts[2]), params);
