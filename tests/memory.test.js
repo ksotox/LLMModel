@@ -9,7 +9,8 @@ const MAX_LINES = 150;
 const MAX_BYTES = 10 * 1024;
 
 test('MEMORY.md stays within its size budget', async () => {
-  const text = await readFile(new URL('../MEMORY.md', import.meta.url), 'utf8');
+  // Count it as stored in git: a Windows checkout turns every \n into \r\n, one byte more per line.
+  const text = (await readFile(new URL('../MEMORY.md', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
   const lines = text.split('\n').length;
   const bytes = Buffer.byteLength(text);
   assert.ok(lines <= MAX_LINES, `MEMORY.md has ${lines} lines (max ${MAX_LINES}). Move finished details to docs/HISTORY.md.`);

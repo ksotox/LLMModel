@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { addColumn, migrate } from './migrations.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS packs (
@@ -107,7 +108,8 @@ CREATE TABLE IF NOT EXISTS api_usage (
 );
 `;
 
-// Columns added after the first release; created on start-up for existing collections.
+// Card columns added before database versioning (migration 1 adds any that are missing). A column
+// added later gets its own entry in MIGRATIONS (and in CARD_FIELDS when users may set it), not here.
 const CARD_MIGRATIONS = {
   market_price: 'REAL',
   market_currency: 'TEXT',
@@ -151,19 +153,25 @@ const CARD_SELECT = `
   SELECT c.*, p.name AS pack_name, p.kind AS pack_kind
   FROM cards c LEFT JOIN packs p ON p.id = c.pack_id`;
 
+/**
+ * Changes to the database, in order (see server/migrations.js). Append only: never edit a released one.
+ *  1. Baseline: the columns and index that every start used to check for before versioning (each
+ *     is added only if missing, so databases from any earlier version end up the same).
+ */
+export const MIGRATIONS = [
+  (db) => {
+    for (const [col, type] of Object.entries(CARD_MIGRATIONS)) addColumn(db, 'cards', col, type);
+    addColumn(db, 'packs', 'user_id', 'INTEGER');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id, deleted_at)');
+    addColumn(db, 'pricetracker_cache', 'picture_checked_at', 'TEXT');
+  },
+];
+
 export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
-  const existing = new Set(db.prepare('PRAGMA table_info(cards)').all().map((c) => c.name));
-  for (const [col, type] of Object.entries(CARD_MIGRATIONS)) {
-    if (!existing.has(col)) db.exec(`ALTER TABLE cards ADD COLUMN ${col} ${type}`);
-  }
-  const packCols = new Set(db.prepare('PRAGMA table_info(packs)').all().map((c) => c.name));
-  if (!packCols.has('user_id')) db.exec('ALTER TABLE packs ADD COLUMN user_id INTEGER');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id, deleted_at)');
-  const trackerCols = new Set(db.prepare('PRAGMA table_info(pricetracker_cache)').all().map((c) => c.name));
-  if (!trackerCols.has('picture_checked_at')) db.exec('ALTER TABLE pricetracker_cache ADD COLUMN picture_checked_at TEXT');
+  migrate(db, MIGRATIONS);
   return new Store(db);
 }
 

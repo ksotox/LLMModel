@@ -50,6 +50,15 @@ describe('reading PokemonPriceTracker answers', () => {
     assert.equal(card.historyLabel, 'Reverse Holofoil · Near Mint');
   });
 
+  test('picture links come largest first, judged by the key and path, not the host', () => {
+    const card = normalizeCard({
+      imageUrl: 'http://127.0.0.1:38001/product/1_200w.jpg',
+      imageCdnUrl400: 'http://127.0.0.1:38001/product/1_400w.jpg',
+      imageCdnUrl800: 'http://127.0.0.1:38001/product/1_800w.jpg',
+    });
+    assert.deepEqual(card.images, ['800w', '400w', '200w'].map((w) => `http://127.0.0.1:38001/product/1_${w}.jpg`));
+  });
+
   test('credit cost: 1 per card, +1 history, +1 eBay', () => {
     assert.equal(PriceTrackerClient.cost({ limit: 1, includeHistory: true, includeEbay: true }), 3);
     assert.equal(PriceTrackerClient.cost({ limit: 3 }), 3);

@@ -13,7 +13,8 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js",
     "test:e2e": "node --disable-warning=ExperimentalWarning tests/e2e/run.js",
-    "check:live": "node --disable-warning=ExperimentalWarning scripts/check-live.js"
+    "check:live": "node --disable-warning=ExperimentalWarning scripts/check-live.js",
+    "bench:scan": "node --disable-warning=ExperimentalWarning scripts/bench-scan.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "4.12.0-release.1",
@@ -22,7 +23,11 @@
     "express": "^5.1.0",
     "heic2any": "0.0.4",
     "multer": "^2.0.2",
+    "onnxruntime-web": "1.30.0",
     "tesseract.js": "7.0.0",
     "three": "0.180.0"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   }
 }

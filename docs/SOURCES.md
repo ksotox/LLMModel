@@ -78,9 +78,10 @@ The service gets the user's two photos and the card's locally cached official pi
 | [three](https://threejs.org/) | 0.180.0 | PokéBattles 3D stage: glTF + Draco loaders, orbit controls, `RoomEnvironment` (3D Pop-out pictures) and `mergeVertices`/`mergeGeometries` from its addons; the sky, water and grass are custom shaders (served from node_modules at `/vendor/three`, with an import map) |
 | `node:sqlite` | built into Node ≥ 22.5 | The collection database |
 | `node:crypto` (scrypt) | built in | Profile passwords and session tokens |
-| [Playwright](https://playwright.dev/) | preinstalled | Browser e2e test (not a project dependency) |
+| [onnxruntime-web](https://onnxruntime.ai/) (MIT) | 1.30.0 | Runs the optional free AI models in the browser (WebAssembly, or WebGPU where available); served from node_modules at `/vendor/ort`. The model files themselves are listed in `server/aiModels.js` and downloaded once into `data/ai-models` |
+| [Playwright](https://playwright.dev/) | 1.63.0 (dev only) | Browser e2e test and scan benchmark; a devDependency, so the desktop app's `npm ci --omit=dev` doesn't install it |
 
-OpenCV.js, Tesseract.js, heic2any and the OCR models are served by the app itself from `node_modules` (`/vendor/*`), so no CDN is involved.
+OpenCV.js, Tesseract.js, heic2any, onnxruntime-web and the OCR models are served by the app itself from `node_modules` (`/vendor/*`), so no CDN is involved.
 
 ## Documentation and references used while building
 

@@ -18,6 +18,7 @@ import { SET_CODES } from './setCodes.js';
 import { allSets, setChecklist, userSets } from './sets.js';
 import { battleData, isPokemonCard } from './battle.js';
 import { Models3D } from './models3d.js';
+import { AiModels, aiModelsRouter } from './aiModels.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -31,6 +32,7 @@ const VENDOR = {
   '/vendor/tessdata-jpn': path.join(packageDir('@tesseract.js-data/jpn'), '4.0.0_best_int'),
   '/vendor/heic2any': path.join(packageDir('heic2any'), 'dist'),
   '/vendor/three': path.resolve(path.dirname(require.resolve('three')), '..'), // three hides package.json behind its exports
+  '/vendor/ort': path.dirname(require.resolve('onnxruntime-web')), // onnxruntime-web's dist folder (also hides package.json)
 };
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' };
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -50,6 +52,7 @@ export function createApp({
   trackerOptions = {},
   desktop = null, // { version(), update, restart() } when run by the desktop launcher
   models3d = null, // PokéBattles 3D models (default: the Pokémon 3D API on GitHub, cached in dataDir)
+  aiModels = null, // AI model files for the browser (default: server/aiModels.js MANIFEST, cached in dataDir)
   requireLogin = true, // false: one built-in profile, no sign-in (tests, scripts)
   secureCookie = false,
 } = {}) {
@@ -503,6 +506,9 @@ export function createApp({
     const market = await catalog.market({ ...card, variant }).catch(() => ({ rarity: card.rarity, pull: null, price: null }));
     res.json({ card, market, owned: store.ownedCounts([card.tcg_id], req.user.id)[card.tcg_id] ?? 0 });
   });
+
+  // AI model files the browser runs on this device (server/aiModels.js).
+  app.use('/api/ai/models', aiModelsRouter(aiModels ?? new AiModels({ dataDir, log: console.log })));
 
   // Set completion: your sets, any set to browse, and one set's checklist.
   // ---- PokéBattles: 3D models and battle data from the cards ----

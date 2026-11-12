@@ -499,6 +499,31 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - The flat card stage (no WebGL) keeps its cards above the dock.
 - **Tests:** the e2e checks that the menu is hidden in a battle and back afterwards, that the moves are in view with nothing to scroll, and that a move's card text opens and closes.
 
+## Phase 23: Roadmap for the scanner, 3D Pop-out for every card, and animated moves
+
+- **Asked for:** an architecture plan to execute later, covering a better card scanner, automatic 3D for every card in 3D Pop-out mode, more realistic move animations, and the remaining architecture gaps.
+- **The owner chose:** 3D from each card's own artwork (free, on the PC; no 360° AI models, no cloud service); a live camera scanner on the phone plus better detection in photos; free local AI models with a classic fallback; and the earlier plan's unbuilt stages (battle graphics, phone bottom menu, collection page) folded in after the new work.
+- **Result:** `docs/ROADMAP.md`, with milestones M0–M11, one draft PR each. Nothing in it is built yet. The earlier plan's stage 1 (full-window battle screen) is already merged (PR #15).
+- **Checked while planning:** the bundled OpenCV.js has `grabCut`, `inpaint`, `HoughLinesP`, `CLAHE`, `distanceTransform`, `ORB`, `findHomography` and `readNetFromONNX`, so the classic fallbacks need no new library.
+
+## Phase 24: Roadmap M0, foundations
+
+- **Versioned migrations:** `server/migrations.js` runs each change once, in a transaction with its `PRAGMA user_version` bump; a failure rolls both back. Migration 1 is the baseline: the column checks `openDb` used to make on every start, kept idempotent so databases from any earlier version end up the same. A database newer than the app (after the desktop updater rolls back) is opened as it is, with a warning.
+- **Workers:** `public/js/workers/rpc.js` (`connect` / `serve` / `transfer`) lets the page call a Web Worker like an async library, with buffer transfer, progress, timeouts and cancel. Unit-tested over a `MessageChannel`.
+- **AI runtime:** `onnxruntime-web` 1.30.0 (MIT) served at `/vendor/ort`; `public/js/ai/runtime.js` (WebGPU where available, else WebAssembly; one thread, because cross-origin isolation would block official card pictures from other sites).
+  - **Model store:** `server/aiModels.js` and `/api/ai/models` download each listed model once, with a size cap and a SHA-256 check. The hash is either in the manifest or pinned on first download, because Hugging Face can't be reached from the build sandbox.
+  - The manifest is empty until M1 and M5 add models.
+  - **Tests:** an e2e step runs a hand-written ONNX model (`tests/helpers/tiny-onnx.js`) on the page and in a module worker.
+- **Scan benchmark:** `npm run bench:scan`, `scripts/scan-bench/` and `scripts/make-scan-set.mjs`.
+  - **Labels:** `tests/fixtures/scan/reference.json` (5 cards, corners checked on overlays).
+  - **Synthetic set:** 30 photos of real card faces pasted with perspective onto wood, light, patterned and dark tables, rows, binder pages, with glare, sleeves and blur.
+  - **Baseline** (recorded in ROADMAP A4): reference 100%, binder 96%, synthetic overall 46%, and 0 confident-but-wrong. M1 has to reach 95%.
+- **CI:** `.github/workflows/ci.yml`:
+  - **Linux:** `npm test`, e2e and the benchmark, keeping the results and any failure screenshot.
+  - **Windows:** `npm test`.
+  - `playwright` 1.63.0 is now a devDependency; the desktop updater installs with `--omit=dev`.
+  - The first run showed two picture tests reaching the real image hosts the catalog guesses (blocked in the sandbox, open on GitHub). `mockCatalog` now downloads from the mock server only. It also showed that a PokemonPriceTracker picture's size was read from its whole address, so a port such as `:38001` ranked a 200w picture as an 800w one; only the key and path count now. On the Windows runner, CRLF checkouts pushed `MEMORY.md` over its budget; the size test counts `\n` line endings.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
