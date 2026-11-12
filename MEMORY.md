@@ -30,7 +30,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Architecture (where to look)
 - `server/app.js`: Express 5 routes; `createApp({dataDir, catalog, ebay, priceTracker, requireLogin})` (tests pass
   `requireLogin: false` → a built-in local user). `server/auth.js`: scrypt passwords, HttpOnly session cookie
-  (sha256 in `sessions`), 5 failures/10 min throttle. First profile = owner (claims old `user_id IS NULL` rows,
+  (sha256 in `sessions`), 5 fails/10 min throttle. First profile = owner (claims old `user_id IS NULL` rows,
   manages profiles). Public: `/api/meta`, `/api/desktop`, `/api/auth/*`.
 - `server/db.js`: SQLite schema + migrations (`CARD_MIGRATIONS`). Tables: users, sessions, packs, cards,
   ebay_sales, price_history, pricetracker_cache, api_usage. **One row per physical copy** (condition, grade,
@@ -44,7 +44,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - `public/js/`: vanilla ES modules, no build step, hash routing. `views.js` (collection: Compact/Detailed/Table,
   density, filters + presets, select + bulk bar, trash; card page with copies), `add.js` (read statuses,
   progress, retry incl. 180°, duplicate Yes/No), `sets.js`, `account.js` (sign-in, profile, theme),
-  `vision.js` (OpenCV.js), `ocr.js` (Tesseract.js), `foilAsync.js` (foil maths in a Worker), `ebay.js`, `history.js`.
+  `vision.js` → `vision/` (card finder: strategies, snap, sleeves, quality; in `workers/vision.worker.js`),
+  `ocr.js` (Tesseract.js), `foilAsync.js` (foil maths in a Worker), `ebay.js`, `history.js`.
   OpenCV, Tesseract and heic2any are served from node_modules at `/vendor/*`, not a CDN.
 - Tests: `tests/*.test.js`, mocks in `tests/helpers/mock-sources.js`, real dataset fixtures in
   `tests/fixtures/ptcg`, e2e in `tests/e2e/run.js` using the photos in `docs/reference/`.
@@ -76,16 +77,16 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Updater data safety: backup to `<app>.backups/` before each swap; a failed `data/` move undoes the swap; a
   `data/` left in `.previous` goes to `<app>.rescued-data-*`, never deleted. Keep these properties.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
-- `node:sqlite` prints an ExperimentalWarning; npm scripts pass `--disable-warning=ExperimentalWarning`.
+- `node:sqlite` warns as experimental; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent response layouts. `normalizeCard` deep-searches for
   history and sales. Not yet verified against the live API.
 - The cloud sandbox used so far could only reach GitHub and npm. TCGdex, eBay, PokemonPriceTracker and
   tcgcsv were blocked, so live behaviour is verified by the owner running `npm run check:live`.
-- PRs target `main` (the default branch was once a `claude/...` branch, which made CodeRabbit skip PRs).
+- PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-11)
-- `main` has PRs #1–#15. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 built (PR #16): migrations,
-  `workers/rpc.js`, `ai/runtime.js` + `server/aiModels.js`, `bench:scan` (baseline 46%), CI. Next: M1.
+- `main` has PRs #1–#15. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 (PR #16): migrations, `workers/rpc.js`,
+  `ai/runtime.js` + `server/aiModels.js`, `bench:scan`, CI. M1 built: detection 46% → 93% (target 95%). Next: M2.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -107,9 +108,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   regions, surface map, findings; `gradingReport.js`: slab (flip/tilt/PNG), breakdown, scan. Label every result "Experimental CV estimate — not professional grading.";
   no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
-- Open gaps: the table in `docs/ROADMAP.md` (replaces CODE_REVIEW.md's open list). Users read `docs/USER_GUIDE.md`.
-- Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`. Fix any parser gaps
-  using their real responses.
+- Open gaps: the table in `docs/ROADMAP.md`. Users read `docs/USER_GUIDE.md`.
+- Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`; fix parser gaps from real answers.
 - Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.
 - Forgotten owner password: no reset flow yet (delete the `users`/`sessions` rows to rerun setup).
 

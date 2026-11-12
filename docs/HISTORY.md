@@ -524,6 +524,27 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - `playwright` 1.63.0 is now a devDependency; the desktop updater installs with `--omit=dev`.
   - The first run showed two picture tests reaching the real image hosts the catalog guesses (blocked in the sandbox, open on GitHub). `mockCatalog` now downloads from the mock server only. It also showed that a PokemonPriceTracker picture's size was read from its whole address, so a port such as `:38001` ranked a 200w picture as an 800w one; only the key and path count now. On the Windows runner, CRLF checkouts pushed `MEMORY.md` over its budget; the size test counts `\n` line endings.
 
+## Phase 25: Roadmap M1, detection v2
+
+- **Card finder split up:** `public/js/vision/`, with `vision.js` keeping its exports.
+  - `geometry.js`, `score.js`, `snap.js`, `colour.js`, `lines.js` and `sleeve.js` are plain maths, unit-tested in `tests/vision.test.js`.
+  - `detect.js` runs the strategies on raw pixels with OpenCV passed in.
+- **Worker:** finding runs in `workers/vision.worker.js` through `workers/rpc.js`, falling back to the page if a worker can't start.
+  - OpenCV.js is fetched and run inside the module worker.
+  - A photo takes about 250 ms; the longest main-thread task is about 50 ms.
+  - Gradients now read OpenCV's typed arrays once: its `.data32F` getter made a new view per pixel, which had cost about 400 ms a photo.
+- **New strategies:**
+  - `background`: the table's colours (k-means in Lab over the photo's outer ring), and whatever is far from them;
+  - `lines`: 63:88 rectangles from long straight edges, in lightness and colour.
+- **Choosing outlines:**
+  - each outline is snapped on a colour gradient, and straightened onto nearby straight edges when that keeps it card-shaped and gives clearer edges;
+  - outlines are ranked by their weakest side;
+  - groups of cards (a 2×2 block of pockets) and parts of a card (a half ending at the picture's frame, found because the card's edges carry on past it) are recognised, and a part proposes the whole card;
+  - a sleeve's bright rim with the card's edge just inside is peeled.
+- **Reading retry:** an unsure reading is retried on cuts with 0.8% wider and with no margin (the Froakie promo's set line read only at one margin). Tesseract's engine diagnostics on noisy text are ignored by the e2e error check.
+- **Quality:** `vision/quality.js` measures each cut-out card's blur (Laplacian variance), glare (blown-out share) and size, and the Add page shows "Retake suggested: …" with a tip. Thresholds come from the benchmark.
+- **Benchmark:** synthetic detection 46% → 93% (target 95%; misses: patterned cloth with sleeves or blur). The reference photos stay at 100%; `bench:scan` now also reports the longest main-thread task. Orientation by read confidence and the labelling page moved to M2.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

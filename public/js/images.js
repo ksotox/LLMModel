@@ -1,6 +1,7 @@
 // Client-side image helpers: decoding uploads, outlines (4-corner "quads") and saving pictures.
 
 import { findCards, warpCard } from './vision.js';
+import { cardQuality } from './vision/quality.js';
 
 const MAX_SAVE_EDGE = 1800;
 
@@ -115,14 +116,26 @@ export async function cardQuads(img) {
   return { quads: [wholeQuad(img)], detected: false };
 }
 
+/** Blur, glare and size of a cut-out card (see vision/quality.js), measured on a 360 px wide copy. */
+export function qualityOf(canvas, sourceWidth) {
+  const small = document.createElement('canvas');
+  small.width = 360;
+  small.height = Math.round((canvas.height * 360) / canvas.width);
+  const ctx = small.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(canvas, 0, 0, small.width, small.height);
+  return cardQuality(ctx.getImageData(0, 0, small.width, small.height), { sourceWidth });
+}
+
 /**
  * Cut one card out of a photo along its quad, straightened, with transparent rounded corners.
- * Returns { canvas, blob }. The canvas is kept for reading the card's text.
+ * Returns { canvas, blob, quality }. The canvas is kept for reading the card's text; `quality`
+ * says whether the photo of it is good enough to read (blur, glare, size).
  */
 export async function cutCard(img, quad, name = 'card') {
-  const width = Math.min(1100, Math.max(734, (side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2));
+  const sourceWidth = (side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2;
+  const width = Math.min(1100, Math.max(734, sourceWidth));
   const canvas = await warpCard(img, quad, { width });
-  return { canvas, blob: await canvasToBlob(canvas, name, { transparent: true }) };
+  return { canvas, blob: await canvasToBlob(canvas, name, { transparent: true }), quality: qualityOf(canvas, sourceWidth) };
 }
 
 /** The biggest card in a photo, straightened onto a canvas `width` wide (for a tilt scan). */

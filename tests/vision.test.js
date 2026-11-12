@@ -140,3 +140,28 @@ describe('parts of cards', () => {
     assert.ok(near(completePart(half, side), card, 0.01), 'and the whole card is worked out from it');
   });
 });
+
+describe('is a card photo good enough to read?', () => {
+  const card = (fill) => {
+    const W = 120;
+    const H = 168;
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) data.set(fill(x, y), (y * W + x) * 4);
+    return { data, width: W, height: H };
+  };
+  const stripes = (x, y) => ((Math.floor(x / 3) + Math.floor(y / 5)) % 2 ? [40, 40, 40, 255] : [200, 190, 120, 255]);
+
+  test('sharp detail passes; a smooth (blurred) card, glare and a tiny card are flagged', async () => {
+    const { cardQuality, retakeAdvice } = await import('../public/js/vision/quality.js');
+    const sharp = cardQuality(card(stripes), { sourceWidth: 600 });
+    assert.deepEqual(sharp.problems, []);
+    assert.equal(retakeAdvice(sharp), null);
+    const blurry = cardQuality(card((x) => [100 + x / 4, 100, 100, 255]), { sourceWidth: 600 });
+    assert.deepEqual(blurry.problems, ['blurry']);
+    const glare = cardQuality(card((x, y) => (x > 40 && x < 80 && y > 50 && y < 110 ? [255, 255, 255, 255] : stripes(x, y))), { sourceWidth: 600 });
+    assert.deepEqual(glare.problems, ['glare']);
+    assert.deepEqual(cardQuality(card(stripes), { sourceWidth: 120 }).problems, ['too small']);
+    assert.equal(retakeAdvice({ problems: ['blurry', 'glare'] }),
+      'Retake suggested: this card is blurry and has glare on it. Hold the phone steady and let it focus and tilt the card away from the light.');
+  });
+});

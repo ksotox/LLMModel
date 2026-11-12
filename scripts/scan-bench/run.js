@@ -2,7 +2,7 @@
 // photo goes through the app's real pipeline (card finder, straightening, text reading, and the
 // server's /api/identify), and the result is scored against the labels.
 
-import { findCards } from '/js/vision.js';
+import { findCards, warpCard } from '/js/vision.js';
 import { cutCard } from '/js/images.js';
 import { readCardText } from '/js/ocr.js';
 import { matchQuads, sameCard } from './metrics.js';
@@ -46,7 +46,13 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
     for (const p of pairs) {
       const r0 = performance.now();
       const { canvas } = await cutCard(img, found[p.found]);
-      const result = await identify(canvas);
+      let result = await identify(canvas);
+      // As the Add page does: an unsure reading is retried on cuts with slightly different margins.
+      for (const grow of [0.008, 0]) {
+        if (result.match && result.confidence === 'high') break;
+        const other = await identify(await warpCard(img, found[p.found], { width: canvas.width, grow }));
+        if (other.match && (!result.match || (other.confidence === 'high' && result.confidence !== 'high'))) result = other;
+      }
       reads.push({
         card: cards[p.truth].name,
         got: result.match ? `${result.match.name} (${result.match.tcgId})` : null,

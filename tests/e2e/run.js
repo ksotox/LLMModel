@@ -83,7 +83,10 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 // Tesseract's Japanese model logs "Parameter not found" for settings its engine doesn't use: harmless.
-page.on('console', (m) => m.type() === 'error' && !/^Warning: Parameter not found/.test(m.text()) && errors.push(m.text()));
+// Tesseract's engine logs its own diagnostics as errors ("Parameter not found", and on noisy text
+// such as a blurry photo "Image too small to scale" / "Line cannot be recognized"): not app errors.
+const TESSERACT_NOISE = /^(Warning: Parameter not found|Image too small to scale|Line cannot be recognized)/;
+page.on('console', (m) => m.type() === 'error' && !TESSERACT_NOISE.test(m.text()) && errors.push(m.text()));
 const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -310,6 +313,26 @@ try {
   await page.locator('.card-item .variant-suggestion', { hasText: 'Suggested: Promo · certain' }).waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.card-item').getByLabel('Variant').inputValue(), 'promo', 'a certain printing is filled in');
   await shot('11-read-promo');
+
+  step('a blurry photo: the card is still found, and a retake is suggested');
+  assert.equal(await page.locator('.card-item .retake-note').count(), 0, 'a sharp photo gets no advice');
+  const blurry = await page.evaluate(async (url) => {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.filter = 'blur(9px)';
+    ctx.drawImage(img, 0, 0);
+    return c.toDataURL('image/jpeg', 0.9).split(',')[1];
+  }, `data:image/jpeg;base64,${fs.readFileSync(REF('voltorb-reverse-holo.jpg')).toString('base64')}`);
+  await page.locator('section.panel').nth(1).locator('input[type=file]:not([capture])')
+    .setInputFiles({ name: 'blurry.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(blurry, 'base64') });
+  const blurredItem = page.locator('.source').nth(1).locator('.card-item');
+  await blurredItem.locator('.retake-note', { hasText: 'Retake suggested: this card is blurry' }).waitFor({ timeout: 60000 });
+  await shot('16-retake');
 
   step('a Japanese card is read (Japanese name + "SV2a 100/165"), matched and saved with its picture');
   await page.goto(`${base}/#/add`);

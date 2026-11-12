@@ -8,6 +8,8 @@ import { analyseCardAsync, compareAnglesAsync } from './foilAsync.js';
 import { biggestCardCanvas, canvasToBlob, cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
 import { describeBrief, lookupPanel } from './lookup.js';
 import { readCardText } from './ocr.js';
+import { warmUpCardFinder, warpCard } from './vision.js';
+import { retakeAdvice } from './vision/quality.js';
 import { clear, debounce, dropZone, h, KIND_LABELS, modal, toast, VARIANT_LABELS } from './ui.js';
 
 let keySeq = 0;
@@ -196,6 +198,7 @@ const STATUS = {
 const dupKey = (c) => `${c.tcg_id ?? `${String(c.name ?? '').trim().toLowerCase()}|${String(c.set_code ?? '').toUpperCase()}|${String(c.number ?? '').replace(/^0+/, '')}`}#${c.variant ?? 'normal'}`;
 
 export async function renderAddCards(root, meta, navigate, { packId } = {}) {
+  warmUpCardFinder(); // load the card finder in the background before the first photo
   const existingPacks = await api.packs();
   const codeList = setCodeList(meta);
   const sources = []; // uploaded photos: { key, img, boxes, cards[], el }
@@ -306,7 +309,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
 
   const onStatusChange = debounce(() => { drawSummary(); updateSave(); }, 50);
 
-  function makeCard(source, blob, previous = {}, canvas = null) {
+  function makeCard(source, blob, previous = {}, canvas = null, quality = null, recut = null) {
     // After re-cropping, keep what the user typed; anything read automatically is read again.
     const typed = previous.touched ? previous : {};
     const card = {
@@ -475,6 +478,13 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       readNote.textContent = retry ? 'Reading the card again…' : 'Reading the card…';
       try {
         let result = await api.identify(await readCardText(canvas));
+        // Small print is sensitive to exactly where the card was cut: when the reading isn't sure,
+        // read cuts with slightly wider and tighter margins too (only the reading; the saved picture stays).
+        for (const grow of [0.008, 0]) {
+          if (readScore(result) >= 3 || !recut) break;
+          const other = await api.identify(await readCardText(await recut(grow))).catch(() => null);
+          if (other && readScore(other) > readScore(result)) result = other;
+        }
         // A second try also reads the card upside down, in case it was photographed that way.
         if (retry && readScore(result) < 3) {
           const flipped = rotated180(canvas);
@@ -546,6 +556,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
           field('Variant', variant),
           field('Pulled from', card.packSelect)),
         variantHint,
+        retakeAdvice(quality) && h('p.retake-note', { role: 'note' }, retakeAdvice(quality)),
         readNote,
         matchNote,
         panel.el),
@@ -592,8 +603,9 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const previous = source.cards;
     const cards = [];
     for (const [i, quad] of quads.entries()) {
-      const { canvas, blob } = await cutCard(source.img, quad, `card-${i + 1}`);
-      cards.push(makeCard(source, blob, previous[i], canvas));
+      const { canvas, blob, quality } = await cutCard(source.img, quad, `card-${i + 1}`);
+      const recut = (grow) => warpCard(source.img, quad, { width: canvas.width, grow });
+      cards.push(makeCard(source, blob, previous[i], canvas, quality, recut));
     }
     source.quads = quads;
     source.cards = cards;
