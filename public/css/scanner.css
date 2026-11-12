@@ -1,0 +1,19 @@
+.scan-camera { position: relative; background: #111827; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; margin: 16px 0; }
+.scan-camera video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.scan-overlay { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.scan-tray { display: grid; gap: 16px; margin-top: 16px; }
+.scan-card { display: grid; grid-template-columns: minmax(90px, 170px) minmax(0, 1fr); gap: 18px; border: 1px solid var(--line); padding: 16px; border-radius: 14px; }
+.scan-card > img { width: 100%; border-radius: 8px; }
+.scan-review { min-width: 0; display: grid; gap: 10px; }
+.scan-review p { margin: 0; }
+.scan-review fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.printing-fields { flex-wrap: wrap; }
+.printing-fields .field { min-width: 130px; }
+.scan-review select { width: 100%; }
+.scan-review input[type=checkbox] { width: auto; margin-right: 8px; }
+@media (max-width: 600px) { .scan-card { grid-template-columns: 1fr; } .scan-card > img { max-width: 130px; } .scan-camera { aspect-ratio: 3/4; } }
+
+
+.scan-camera:not(.active) { aspect-ratio: 16/7; }
+.scan-idle { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #cbd5e1; text-align: center; }
+.scan-idle[hidden] { display: none; }

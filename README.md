@@ -76,6 +76,8 @@ npm start            # http://localhost:3000
 | `POKEMONPRICETRACKER_API_KEY` | (not set) | Free PokemonPriceTracker key, for eBay graded sales and extra price history (see below) |
 | `POKEMONPRICETRACKER_DAILY_CREDITS` | `100` | Your plan's daily credits. The app never spends more than this in a day. |
 | `POKEMONPRICETRACKER_HISTORY_DAYS` | `3` | Days of price history to ask for per card (the free plan allows 3) |
+| `POKEDEX_TLS_KEY`, `POKEDEX_TLS_CERT` | (not set) | Paths to a private key and certificate (PEM). With both set, the app also serves HTTPS, which phones need for the live camera in **Scan deck**. Set both or neither: one alone stops the app at start-up. |
+| `HTTPS_PORT` | `3443` | HTTPS port, used only when the two TLS paths are set |
 
 ### Desktop app for Windows (recommended)
 
@@ -191,6 +193,27 @@ In 3D Pop-out, a card with its own diorama shows it: the card on a glowing pedes
   - **No paid service:** no AI image service or key is involved.
   - **Jobs:** the server keeps one per card (`server/cardDioramas.js`: pending → ready or failed). A card's job is made once per identity. Changing its price or storage never makes it again; relinking it to another card does. A failure waits for **Try again** on the card's page.
   - **When:** the app makes them in the background while it's open and visible.
+
+## Scan a deck (live camera)
+
+**Scan deck** in the top bar scans many cards in one go:
+- **On a computer:** with the camera on `localhost`.
+- **On a phone:** over HTTPS (see below).
+- **From photos:** upload deck photos instead of using the camera.
+
+How it works:
+- **Steady cards only.** Cards are read once they have held still for half a second.
+- **No double counting.** The same card seen again is ignored. Add identical copies with **+ Copy**, or a copy with a different finish with **Separate printing**.
+- **Printing details.** Each card can record its foil pattern, texture, special stamps and edition. Prices are left blank for these special printings, because catalog prices can't tell them apart.
+- **Nothing is saved until you check it.** You confirm the card, its finish and the number of copies first, with **I checked the card…**.
+- **Your session survives a reload.** It's kept in this browser until you save or clear it. A save interrupted by a lost connection can be retried without adding copies twice.
+- **Picture check.** The camera picture is compared with the official picture of each suggested card using a simple image fingerprint (a perceptual hash, not an AI model). It only flags a disagreement; it never decides on its own.
+- **Accuracy so far.** Measured on the test photos only. Accuracy on a real deck, and on an iPhone, still has to be checked.
+
+**Phone camera over HTTPS:** phones only allow the camera on secure pages.
+1. Get a certificate your phone trusts for the computer's name, for example from your Tailscale tailnet (`tailscale cert`).
+2. Set `POKEDEX_TLS_KEY` and `POKEDEX_TLS_CERT` to the key and certificate files.
+3. Open `https://<that name>:3443` on the phone (`HTTPS_PORT` changes the port).
 
 ## How cards are cut out and read
 

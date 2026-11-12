@@ -24,7 +24,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `%LOCALAPPDATA%\Pokedex`; it runs `launcher.mjs` (self-updating): newest commit via `<repo>.git/info/refs`, codeload
   zip, swap `LLMModel-main` (keeps `.previous`, moves `data/` and the grading setup, reuses `node_modules` if the lock
   is unchanged, rolls back if the server won't start), server over IPC (`/api/desktop`), Edge `--app` window.
-- Old one-click start: `Start Pokedex.cmd` (CRLF via `.gitattributes`) runs `npm start -- --open`.
+- Old start: `Start Pokedex.cmd` (CRLF) runs `npm start -- --open`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
 ## Architecture (where to look)
@@ -32,8 +32,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `requireLogin: false` → a built-in local user). `server/auth.js`: scrypt passwords, HttpOnly session cookie
   (sha256 in `sessions`), 5 fails/10 min throttle. First profile = owner (claims old `user_id IS NULL` rows,
   manages profiles). Public: `/api/meta`, `/api/desktop`, `/api/auth/*`.
-- `server/db.js`: SQLite schema + migrations (`CARD_MIGRATIONS`). Tables: users, sessions, packs, cards,
-  ebay_sales, price_history, pricetracker_cache, api_usage. **One row per physical copy** (condition, grade,
+- `server/db.js`: SQLite schema + `MIGRATIONS` (run by `migrations.js`; 2 = scanner printing columns).
+  **One row per physical copy** (condition, grade,
   purchase_price, storage_location, status keep/trade/sell, deleted_at = trash, purged after 30 days);
   copies group by `keyOf()` = tcg_id (or name|set|number) + variant. `queryCards` pages/groups, `#cardFilters`
   ANDs every filter. `server/sets.js`: set checklists (TCGdex set cards, rarities from the dataset).
@@ -70,8 +70,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Gotchas
 - OpenCV.js 4.12 module is a *thenable*: wrap it as `{cv}` before resolving, or `await` hangs.
   Free every `cv.Mat` after use (an earlier `approx.rows` use-after-free crashed).
-- tcgcsv.com answered **401** to the owner's PC (2026-10-30). The client now sends a descriptive
-  User-Agent (`USER_AGENT` in `server/prices.js`); `npm run check:live` prints its access results.
+- tcgcsv.com answered **401** to the owner's PC (2026-10-30): the client sends `USER_AGENT` (`server/prices.js`).
   Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
   then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
   (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
@@ -84,25 +83,27 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-12)
-- `main` has PRs #1–#18 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
-  M1 = PR #17 (detection 46% → 93%). M2 = PR #18: TCGdex rarity counts, reading 72% → 81%, scanner tests.
+- `main` has PRs #1–#19 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
+  M1 = PR #17 (detection 46% → 93%). M2 = PR #18: TCGdex rarity counts, reading 72% → 81%, scanner tests. #19: dioramas.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
 - Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
+- **Scan deck** (`#/scan`, `scanner.js`, `scan/`): perceptual-hash picture check (not ONNX), manual review before
+  save, `scan_token` per copy; printing columns skip prices. HTTPS: `POKEDEX_TLS_KEY`/`_CERT`, `HTTPS_PORT`.
+  Real-deck and iPhone accuracy unvalidated.
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
-  (engine = rules, pure + seeded; scene = stage + summon; world = v4 sky dome/fog/land/lake/grass, High/Standard/Basic;
-  look from owner's Hi-Fi v4 mock-up, minus its creatures).
+  (engine = rules, pure + seeded; scene = stage + summon; world = owner's Hi-Fi v4 look, High/Standard/Basic).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**
   wins: `server/cardDioramas.js` (27 delivered in `assets/card-effects`, imported only for the same id + name/card id;
   new cards get a free in-browser one, `dioramaMaker.js`, made once per identity). No paid image API (owner's choice).
-- **Pre-grading (experimental):** `server/grading/` (router, `card_grading_reports`, photos in `data/uploads/grading/`)
+- **Pre-grading (experimental):** `server/grading/` (`card_grading_reports`, photos in `data/uploads/grading/`)
   → optional Python `services/grading/app.py` (127.0.0.1:8765, MIT Viridian in gitignored `third_party/viridian`,
   pinned by `scripts/grading-setup.*`); `gradingReport.js` shows it. Label every result "Experimental CV estimate —
   not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs

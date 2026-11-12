@@ -1,5 +1,6 @@
 import { accountMenu, applyTheme, renderLogin, renderProfile, renderSetup } from './account.js';
 import { renderAddCards, renderAddPacks } from './add.js';
+import { renderScanner } from './scanner.js';
 import { api } from './api.js';
 import { renderSearch } from './search.js';
 import { renderGradingLab } from './grading.js';
@@ -50,6 +51,9 @@ async function route() {
     } else if (parts[0] === 'sets') {
       setActiveNav('sets');
       await renderSets(root, meta, navigate);
+    } else if (parts[0] === 'scan') {
+      setActiveNav('scan');
+      await renderScanner(root, meta, navigate);
     } else if (parts[0] === 'add') {
       setActiveNav('add');
       await renderAddCards(root, meta, navigate, { packId: params.get('pack') });

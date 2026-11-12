@@ -14,7 +14,8 @@
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js",
     "test:e2e": "node --disable-warning=ExperimentalWarning tests/e2e/run.js",
     "check:live": "node --disable-warning=ExperimentalWarning scripts/check-live.js",
-    "bench:scan": "node --disable-warning=ExperimentalWarning scripts/bench-scan.mjs"
+    "bench:scan": "node --disable-warning=ExperimentalWarning scripts/bench-scan.mjs",
+    "test:scanner": "node --disable-warning=ExperimentalWarning tests/e2e/scanner.js"
   },
   "dependencies": {
     "@techstark/opencv-js": "4.12.0-release.1",

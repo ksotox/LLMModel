@@ -1,3 +1,4 @@
+import https from 'node:https';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,6 +45,13 @@ const desktop = process.send && process.env.POKEDEX_DESKTOP
   : null;
 
 const app = createApp({ dataDir, catalog, desktop });
+// Optional trusted certificate enables phone cameras without a separate hosting service.
+const tlsKey = process.env.POKEDEX_TLS_KEY;
+const tlsCert = process.env.POKEDEX_TLS_CERT;
+if (Boolean(tlsKey) !== Boolean(tlsCert)) throw new Error('Set both POKEDEX_TLS_KEY and POKEDEX_TLS_CERT.');
+const httpsServer = tlsKey ? https.createServer({ key: fs.readFileSync(tlsKey), cert: fs.readFileSync(tlsCert), minVersion: 'TLSv1.2' }, app).listen(Number(process.env.HTTPS_PORT ?? 3443)) : null;
+httpsServer?.on('listening', () => console.log(`Phone scanner HTTPS enabled on port ${httpsServer.address().port}; use the hostname on your trusted certificate.`));
+httpsServer?.on('error', (err) => { console.error(`HTTPS: ${err.message}`); process.exit(1); });
 const server = app.listen(port);
 server.on('listening', () => {
   console.log(`Pokédex collection running at ${url}`);
@@ -77,6 +85,8 @@ if (desktop) {
     if (msg?.type === 'update-available') desktop.update = { sha: msg.sha, message: msg.message, date: msg.date };
     if (msg?.type === 'shutdown') {
       scheduler.stop();
+      httpsServer?.close();
+      httpsServer?.closeAllConnections?.();
       server.close();
       server.closeAllConnections?.();
       app.locals.store.close();

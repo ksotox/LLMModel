@@ -898,3 +898,11 @@ a.set-tile[href]:hover { transform: translateY(-2px); }
 .diorama-section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
 .diorama-section > strong { width: 100%; }
 .diorama-thumb { width: 160px; max-width: 45%; border-radius: 10px; background: var(--surface-2); }
+
+.printing-fields { flex-wrap: wrap; }
+.printing-fields .field { min-width: 130px; }
+.stamp-options { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.stamp-choice { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.stamp-choice input[type=checkbox] { width: auto; }
+
+.card-printing { display: block; color: var(--muted); font-size: .75rem; margin-top: 4px; overflow-wrap: anywhere; }
