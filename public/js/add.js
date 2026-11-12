@@ -471,6 +471,21 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       card.setStatus('queued');
       queueRead(card, () => readCard({ retry: true }));
     };
+    // The card was cut out upside down: keep the turned picture (saved and shown) from now on.
+    let turnedRound = false;
+    const useTurned = async (turned) => {
+      canvas = turned;
+      turnedRound = !turnedRound;
+      photoFoil = null;
+      card.blob = await canvasToBlob(turned, 'card', { transparent: true });
+      URL.revokeObjectURL(card.preview);
+      card.preview = URL.createObjectURL(card.blob);
+      card.el.querySelector('.card-item-photo img').src = card.preview;
+    };
+    const cutAgain = async (grow) => {
+      const c = await recut(grow);
+      return turnedRound ? rotated180(c) : c;
+    };
     const readCard = async ({ retry = false } = {}) => {
       if (!canvas) return;
       card.setStatus('reading');
@@ -482,21 +497,17 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         // read cuts with slightly wider and tighter margins too (only the reading; the saved picture stays).
         for (const grow of [0.008, 0]) {
           if (readScore(result) >= 3 || !recut) break;
-          const other = await api.identify(await readCardText(await recut(grow))).catch(() => null);
+          const other = await api.identify(await readCardText(await cutAgain(grow))).catch(() => null);
           if (other && readScore(other) > readScore(result)) result = other;
         }
-        // A second try also reads the card upside down, in case it was photographed that way.
-        if (retry && readScore(result) < 3) {
+        // Upside down? When nothing at all was matched (or on "Read again", when unsure), the card
+        // is also read turned round, and the better reading wins (the picture is turned with it).
+        if (readScore(result) < (retry ? 3 : 1)) {
           const flipped = rotated180(canvas);
           const other = await api.identify(await readCardText(flipped)).catch(() => null);
           if (other && readScore(other) > readScore(result)) {
             result = other;
-            canvas = flipped;
-            photoFoil = null;
-            card.blob = await canvasToBlob(flipped, 'card', { transparent: true });
-            URL.revokeObjectURL(card.preview);
-            card.preview = URL.createObjectURL(card.blob);
-            card.el.querySelector('.card-item-photo img').src = card.preview;
+            await useTurned(flipped);
           }
         }
         const typed = card.touched;
