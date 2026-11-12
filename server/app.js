@@ -371,7 +371,7 @@ export function createApp({
     const origin = req.get('origin');
     let sameOrigin = true;
     try {
-      sameOrigin = !origin || new URL(origin).host === req.get('host');
+      sameOrigin = !origin || new URL(origin).host === req.host; // req.host follows X-Forwarded-Host only behind a trusted proxy
     } catch {
       sameOrigin = false;
     }

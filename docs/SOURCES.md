@@ -64,6 +64,15 @@ The service gets the user's two photos and the card's locally cached official pi
 | Microsoft Edge / Google Chrome | already on the PC | The app window (`--app` mode) |
 | Windows C# compiler | `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe` | Builds `Pokedex.exe` from `desktop/Pokedex.cs` during setup |
 
+### Used by the free cloud server setup (`scripts/cloud-setup.sh`, `scripts/cloud-move.ps1`)
+
+| Service | Address | Used for |
+| --- | --- | --- |
+| Oracle Cloud Always Free (suggested) | [oracle.com/cloud/free](https://www.oracle.com/cloud/free/) | A free always-on Ubuntu machine (any Ubuntu/Debian machine works) |
+| NodeSource | `https://deb.nodesource.com/setup_22.x` | Node.js 22 for Ubuntu/Debian, when it isn't installed yet |
+| Tailscale | `https://tailscale.com/install.sh`, [docs](https://tailscale.com/kb/1312/serve) | Private network between your devices; `tailscale serve` gives the app an HTTPS address with its own certificate; Tailscale SSH lets `cloud-move.ps1` copy the collection without keys |
+| GitHub raw files | `https://raw.githubusercontent.com/ksotox/LLMModel/main/...` | The setup scripts and `desktop/launcher.mjs` (then updated like the desktop app) |
+
 ## Libraries (npm)
 
 | Package | Version | Used for |

@@ -78,6 +78,8 @@ npm start            # http://localhost:3000
 | `POKEMONPRICETRACKER_HISTORY_DAYS` | `3` | Days of price history to ask for per card (the free plan allows 3) |
 | `POKEDEX_TLS_KEY`, `POKEDEX_TLS_CERT` | (not set) | Paths to a private key and certificate (PEM). With both set, the app also serves HTTPS, which phones need for the live camera in **Scan deck**. Set both or neither: one alone stops the app at start-up. |
 | `HTTPS_PORT` | `3443` | HTTPS port, used only when the two TLS paths are set |
+| `HOST` | (all addresses) | Address to listen on. The cloud setup uses `127.0.0.1`, so only Tailscale's proxy on the same machine can reach the app. |
+| `TRUST_PROXY` | (not set) | Trust `X-Forwarded-*` headers from this proxy ([Express "trust proxy"](https://expressjs.com/en/guide/behind-proxies.html)). The cloud setup uses `loopback` for `tailscale serve`, so HTTPS sign-ins get a Secure cookie. |
 
 ### Desktop app for Windows (recommended)
 
@@ -210,10 +212,78 @@ How it works:
 - **Picture check.** The camera picture is compared with the official picture of each suggested card using a simple image fingerprint (a perceptual hash, not an AI model). It only flags a disagreement; it never decides on its own.
 - **Accuracy so far.** Measured on the test photos only. Accuracy on a real deck, and on an iPhone, still has to be checked.
 
-**Phone camera over HTTPS:** phones only allow the camera on secure pages.
+**Phone camera over HTTPS:** phones only allow the camera on secure pages. The easiest way is the free cloud server below: its Tailscale address is HTTPS already. To serve HTTPS from your PC instead:
 1. Get a certificate your phone trusts for the computer's name, for example from your Tailscale tailnet (`tailscale cert`).
 2. Set `POKEDEX_TLS_KEY` and `POKEDEX_TLS_CERT` to the key and certificate files.
 3. Open `https://<that name>:3443` on the phone (`HTTPS_PORT` changes the port).
+
+## Run it in the cloud for free (works with your PC off)
+
+Your Pokédex can live on a free always-on server instead of your PC. Your PC and iPhone then open it from anywhere, privately, over [Tailscale](https://tailscale.com) (free for personal use). Only your own devices can reach it: nothing is opened to the internet.
+
+**1. Get a free server.** Recommended: an **Oracle Cloud "Always Free"** virtual machine:
+- **Size:** up to 4 ARM CPUs, 24 GB of memory and 200 GB of disk, free with no time limit.
+- **Sign-up** at [oracle.com/cloud/free](https://www.oracle.com/cloud/free/). It asks for a card to check who you are; Always Free resources aren't charged.
+- **Create the machine:** **Create instance**, image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** (1 CPU and 6 GB is plenty). Keep **Save private key**, then **Create**.
+- **"Out of capacity"?** Try again later, or choose another availability domain.
+- **Keep it from being reclaimed:** Oracle can take back an Always Free machine that sits idle for a week. Upgrading the account to **Pay As You Go** stops that, and the Always Free resources stay free.
+- **Other free options:** a Google Cloud **e2-micro** (1 GB, free in some US regions), or an old laptop left on at home. The setup is the same on any Ubuntu machine.
+
+**2. Set it up (one command).** Connect to the server: in PowerShell, `ssh -i <the key you saved> ubuntu@<the server's public IP>`. Then paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | bash
+```
+
+[`scripts/cloud-setup.sh`](scripts/cloud-setup.sh) does five things:
+1. Installs Node.js 22, plus some swap space on small machines.
+2. Installs the Pokédex launcher, the same one the desktop app uses, as a service called `pokedex` that starts with the machine. The service:
+   - keeps the app updated from `main`, rolling back a version that won't start;
+   - restarts the app if it stops;
+   - makes a nightly backup.
+3. Installs Tailscale. **Open the link it shows** and sign in.
+4. Turns on a private HTTPS address with `tailscale serve`. If it asks, open its link and **enable HTTPS** for your network.
+5. Prints your Pokédex's address, like `https://pokedex.tail1234.ts.net`.
+
+**3. Your devices.** Install Tailscale on your PC and iPhone ([tailscale.com/download](https://tailscale.com/download)) and sign in with the same account. Then open the address:
+- **iPhone:** in Safari, **Share → Add to Home Screen** gives it an app icon. HTTPS means the camera works for **Scan deck**.
+- **PC:** make the **Pokedex** icon open the cloud server instead of starting the app on your PC:
+
+  ```powershell
+  $env:POKEDEX_REMOTE_URL = "https://pokedex.tail1234.ts.net"   # your address from step 2
+  irm https://raw.githubusercontent.com/ksotox/LLMModel/main/desktop/install.ps1 | iex
+  ```
+
+  Running the installer again without that line switches the icon back to the app on your PC.
+
+**4. Move your collection (optional).** On a new server, the first visit creates the owner profile. To bring your PC's cards instead:
+1. Close the Pokedex window on your PC.
+2. Paste this into PowerShell:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-move.ps1 | iex
+   ```
+
+[`scripts/cloud-move.ps1`](scripts/cloud-move.ps1) copies your app folder's `data\` to the server over Tailscale, using Tailscale SSH: no keys, and if a link appears you open it to approve.
+- **The server's earlier data** is kept there as `LLMModel-main.data-before-move-<date>`.
+- **Your PC's copy** isn't changed.
+- **Afterwards, use one place:** the PC and the cloud are two separate collections, so pick one.
+
+**Backups.** Every night the server writes:
+- a snapshot of the database, the last 14 days kept, in `~/LLMModel-main.backups/nightly/`;
+- copies of your photos and pictures in `~/LLMModel-main.backups/files/`.
+
+Those backups are on the same server, so now and then copy them to your PC:
+
+```powershell
+scp -r ubuntu@pokedex:LLMModel-main.backups "$HOME\Documents\Pokedex cloud backup"
+```
+
+**Settings and checks on the server:**
+- **Your PokemonPriceTracker key and other settings:** put `NAME=value` lines in `~/pokedex/pokedex.env`, then run `sudo systemctl restart pokedex`.
+- **Is it running?** `sudo systemctl status pokedex`.
+- **What happened:** `tail -f ~/pokedex/launcher.log`.
+- **To repair or update the setup,** run the setup command again.
 
 ## How cards are cut out and read
 
@@ -260,6 +330,8 @@ server/
   grading/      experimental pre-grading: router (uploads, reports, cleanup) + normalize (answer sanitising)
 services/grading/  optional local Python (FastAPI) adapter around Viridian, 127.0.0.1:8765
 scripts/grading-*.ps1|.sh  set up (pinned Viridian commit) / start the pre-grading service
+scripts/cloud-setup.sh     free cloud server: Node, the launcher as a service (--server), Tailscale HTTPS
+scripts/cloud-move.ps1     copy this PC's collection to the cloud server
   catalog.js    combines the sources: search, details, image fallback, market info
   tcg.js        TCGdex client: lookup by set code/number/name, details, prices, image download
   ptcgData.js   Pokémon TCG dataset client (second source, rarity counts per set)

@@ -6,6 +6,10 @@
 # %LOCALAPPDATA%\Pokedex, adds Desktop and Start menu shortcuts, and opens the app. The app itself
 # lives in $HOME\LLMModel-main (set POKEDEX_APP_DIR first to use another folder) and updates itself
 # from GitHub every time it opens. Running this again repairs or updates the setup.
+#
+# To open your free cloud server instead (README: "Run it in the cloud"), set its address first:
+#   $env:POKEDEX_REMOTE_URL = "https://pokedex.<your-tailnet>.ts.net"
+# Running the installer again without it switches back to the app on this PC (your cards here are kept).
 
 function Install-Pokedex {
     $ErrorActionPreference = 'Stop'
@@ -30,7 +34,9 @@ function Install-Pokedex {
     Invoke-WebRequest "$raw/desktop/launcher.mjs" -OutFile (Join-Path $installDir 'launcher.mjs') -UseBasicParsing
     Invoke-WebRequest "$raw/desktop/Pokedex.cs" -OutFile (Join-Path $installDir 'Pokedex.cs') -UseBasicParsing
     Invoke-WebRequest "$raw/public/pokedex.ico" -OutFile (Join-Path $installDir 'pokedex.ico') -UseBasicParsing
-    $config = @{ appDir = $appDir; repo = $repo; branch = 'main'; port = 3000 } | ConvertTo-Json
+    $settings = @{ appDir = $appDir; repo = $repo; branch = 'main'; port = 3000 }
+    if ($env:POKEDEX_REMOTE_URL) { $settings.remoteUrl = $env:POKEDEX_REMOTE_URL.TrimEnd('/') }
+    $config = $settings | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $installDir 'config.json'), $config)  # UTF-8 without a BOM
 
     $exe = Join-Path $installDir 'Pokedex.exe'
@@ -51,7 +57,11 @@ function Install-Pokedex {
         $link.Save()
     }
 
-    Write-Host "Done. Opening the Pokedex: the first start downloads the latest version into $appDir (a minute or two)." -ForegroundColor Green
+    if ($settings.remoteUrl) {
+        Write-Host "Done. The Pokedex icon now opens your cloud server at $($settings.remoteUrl)." -ForegroundColor Green
+    } else {
+        Write-Host "Done. Opening the Pokedex: the first start downloads the latest version into $appDir (a minute or two)." -ForegroundColor Green
+    }
     Write-Host 'From now on, open it from the Pokedex icon on your Desktop or in the Start menu.'
     Start-Process $exe
 }

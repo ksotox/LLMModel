@@ -45,14 +45,19 @@ const desktop = process.send && process.env.POKEDEX_DESKTOP
   : null;
 
 const app = createApp({ dataDir, catalog, desktop });
+// Behind a proxy on the same machine (the cloud setup's `tailscale serve`): trust its X-Forwarded-*
+// headers, so HTTPS requests are seen as HTTPS (Secure session cookie) and the right host is checked.
+if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY);
+// HOST=127.0.0.1 keeps the server private to this machine (the proxy is the only way in).
+const host = process.env.HOST || undefined;
 // Optional trusted certificate enables phone cameras without a separate hosting service.
 const tlsKey = process.env.POKEDEX_TLS_KEY;
 const tlsCert = process.env.POKEDEX_TLS_CERT;
 if (Boolean(tlsKey) !== Boolean(tlsCert)) throw new Error('Set both POKEDEX_TLS_KEY and POKEDEX_TLS_CERT.');
-const httpsServer = tlsKey ? https.createServer({ key: fs.readFileSync(tlsKey), cert: fs.readFileSync(tlsCert), minVersion: 'TLSv1.2' }, app).listen(Number(process.env.HTTPS_PORT ?? 3443)) : null;
+const httpsServer = tlsKey ? https.createServer({ key: fs.readFileSync(tlsKey), cert: fs.readFileSync(tlsCert), minVersion: 'TLSv1.2' }, app).listen(Number(process.env.HTTPS_PORT ?? 3443), host) : null;
 httpsServer?.on('listening', () => console.log(`Phone scanner HTTPS enabled on port ${httpsServer.address().port}; use the hostname on your trusted certificate.`));
 httpsServer?.on('error', (err) => { console.error(`HTTPS: ${err.message}`); process.exit(1); });
-const server = app.listen(port);
+const server = app.listen(port, host);
 server.on('listening', () => {
   console.log(`Pokédex collection running at ${url}`);
   console.log(`Collection data is stored in ${dataDir}`);
