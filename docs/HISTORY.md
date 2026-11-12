@@ -607,6 +607,23 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - `npm run bench:scan`: unchanged (93% found, 81% read, 0 confident-but-wrong).
   - Accuracy on a physical deck and on an iPhone still needs checking by the owner.
 
+## Phase 30: Free cloud server (works with the PC off)
+
+- **Owner's ask:** keep the app running when the PC is off, for free.
+- **Choice:** any free Ubuntu machine (Oracle Cloud Always Free suggested) + Tailscale. Free web hosts (Render, Railway, Koyeb) were ruled out: they sleep or wipe files, which would lose the SQLite collection.
+- **`desktop/launcher.mjs`:**
+  - `--server` (or `"mode": "server"`): no window; installs merged updates as soon as they're found (same backup and rollback); a rolled-back version isn't retried until a newer one; exits if the app stops, so systemd restarts it.
+  - Nightly backup: SQLite `VACUUM INTO` snapshot of the live database (14 kept) plus a copy of the other data files.
+  - `"remoteUrl"`: the desktop icon opens the cloud server instead of starting one (`POKEDEX_REMOTE_URL` in `install.ps1`).
+- **Server:** `HOST` (listen address) and `TRUST_PROXY` (Express trust proxy); the same-site check compares `req.host`, so `tailscale serve`'s forwarded host is used only from a trusted proxy.
+- **`scripts/cloud-setup.sh`:** Node 22 (NodeSource), swap on small machines, the `pokedex` systemd service (`HOST=127.0.0.1`, `TRUST_PROXY=loopback`, `~/pokedex/pokedex.env` for keys), Tailscale with SSH, `tailscale serve --bg <port>`.
+- **`scripts/cloud-move.ps1`:** copies the PC's `data\` over Tailscale SSH, keeping the server's earlier data aside.
+- **Tests (`tests/cloud.test.js`):** the real launcher run with `--server` against a stand-in GitHub (install, update by itself, roll back a broken one without retrying, exit when the app stops), backups (consistent snapshot while in use, once a day, 14 kept, files copied), remote opening, and the proxy (Secure cookie, other sites still refused).
+- **Checked in the sandbox:**
+  - the launcher in server mode against the real GitHub `main`;
+  - the setup script end to end as a normal user, with `sudo`, `systemctl`, `tailscale` and `apt-get` replaced by stand-ins.
+  - Real Tailscale, systemd and Oracle still need the owner's first run.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

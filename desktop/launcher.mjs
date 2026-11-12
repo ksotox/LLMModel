@@ -14,6 +14,13 @@
 //     app shows pre-grading as offline. Its setup (.venv-grading, third_party/viridian) is carried
 //     across updates like the collection.
 // Everything is logged to launcher.log next to this file.
+//
+// Two other ways to run it (both set in config.json):
+//  - "remoteUrl": the desktop app opens your Pokédex running elsewhere (the free cloud server, see
+//    scripts/cloud-setup.sh) instead of starting one on this PC. Nothing is downloaded or started.
+//  - --server (or "mode": "server"): no window, for an always-on Linux server. Updates are installed
+//    as soon as they're found (with the same backup and rollback), the server is restarted if it
+//    stops, and the collection gets a nightly backup in <app folder>.backups/.
 
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -318,9 +325,9 @@ export function rollback({ appDir, log }) {
 // ---------------------------------------------------------------------------
 // Server and window
 
-export async function isUp(url) {
+export async function isUp(url, { timeoutMs = 3000 } = {}) {
   try {
-    const res = await fetch(`${url}/api/meta`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${url}/api/meta`, { signal: AbortSignal.timeout(timeoutMs) });
     return res.ok;
   } catch {
     return false;
@@ -437,16 +444,96 @@ export function openWindow(url, profileDir, log) {
 }
 
 // ---------------------------------------------------------------------------
+// The cloud server: nightly backups, and the desktop app opening it.
+
+/** A consistent copy of the collection database, taken while the server keeps using it (SQLite VACUUM INTO). */
+export async function snapshotCollection(appDir, destFile) {
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(path.join(appDir, 'data', 'collection.db'), { readOnly: true });
+  try {
+    db.prepare('VACUUM INTO ?').run(destFile);
+  } finally {
+    db.close();
+  }
+}
+
+/** Copy new and changed files from `src` into `dest` (nothing is ever deleted from the copy). Returns how many were copied. */
+export function mirrorFiles(src, dest, { skip = null } = {}) {
+  let copied = 0;
+  if (!fs.existsSync(src)) return 0;
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (skip?.test(entry.name)) continue;
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copied += mirrorFiles(from, to);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const st = fs.statSync(from);
+    try {
+      const old = fs.statSync(to);
+      if (old.size === st.size && Math.trunc(old.mtimeMs / 1000) === Math.trunc(st.mtimeMs / 1000)) continue;
+    } catch { /* not copied yet */ }
+    fs.mkdirSync(dest, { recursive: true });
+    fs.copyFileSync(from, to);
+    fs.utimesSync(to, st.atime, st.mtime);
+    copied++;
+  }
+  return copied;
+}
+
+/**
+ * Once a day: a snapshot of the collection database in <app>.backups/nightly/ (the last `keep` days
+ * are kept) and the collection's other files (photos, pictures) copied into <app>.backups/files/.
+ * Returns the snapshot's path, or null when today's is already there or there's no collection yet.
+ */
+export async function nightlyBackup({ appDir, log, keep = 14, now = new Date() }) {
+  if (!fs.existsSync(path.join(appDir, 'data', 'collection.db'))) return null;
+  const root = `${appDir}.backups`;
+  const dir = path.join(root, 'nightly');
+  const file = path.join(dir, `collection-${now.toISOString().slice(0, 10)}.db`);
+  if (fs.existsSync(file)) return null;
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.rmSync(tmp, { force: true });
+  await snapshotCollection(appDir, tmp);
+  fs.renameSync(tmp, file);
+  const old = fs.readdirSync(dir).filter((f) => /^collection-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().reverse().slice(keep);
+  for (const f of old) fs.rmSync(path.join(dir, f), { force: true });
+  const copied = mirrorFiles(path.join(appDir, 'data'), path.join(root, 'files'), { skip: /^collection\.db(-wal|-shm|-journal)?$/ });
+  log(`nightly backup: ${file} (+ ${copied} new or changed files in ${path.join(root, 'files')})`);
+  return file;
+}
+
+/** The desktop app with "remoteUrl" set: open that Pokédex in the app window, if it answers. */
+export async function openRemote(remoteUrl, log, { open = openWindow, up = isUp, profileDir = path.join(HERE, 'window') } = {}) {
+  const url = String(remoteUrl).replace(/\/+$/, '');
+  if (!(await up(url, { timeoutMs: 10000 }))) {
+    throw new Error(`Your cloud Pokédex at ${url} isn't answering. Check that Tailscale is connected on this PC and that the server is running ("Run it in the cloud" in the README).`);
+  }
+  log(`opening the cloud Pokédex at ${url}`);
+  return open(url, profileDir, log);
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const config = loadConfig();
+  const serverMode = process.argv.includes('--server') || config.mode === 'server';
   const log = makeLogger(path.join(HERE, 'launcher.log'));
   const url = `http://localhost:${config.port}`;
   const latestOrNull = () => latestCommit(config).catch((err) => { log(`update check failed: ${err.message}`); return null; });
-  log(`starting (app folder ${config.appDir})`);
 
-  // Already running (opened twice): just show another window.
+  if (!serverMode && config.remoteUrl) {
+    await openRemote(config.remoteUrl, log);
+    return;
+  }
+  log(`starting${serverMode ? ' as a server' : ''} (app folder ${config.appDir})`);
+
   if (await isUp(url)) {
+    if (serverMode) throw new Error(`Something already answers on port ${config.port}: stop it first.`);
+    // Already running (opened twice): just show another window.
     log('already running: opening a window');
     openWindow(url, path.join(HERE, 'window'), log);
     return;
@@ -455,6 +542,9 @@ async function main() {
   let server = null;
   let grading = null;
   let pending = null; // newest version known to be waiting
+  let restarting = false;
+  let win = null;
+  let failedSha = null; // a version that had to be rolled back: not installed again by itself
 
   const bringUp = async () => {
     await stopGrading(grading); // its files must not be in use while the folder is swapped
@@ -472,15 +562,18 @@ async function main() {
     await ensurePackages(config.appDir, log);
     server = startServer({ ...config, log });
     if (await waitUntilUp(url, { child: server })) {
+      log(`server is up (${installedVersion(config.appDir)?.sha?.slice(0, 7) ?? 'unversioned'})`);
       if (config.startGrading) grading = await startGrading({ ...config, log });
       return;
     }
     if (result.updated) {
+      failedSha = result.to;
       log('the new version did not start: rolling back');
       await stopServer(server);
       if (rollback({ ...config, log })) {
         server = startServer({ ...config, log });
         if (await waitUntilUp(url, { child: server })) {
+          log(`server is up again (${installedVersion(config.appDir)?.sha?.slice(0, 7) ?? 'unversioned'})`);
           if (config.startGrading) grading = await startGrading({ ...config, log });
           return;
         }
@@ -489,19 +582,32 @@ async function main() {
     throw new Error(`The server didn't start. Details are in ${path.join(HERE, 'launcher.log')}.`);
   };
 
+  // Stop the server, install the newest version and start it again (one at a time).
+  const restart = async (why) => {
+    if (restarting) return;
+    restarting = true;
+    log(why);
+    await stopServer(server);
+    try {
+      await bringUp();
+      pending = null;
+      listen();
+    } catch (err) {
+      log(err.message);
+      process.exit(1);
+    } finally {
+      restarting = false;
+    }
+  };
+
   const listen = () => {
-    server.on('message', async (msg) => {
-      if (msg?.type !== 'restart') return;
-      log('restart requested from the app');
-      await stopServer(server);
-      try {
-        await bringUp();
-        pending = null;
-        listen();
-      } catch (err) {
-        log(err.message);
-        process.exit(1);
-      }
+    server.on('message', (msg) => {
+      if (msg?.type === 'restart') restart('restart requested from the app');
+    });
+    // Without a window, the server is the app: if it stops on its own, stop too (a server is then
+    // restarted by its service manager).
+    server.once('exit', () => {
+      if (!restarting && (serverMode || !win)) process.exit(serverMode ? 1 : 0);
     });
     if (pending) server.send({ type: 'update-available', ...pending });
   };
@@ -509,24 +615,34 @@ async function main() {
   await bringUp();
   listen();
 
-  // Tell the app when a newer version is merged, so it can offer to restart.
+  // A newer merged version: the app offers to restart; a server installs it straight away.
   const timer = setInterval(async () => {
     const latest = await latestOrNull();
-    if (!latest || latest.sha === installedVersion(config.appDir)?.sha) return;
+    if (!latest || latest.sha === installedVersion(config.appDir)?.sha || restarting) return;
+    if (serverMode && latest.sha === failedSha) return; // waits for a newer fix (or a restart of the service)
     pending = latest;
     log(`update available: ${latest.sha.slice(0, 7)} ${latest.message}`);
+    if (serverMode) return restart('installing the update');
     try { server.send({ type: 'update-available', ...latest }); } catch { /* restarting */ }
   }, config.checkEveryMinutes * 60 * 1000);
 
-  const win = openWindow(url, path.join(HERE, 'window'), log);
+  let backups = null;
+  if (serverMode) {
+    const backup = () => nightlyBackup({ ...config, log }).catch((err) => log(`nightly backup failed: ${err.message}`));
+    backup();
+    backups = setInterval(backup, 60 * 60 * 1000);
+  } else {
+    win = openWindow(url, path.join(HERE, 'window'), log);
+  }
   const quit = async () => {
     clearInterval(timer);
+    clearInterval(backups);
+    restarting = true; // the server stopping now is expected
     await Promise.all([stopServer(server), stopGrading(grading)]);
     log('closed');
     process.exit(0);
   };
   if (win) win.on('exit', quit);
-  else server.on('exit', () => process.exit(0));
   process.on('SIGINT', quit);
   process.on('SIGTERM', quit);
 }

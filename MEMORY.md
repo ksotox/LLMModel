@@ -20,10 +20,12 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
 - `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough (`SCREENSHOTS=1`
   refreshes `docs/screenshots/`). `npm run bench:scan`: scanner accuracy. All use local mocks; CI runs them on PRs.
-- **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (`desktop/Pokedex.cs`, csc.exe) into
-  `%LOCALAPPDATA%\Pokedex`; it runs `launcher.mjs` (self-updating): newest commit via `<repo>.git/info/refs`, codeload
-  zip, swap `LLMModel-main` (keeps `.previous`, moves `data/` and the grading setup, reuses `node_modules` if the lock
-  is unchanged, rolls back if the server won't start), server over IPC (`/api/desktop`), Edge `--app` window.
+- **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (csc.exe) into `%LOCALAPPDATA%\Pokedex`; it runs
+  `launcher.mjs` (self-updating): newest commit via `.git/info/refs`, codeload zip, swap `LLMModel-main` (keeps
+  `.previous`, moves `data/` + grading setup, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
+- **Cloud (PC off):** `scripts/cloud-setup.sh` (Ubuntu: systemd `pokedex` runs `launcher.mjs --server`: auto-updates,
+  nightly `VACUUM INTO` backups; `HOST=127.0.0.1`, `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop
+  `remoteUrl` opens it; `cloud-move.ps1` copies `data\`. Not yet run for real on Oracle/Tailscale.
 - Old start: `Start Pokedex.cmd` (CRLF) runs `npm start -- --open`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
@@ -32,11 +34,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `requireLogin: false` → a built-in local user). `server/auth.js`: scrypt passwords, HttpOnly session cookie
   (sha256 in `sessions`), 5 fails/10 min throttle. First profile = owner (claims old `user_id IS NULL` rows,
   manages profiles). Public: `/api/meta`, `/api/desktop`, `/api/auth/*`.
-- `server/db.js`: SQLite schema + `MIGRATIONS` (run by `migrations.js`; 2 = scanner printing columns).
-  **One row per physical copy** (condition, grade,
-  purchase_price, storage_location, status keep/trade/sell, deleted_at = trash, purged after 30 days);
-  copies group by `keyOf()` = tcg_id (or name|set|number) + variant. `queryCards` pages/groups, `#cardFilters`
-  ANDs every filter. `server/sets.js`: set checklists (TCGdex set cards, rarities from the dataset).
+- `server/db.js`: schema + `MIGRATIONS` (via `migrations.js`; 2 = printing columns). **One row per physical copy**
+  (condition, grade, price paid, storage, status, deleted_at = trash, purged after 30 days); copies group by
+  `keyOf()` = tcg_id (or name|set|number) + variant. `server/sets.js`: set checklists.
 - `server/catalog.js`: combines sources. TCGdex (`tcg.js`) first, then the PokemonTCG dataset
   (`ptcgData.js`, ids prefixed `ptcg:`), with prices from `prices.js` (TCGdex → tcgcsv backup).
 - `identify.js` + `setCodes.js`: OCR readings → card. `pullRates.js`: pull chance. `ebay.js` + `soldStats.js`: sold
@@ -74,8 +74,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
   then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
   (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
-- Updater data safety: backup to `<app>.backups/` before each swap; a failed `data/` move undoes the swap; a
-  `data/` left in `.previous` goes to `<app>.rescued-data-*`, never deleted. Keep these properties.
+- Updater data safety (keep): backup to `<app>.backups/` before each swap; a failed `data/` move undoes it; a `data/`
+  left in `.previous` goes to `<app>.rescued-data-*`.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
 - `node:sqlite` warns as experimental; npm scripts pass `--disable-warning=ExperimentalWarning`.
 - PokemonPriceTracker docs show inconsistent layouts; `normalizeCard` deep-searches (unverified live).
@@ -83,20 +83,19 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-12)
-- `main` has PRs #1–#19 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
-  M1 = PR #17 (detection 46% → 93%). M2 = PR #18: TCGdex rarity counts, reading 72% → 81%, scanner tests. #19: dioramas.
+- `main` has PRs #1–#20 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
+  M1 = PR #17 (detection 46% → 93%). M2 = PR #18: TCGdex rarity counts, reading 72% → 81%, scanner tests. #19 dioramas, #20 scanner.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
 - Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
-- **Scan deck** (`#/scan`, `scanner.js`, `scan/`): perceptual-hash picture check (not ONNX), manual review before
-  save, `scan_token` per copy; printing columns skip prices. HTTPS: `POKEDEX_TLS_KEY`/`_CERT`, `HTTPS_PORT`.
-  Real-deck and iPhone accuracy unvalidated.
+- **Scan deck** (`#/scan`, `scan/`): perceptual hash (not ONNX), review before save, `scan_token` per copy; printing
+  columns skip prices; HTTPS via `POKEDEX_TLS_*`/`HTTPS_PORT`. Real-deck and iPhone accuracy unvalidated.
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
-  `server/models3d.js` (Pokémon 3D API list + .glb proxy/cache in data/models3d; only listed files), `public/js/battle/`
+  `server/models3d.js` (Pokémon 3D API list + .glb cache in data/models3d), `public/js/battle/`
   (engine = rules, pure + seeded; scene = stage + summon; world = owner's Hi-Fi v4 look, High/Standard/Basic).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model

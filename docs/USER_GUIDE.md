@@ -465,6 +465,22 @@ If the collection can't be moved (a file is locked), the update is cancelled and
 ### Moving to a new computer
 Install the app on the new computer, close it, and copy your old `data` folder over the new one.
 
+### Keeping it running with your PC off (free cloud server)
+Your Pokédex can live on a free always-on server, such as an Oracle Cloud "Always Free" machine. Your PC and phone then open it from anywhere. The step-by-step guide is in the README, under **Run it in the cloud for free**. In short:
+1. **Create the free server** and run one setup command on it. It installs the app as a service and gives it a private HTTPS address through **Tailscale**, such as `https://pokedex.tail1234.ts.net`.
+2. **Install Tailscale on your PC and phone** with the same account, then open that address.
+3. **Optional:**
+   - Run the PowerShell line from the README so the **Pokedex** icon opens the cloud server.
+   - Run `cloud-move.ps1` to copy your PC's cards there.
+
+What the server does by itself:
+- **Updates** itself from GitHub as soon as a new version is merged. A version that won't start is put back to the previous one.
+- **Restarts the app** if it stops.
+- **Backs up** your collection every night, keeping 14 days. These backups stay on the server, so copy them to your PC now and then (the README shows how).
+- **Stays private:** only devices signed in to your Tailscale account can open it.
+
+Use one place for your cards: the cloud server and the app on your PC are two separate collections.
+
 ---
 
 ## 12. Using it on your phone
@@ -486,7 +502,7 @@ Sign in with your profile on the phone too.
 
 **Away from home:** install **Tailscale** (free) on both the computer and the phone, and open `http://<computer-name>:3000`. Don't expose the app to the internet with port forwarding, even with a password.
 
-**Live camera on the phone (Scan deck):** phones only allow the camera on secure (HTTPS) pages. Without this, **Scan deck** still works with **Upload deck photos**.
+**Live camera on the phone (Scan deck):** phones only allow the camera on secure (HTTPS) pages. Without this, **Scan deck** still works with **Upload deck photos**. The free cloud server (section 11) is HTTPS already. To serve HTTPS from your computer instead:
 
 1. In PowerShell on the computer, get a certificate for its Tailscale name: `tailscale cert <computer-name>.<your-tailnet>.ts.net`. It writes a `.crt` and a `.key` file.
 2. Tell the app where they are, then restart it:
