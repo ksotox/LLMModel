@@ -13,7 +13,7 @@ The owner's choices:
 - **AI models:** free models, downloaded once and run on the owner's devices, with a classic fallback.
 - **Earlier plan:** its unbuilt stages (battle graphics, phone bottom menu, tidier collection page) are folded in after the new work.
 
-**Status (2026-11-12):** approved by the owner. M0 is built (PR #16). M1 is built: synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
+**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is built (its own PR): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
 
 ## Where things stand (facts the executor needs)
 - **Repo:** `ksotox/LLMModel`, branch `claude/pokemon-collection-catalog-aw6vsc`, `main` at PR #15. Node ≥ 22.5, Express 5, `node:sqlite`, vanilla ES modules with no build step, three.js 0.180 served from `/vendor/three`.
@@ -298,7 +298,7 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 ## Milestones (one draft PR each, in this order)
 | # | Milestone | Contains | Done |
 |---|---|---|---|
-| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | built, PR #16 |
+| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | done (PR #16) |
 | M1 | Detection v2 | A1, with the benchmark targets met | built: 93% of 95%; orientation and the labelling page moved to M2 |
 | M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | |
 | M3 | Phone live scanner | A3 (HTTPS and the scanner screen); S1's localhost-by-default switch | |

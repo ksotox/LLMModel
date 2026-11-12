@@ -85,7 +85,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-11)
-- `main` has PRs #1–#15. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 (PR #16): migrations, `workers/rpc.js`,
+- `main` has PRs #1–#16. **Work plan: `docs/ROADMAP.md`** (M0–M11). M0 (PR #16, merged): migrations, `workers/rpc.js`,
   `ai/runtime.js` + `server/aiModels.js`, `bench:scan`, CI. M1 built: detection 46% → 93% (target 95%). Next: M2.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
