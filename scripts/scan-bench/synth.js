@@ -183,6 +183,7 @@ export function sceneList() {
   add('synthetic-glare', 4, (i) => ({ layout: i % 2 ? 'row' : 'single', bg: bgs[i], effects: ['glare'] }));
   add('synthetic-sleeve', 4, (i) => ({ layout: i % 2 ? 'row' : 'single', bg: bgs[i + 1], effects: ['sleeve'] }));
   add('synthetic-blur', 4, (i) => ({ layout: i % 2 ? 'row' : 'single', bg: bgs[i + 2], effects: ['blur'] }));
+  add('synthetic-flipped', 3, (i) => ({ layout: i % 2 ? 'row' : 'single', bg: bgs[i], effects: ['flipped'] })); // upside down
   return list;
 }
 
@@ -205,7 +206,7 @@ export async function drawScene(scene, faces, seed) {
   const pick = () => faces[Math.floor(r() * faces.length)];
   const put = (cx, cy, width, angle, tilt) => {
     const face = pick();
-    const quad = placeQuad(cx, cy, width, angle, tilt, r);
+    const quad = placeQuad(cx, cy, width, angle + (has('flipped') ? Math.PI : 0), tilt, r);
     paste(cv, ctx, face.canvas, quad, { sleeve: has('sleeve'), dim: has('dim') ? 0.55 : 1 });
     cards.push({ corners: quad.map((p) => [p.x, p.y]), ...face.label });
   };

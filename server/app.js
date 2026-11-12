@@ -19,6 +19,7 @@ import { allSets, setChecklist, userSets } from './sets.js';
 import { battleData, isPokemonCard } from './battle.js';
 import { Models3D } from './models3d.js';
 import { AiModels, aiModelsRouter } from './aiModels.js';
+import { scanLabelsRouter } from './scanLabels.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -509,6 +510,9 @@ export function createApp({
 
   // AI model files the browser runs on this device (server/aiModels.js).
   app.use('/api/ai/models', aiModelsRouter(aiModels ?? new AiModels({ dataDir, log: console.log })));
+
+  // The owner's own scanner tests (photos with their cards marked), for npm run bench:scan.
+  app.use('/api/scan-labels', scanLabelsRouter({ dataDir, isOwner: (req) => Boolean(req.user && store.getUser(req.user.id)?.is_owner) }));
 
   // Set completion: your sets, any set to browse, and one set's checklist.
   // ---- PokéBattles: 3D models and battle data from the cards ----

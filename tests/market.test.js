@@ -185,6 +185,24 @@ describe('card catalog with a second source', () => {
     const reverse = await catalog.market({ ...(await catalog.details('sv03-168')), variant: 'reverse-holo' });
     assert.equal(reverse.price.value, 0.3);
   });
+
+  test('rarity counts come from TCGdex for a set it lists in full (the dataset stops getting new sets)', async () => {
+    // Mega Evolution isn't in the dataset fixtures: without TCGdex there'd be no pull chance.
+    const profile = await catalog.rarityProfile({ tcg_id: 'me01-086', set_code: 'MEG' });
+    assert.equal(profile.source, 'tcgdex');
+    assert.equal(profile.series, 'Mega Evolution');
+    assert.equal(profile.setCode, 'MEG');
+    assert.deepEqual(profile.counts, {
+      common: 54, uncommon: 38, rare: 15, 'double rare': 13, 'ultra rare': 10, 'illustration rare': 12, 'special illustration rare': 9, 'mega hyper rare': 1,
+    });
+    const lucario = await catalog.market({ ...(await catalog.details('me01-086')), variant: 'normal' });
+    assert.equal(lucario.pull.oneIn, Math.round(13 / 0.2077)); // 13 double rares share the era's 0.2077 per pack
+    // Exact-match filters only ("Rare" must not also count "Double rare").
+    assert.ok(mock.requests.some((r) => r === '/v2/en/cards?set=eq:me01&rarity=eq:Rare'));
+
+    // A set TCGdex lists without series/rarities (here: Paldea Evolved) still uses the dataset.
+    assert.equal((await catalog.rarityProfile({ tcg_id: 'sv02-066', set_code: 'PAL' })).source, undefined);
+  });
 });
 
 describe('market API', () => {

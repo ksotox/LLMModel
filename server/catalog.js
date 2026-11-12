@@ -2,8 +2,8 @@ import { ExchangeRates } from './fx.js';
 import { priceFromTcgdex, TcgCsvClient } from './prices.js';
 import { printingsFor } from './printings.js';
 import { PtcgDataClient } from './ptcgData.js';
-import { pullChance } from './pullRates.js';
-import { hasJapanese, isJapaneseCode } from './setCodes.js';
+import { PULL_RARITIES, hasPullRates, normaliseRarity, pullChance } from './pullRates.js';
+import { codeFromSetId, hasJapanese, isJapaneseCode, setFromCode } from './setCodes.js';
 import { TcgClient } from './tcg.js';
 
 const isPtcg = (id) => String(id ?? '').startsWith(PtcgDataClient.PREFIX);
@@ -172,6 +172,41 @@ export class CardCatalog {
   }
 
   /**
+   * How many cards of each rarity the card's set has, for pull chances: { setCode, series, counts }.
+   * From TCGdex when it lists the whole set with rarities; else from the Pokémon TCG dataset, which
+   * stops getting new sets once its API closes (2027-03-01).
+   */
+  async rarityProfile(card) {
+    const setId = isPtcg(card.tcg_id) ? null
+      : card.tcg_id ? String(card.tcg_id).replace(/-[^-]+$/, '') : setFromCode(card.set_code)?.id ?? null;
+    const fromTcgdex = setId && !isJapanese(card) ? await this.#tcgdexProfile(setId).catch(() => null) : null;
+    return fromTcgdex ?? this.ptcg.rarityProfile({ setCode: card.set_code, setName: card.set_name }).catch(() => null);
+  }
+
+  #profiles = new Map();
+  #tcgdexProfile(setId) {
+    if (!this.#profiles.has(setId)) {
+      const work = (async () => {
+        const set = await this.tcgdex.set(setId);
+        const series = set?.serie?.name;
+        if (!set || !hasPullRates(series)) return null;
+        const names = ((await this.tcgdex.rarities()) ?? []).filter((r) => PULL_RARITIES.has(normaliseRarity(r)));
+        const counts = {};
+        for (const [name, n] of Object.entries(await this.tcgdex.rarityCounts(setId, names))) {
+          counts[normaliseRarity(name)] = (counts[normaliseRarity(name)] ?? 0) + n;
+        }
+        // Only a set TCGdex lists in full: new sets can lack rarities for a while.
+        const counted = Object.values(counts).reduce((a, b) => a + b, 0);
+        if (!set.cardCount?.total || counted < set.cardCount.total * 0.9) return null;
+        return { setId, setCode: codeFromSetId(setId), setName: set.name, series, counts, source: 'tcgdex' };
+      })();
+      this.#profiles.set(setId, work);
+      work.catch(() => this.#profiles.delete(setId)); // a failure (offline) is tried again next time
+    }
+    return this.#profiles.get(setId);
+  }
+
+  /**
    * Rarity, estimated pull chance and market price for a card. Every part is optional:
    * whatever can't be worked out (offline, unknown set, no sales data) is left null.
    */
@@ -191,9 +226,8 @@ export class CardCatalog {
       out.rarity = twin?.rarity ?? null;
     }
 
-    if (out.rarity && (card.set_code || card.set_name)) {
-      const profile = await this.ptcg.rarityProfile({ setCode: card.set_code, setName: card.set_name }).catch(() => null);
-      out.pull = pullChance({ rarity: out.rarity, variant: card.variant, profile });
+    if (out.rarity && (card.set_code || card.set_name || card.tcg_id)) {
+      out.pull = pullChance({ rarity: out.rarity, variant: card.variant, profile: await this.rarityProfile(card) });
     }
 
     // TCGdex carries the prices; a card linked to the second source looks up its TCGdex twin.

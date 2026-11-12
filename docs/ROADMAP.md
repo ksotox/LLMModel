@@ -13,7 +13,7 @@ The owner's choices:
 - **AI models:** free models, downloaded once and run on the owner's devices, with a classic fallback.
 - **Earlier plan:** its unbuilt stages (battle graphics, phone bottom menu, tidier collection page) are folded in after the new work.
 
-**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is built (its own PR): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
+**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is done (PR #17, merged); M2 is built (its own PR): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
 
 ## Where things stand (facts the executor needs)
 - **Repo:** `ksotox/LLMModel`, branch `claude/pokemon-collection-catalog-aw6vsc`, `main` at PR #15. Node ≥ 22.5, Express 5, `node:sqlite`, vanilla ES modules with no build step, three.js 0.180 served from `/vendor/three`.
@@ -154,6 +154,21 @@ The owner's choices:
     - groups of cards and parts of a card recognised, with a part completing to the whole card;
     - sleeves peeled.
 
+### A5. M2 results (2026-11-12)
+- **Cards read correctly** (of those found): 72% → **81%**. Target 85%: not met.
+- **By group:** reference 5 of 5, binder 74%, upside down 4 of 5. Blurred photos: 0%, because the text itself is unreadable.
+- **Confident but wrong:** stays 0.
+- **What helped:**
+  - the set line is found by its text (`vision/textline.js`) and read beside the fixed band;
+  - with no set code read, the matcher also searches the name alone;
+  - a number one digit off in a matching set gives "please check", never an automatic link;
+  - a card nothing was matched for is read turned round too.
+- **Tried and dropped:**
+  - a digits-only read: it made a misread set total confident and gave a wrong match;
+  - choosing upright by the name strip's OCR confidence: turned round, that strip holds the crisp copyright line, so upright cards got turned and accuracy fell to 54%.
+- **Not done:** per-word confidence weighting (not needed for these results); the optional AI reader (not needed yet).
+- **Scanner tests:** Profile → Scanner tests lets the owner mark cards in their own photos (`server/scanLabels.js`, `public/js/scanLabels.js`). `bench:scan` adds them as the `own` group. The photos stay on the owner's PC, by the owner's choice.
+
 ## Workstream B: 3D Pop-out for every card
 
 ### B1. Asset model
@@ -268,7 +283,7 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 
 | # | Gap | Why it matters | Fix |
 |---|---|---|---|
-| R1 | The Pokémon TCG dataset's API shuts down on **2027-03-01**; it is the only source of the rarity counts behind pull chances | new sets lose pull chances | compute rarity counts from TCGdex; do it before that date |
+| R1 | The Pokémon TCG dataset's API shuts down on **2027-03-01**; it is the only source of the rarity counts behind pull chances | new sets lose pull chances | **done in M2:** rarity counts and checklist rarities from TCGdex's exact-match filters, dataset as fallback |
 | T1 | No CI | "checks passed" on PRs means nothing ran | GitHub Actions: `npm test` and e2e on PRs, plus a `windows-latest` smoke test of the launcher |
 | N1 | No HTTPS | no phone camera; cookies not `Secure` | A3's listener |
 | N2 | OpenCV and Tesseract run on the main thread | the page freezes while reading cards | A1's worker |
@@ -299,8 +314,8 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 | # | Milestone | Contains | Done |
 |---|---|---|---|
 | M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | done (PR #16) |
-| M1 | Detection v2 | A1, with the benchmark targets met | built: 93% of 95%; orientation and the labelling page moved to M2 |
-| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | |
+| M1 | Detection v2 | A1, with the benchmark targets met | done (PR #17): 93% of 95%; orientation and the labelling page moved to M2 |
+| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | built: reading 72% → 81% (target 85%); R1 done; scanner tests page |
 | M3 | Phone live scanner | A3 (HTTPS and the scanner screen); S1's localhost-by-default switch | |
 | M4 | Pop-out for all, classic | B1, B2, and B3 without AI; B4's grid display and queue | |
 | M5 | Pop-out with AI | B5's models for cut-out and depth; the relief picture and card-page parallax | |

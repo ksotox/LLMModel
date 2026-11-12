@@ -63,6 +63,12 @@ describe('set completion', () => {
     assert.equal(jp.missing, 2);
   });
 
+  test('a set the dataset doesn’t have gets its rarities from TCGdex', async () => {
+    const c = await get('/api/sets/en/me01');
+    assert.equal(c.code, 'MEG');
+    assert.equal(c.cards.find((x) => x.number === '086').rarity, 'Double rare');
+  });
+
   test('browse every set; unknown sets are a 404', async () => {
     const { sets } = await get('/api/sets/en/all');
     assert.ok(sets.some((s) => s.setId === 'sv02' && s.code === 'PAL' && s.total === 193));

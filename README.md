@@ -191,7 +191,7 @@ Both run inside your browser, so your photos aren't sent to any outside service.
 3. **Read it:** OCR reads the name strip at the top (or the second line on Trainer cards) and the set code and number at the bottom left, several times with different image processing.
 4. **Match it** (`POST /api/identify`): the server votes across those readings. It fixes typical misreads (a slash read as "7", "0" for "O", a dropped leading zero), looks the card up by set and number, and checks that the name agrees before filling anything in automatically. If it isn't sure, it shows its best guesses and asks you to pick.
 
-Small print in blurry or dim photos can still defeat it. When a card's photo is blurry, has glare on it or is too small, the card says **Retake suggested** with a tip (hold the phone steady, tilt the card away from the light, move closer). You can also type the details as before.
+Small print in blurry or dim photos can still defeat it. When a card's photo is blurry, has glare on it or is too small, the card says **Retake suggested** with a tip (hold the phone steady, tilt the card away from the light, move closer). You can also type the details as before. A card photographed upside down is turned round automatically.
 
 ## Where the numbers come from
 
@@ -319,6 +319,7 @@ MEMORY.md       short handoff notes for the next agent (size-capped by tests/mem
 npm test             # unit and API tests
 npm run test:e2e     # browser walkthrough (Playwright + Chromium: npx playwright install chromium); SCREENSHOTS=1 refreshes docs/screenshots
 npm run bench:scan   # how well the scanner finds and identifies cards (--quick: find only; --strict: fail on missed targets)
+                     # it includes your own photos from Profile → Scanner tests, if you marked any
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all three on every pull request (Linux), plus `npm test` on Windows.

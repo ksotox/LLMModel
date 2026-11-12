@@ -46,12 +46,27 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
     for (const p of pairs) {
       const r0 = performance.now();
       const { canvas } = await cutCard(img, found[p.found]);
+      // As the Add page does: an unsure reading is retried on cuts with slightly different margins,
+      // and a card nothing was matched for is also read turned round (upside down in the photo).
+      const turn = (c) => {
+        const t = document.createElement('canvas');
+        t.width = c.width;
+        t.height = c.height;
+        const ctx = t.getContext('2d');
+        ctx.translate(t.width, t.height);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(c, 0, 0);
+        return t;
+      };
       let result = await identify(canvas);
-      // As the Add page does: an unsure reading is retried on cuts with slightly different margins.
       for (const grow of [0.008, 0]) {
         if (result.match && result.confidence === 'high') break;
         const other = await identify(await warpCard(img, found[p.found], { width: canvas.width, grow }));
         if (other.match && (!result.match || (other.confidence === 'high' && result.confidence !== 'high'))) result = other;
+      }
+      if (!result.match) {
+        const other = await identify(turn(canvas));
+        if (other.match) result = other;
       }
       reads.push({
         card: cards[p.truth].name,

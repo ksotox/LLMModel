@@ -58,6 +58,12 @@ const REVERSE_SLOTS = 2;
 const RARE_SLOT_HITS = ['double rare', 'ultra rare', 'hyper rare', 'mega hyper rare'];
 const REVERSE_SLOT_HITS = ['illustration rare', 'special illustration rare', 'ace spec rare'];
 
+/** The rarities pull chances use (common, uncommon, rare and every special one with a per-pack rate). */
+export const PULL_RARITIES = new Set(['common', 'uncommon', 'rare', ...Object.values(ERA_RATES).flatMap((r) => Object.keys(r))]);
+
+/** Whether pull chances can be estimated for sets of this series (TCGdex's or the dataset's series name). */
+export const hasPullRates = (series) => Boolean(ERA_BY_SERIES[series]);
+
 export function normaliseRarity(rarity) {
   return String(rarity ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -66,7 +72,7 @@ export function normaliseRarity(rarity) {
  * @param {object} p
  * @param {string} p.rarity    the card's rarity, e.g. "Double Rare"
  * @param {string} p.variant   our variant ("reverse-holo" changes the maths for commons/uncommons/rares)
- * @param {object} p.profile   from PtcgDataClient.rarityProfile: { setCode, series, counts }
+ * @param {object} p.profile   from CardCatalog.rarityProfile: { setCode, series, counts }
  * @returns {{ chance: number, oneIn: number, source: string } | null}
  */
 export function pullChance({ rarity, variant, profile }) {

@@ -12,8 +12,10 @@ import { mockCatalog, startMockSources } from '../../tests/helpers/mock-sources.
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MODULES = path.join(ROOT, 'scripts', 'scan-bench');
-// Folders whose files the benchmark may open: the reference photos, the labels, the owner's own set.
-const FILE_ROOTS = ['docs/reference', 'tests/fixtures/scan', 'data/scan-bench'].map((d) => path.join(ROOT, d));
+// The owner's own scanner tests (Profile → Scanner tests), where the app keeps them.
+const OWN = path.resolve(process.env.DATA_DIR ?? path.join(ROOT, 'data'), 'scan-bench');
+// Folders whose files the benchmark may open: the reference photos and their labels.
+const FILE_ROOTS = ['docs/reference', 'tests/fixtures/scan'].map((d) => path.join(ROOT, d));
 const TYPES = { '.js': 'text/javascript', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.json': 'application/json' };
 
 export async function startHarness() {
@@ -33,8 +35,10 @@ export async function startHarness() {
     const url = new URL(route.request().url());
     const [, kind, ...rest] = url.pathname.split('/').filter(Boolean);
     const rel = decodeURIComponent(rest.join('/'));
-    const file = kind === 'mod' ? path.join(MODULES, rel) : path.join(ROOT, rel);
-    const allowed = kind === 'mod' ? file.startsWith(MODULES + path.sep) : FILE_ROOTS.some((r) => file.startsWith(r + path.sep));
+    const own = kind === 'file' && rel.startsWith('own/');
+    const file = kind === 'mod' ? path.join(MODULES, rel) : own ? path.join(OWN, rel.slice(4)) : path.join(ROOT, rel);
+    const allowed = kind === 'mod' ? file.startsWith(MODULES + path.sep)
+      : own ? file.startsWith(OWN + path.sep) : FILE_ROOTS.some((r) => file.startsWith(r + path.sep));
     if (!allowed || !fs.existsSync(file)) return route.fulfill({ status: 404, body: 'not found' });
     return route.fulfill({ status: 200, contentType: TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream', body: fs.readFileSync(file) });
   });
@@ -57,10 +61,10 @@ export async function startHarness() {
 export function labelledSets() {
   const reference = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/scan/reference.json'), 'utf8'));
   const sets = [{ group: 'reference', photos: reference.photos }];
-  const own = path.join(ROOT, 'data/scan-bench/labels.json');
+  const own = path.join(OWN, 'labels.json');
   if (fs.existsSync(own)) {
     const labels = JSON.parse(fs.readFileSync(own, 'utf8'));
-    sets.push({ group: 'own', photos: labels.photos.map((p) => ({ ...p, file: path.posix.join('data/scan-bench', p.file) })) });
+    if (labels.photos?.length) sets.push({ group: 'own', photos: labels.photos.map((p) => ({ ...p, file: `own/${p.file}` })) });
   }
   return { reference, sets };
 }

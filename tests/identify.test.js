@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { findNumber, findSetCode, identifyCard, nameCandidates, nameSimilarity } from '../server/identify.js';
+import { findNumber, findSetCode, identifyCard, nameCandidates, nearNumber, nameSimilarity } from '../server/identify.js';
 import { mockCatalog, startMockSources } from './helpers/mock-sources.js';
 
 // These are the real OCR readings the in-browser reader produced for the reference photos.
@@ -110,6 +110,16 @@ describe('identifying the card', () => {
     const result = await identifyCard(catalog, { names: ['Voltorb'], lines: ['PAL 006/193'] });
     assert.equal(result.match?.name, 'Voltorb');
     assert.notEqual(result.match?.tcgId, 'ptcg:sv2-6');
+  });
+
+  test('a number with one digit misread: the name and set total still find the card, to be checked', async () => {
+    // From a real binder-page reading: "066" read as "065" (Pawmot in Paldea Evolved), no set code.
+    const result = await identifyCard(catalog, { names: ['“Voltorb', '<“Voltorb'], lines: ['B Tum 065/193', 'B olan 065/193'] });
+    assert.equal(result.match?.tcgId, 'sv02-066');
+    assert.equal(result.confidence, 'medium', 'a near number is never enough for an automatic match');
+    assert.equal(nearNumber('065', '066'), true);
+    assert.equal(nearNumber('66', '066'), false, 'the same number, not a near one');
+    assert.equal(nearNumber('065', '056'), false, 'two digits differ');
   });
 
   test('gives up rather than guessing when nothing useful was read', async () => {

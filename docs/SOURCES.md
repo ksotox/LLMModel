@@ -7,10 +7,10 @@ Everything the app calls at run time is **free**. Only PokemonPriceTracker needs
 
 | Service | Base URL (env override) | Used for | Code | Key? |
 | --- | --- | --- | --- | --- |
-| **TCGdex** REST API v2 | `https://api.tcgdex.net/v2/en` (`TCGDEX_URL`) | Main card database: sets, cards, name search, rarity, TCGplayer/Cardmarket prices, TCGplayer product id, and each card's printings (`variants_detailed`: normal / reverse / holo, pattern foils, stamps) for the variant suggestion; full set lists for the set-completion checklists | `server/tcg.js` | No |
+| **TCGdex** REST API v2 | `https://api.tcgdex.net/v2/en` (`TCGDEX_URL`) | Main card database: sets, cards, name search, rarity, TCGplayer/Cardmarket prices, TCGplayer product id, and each card's printings (`variants_detailed`: normal / reverse / holo, pattern foils, stamps) for the variant suggestion; full set lists for the set-completion checklists; rarity counts per set for pull chances (`/rarities`, then `/cards?set=eq:<id>&rarity=eq:<name>` per rarity, cached a week; used when TCGdex lists the whole set) | `server/tcg.js`, `server/catalog.js` | No |
 | **TCGdex** (Japanese) | `https://api.tcgdex.net/v2/ja` (`TCGDEX_JA_URL`) | Japanese cards: sets (the printed code is the set id, e.g. `SV2a`), Japanese names, printings, Cardmarket prices | `server/tcg.js` (`lang: 'ja'`), `server/catalog.js` | No |
 | **TCGdex assets** | `https://assets.tcgdex.net/en/<series>/<set>/<number>/high.png` | Official card images (a local copy is saved) | `server/tcg.js` | No |
-| **Pokémon TCG dataset** (GitHub, PokemonTCG/pokemon-tcg-data) | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` (`PTCG_DATA_URL`) | Second card source and images when TCGdex has no match; rarity counts per set for pull chances | `server/ptcgData.js` | No |
+| **Pokémon TCG dataset** (GitHub, PokemonTCG/pokemon-tcg-data) | `https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master` (`PTCG_DATA_URL`) | Second card source and images when TCGdex has no match; rarity counts and checklist rarities for sets TCGdex doesn't list in full (it gets no new sets after its API closes on 2027-03-01) | `server/ptcgData.js` | No |
 | **pokemontcg.io image CDN** (`images.pokemontcg.io`) | URLs come from the dataset above | Card images for cards found in the dataset | `server/ptcgData.js` | No |
 | **tcgcsv.com** | `https://tcgcsv.com/tcgplayer/3` (`TCGCSV_URL`) | Backup TCGplayer prices and product pictures (category 3 = Pokémon): `/groups`, `/<groupId>/products`, `/<groupId>/prices`. Sets are found by their TCGplayer group id, listed in `server/setCodes.js` and taken from TCGdex's data files. | `server/prices.js` | No |
 | **TCGplayer image CDN** | `https://tcgplayer-cdn.tcgplayer.com/product/<id>_in_1000x1000.jpg` (then `_400w`, `_200w`) | Official picture of a card when TCGdex and the dataset have none, e.g. Mega Evolution promos (MEP) | `server/prices.js`, `server/catalog.js` | No |
@@ -86,7 +86,7 @@ OpenCV.js, Tesseract.js, heic2any, onnxruntime-web and the OCR models are served
 ## Documentation and references used while building
 
 - **TCGdex:** docs at [tcgdex.dev](https://tcgdex.dev) ([card reference](https://tcgdex.dev/reference/card), [filtering, sorting and pagination](https://tcgdex.dev/rest/filtering-sorting-pagination)). Its server code at [github.com/tcgdex/cards-database](https://github.com/tcgdex/cards-database) was used to confirm:
-  - the set and card endpoint fields, and the query parser and filter;
+  - the set and card endpoint fields, and the query parser and filter (`server/src/libs/QueryEngine/parsers.ts`: a plain value means "contains", `eq:` an exact match; `/cards?set=` matches the set's id or name);
   - the TCGplayer (via tcgcsv) and Cardmarket price providers;
   - the set data files for Paldea Evolved, Obsidian Flames, the Mega Evolution sets, Black Bolt and White Flare (set codes and card counts).
 - **Pokémon TCG dataset:** [github.com/PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (`sets/en.json`, `cards/en/<set>.json`). Real files for a few sets are in `tests/fixtures/ptcg`. The pokemontcg.io API itself was not used, because its future was unclear after the move to Scrydex ([scrydex.com/faq](https://scrydex.com/faq)).

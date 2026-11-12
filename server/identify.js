@@ -151,6 +151,18 @@ export function nameCandidates(texts) {
   return out.slice(0, 8);
 }
 
+/** Whether two card numbers differ in exactly one digit ("065" vs "066"), as a misread would. */
+export function nearNumber(a, b) {
+  const x = String(a ?? '').replace(/^\D+/, '');
+  const y = String(b ?? '').replace(/^\D+/, '');
+  if (!x || !y || !/^\d+$/.test(x) || !/^\d+$/.test(y)) return false;
+  const [p, q] = [x.padStart(3, '0'), y.padStart(3, '0')];
+  if (p.length !== q.length) return false;
+  let diff = 0;
+  for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) diff++;
+  return diff === 1;
+}
+
 /**
  * Identify a card from OCR readings: { names: [...], lines: [...] }.
  * Returns { match, candidates, read, confidence } where confidence is 'high', 'medium' or 'low'.
@@ -170,8 +182,10 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
   if (number && total && !japaneseCode) attempts.push({ number: `${number}/${total}` });
   for (const name of guesses.filter((g) => !japaneseCode || hasJapanese(g)).slice(0, 5)) {
     attempts.push({ name, ...(number ? { number } : {}) });
-    // The number may be misread: also look for the name within the set.
+    // The number may be misread: also look for the name within the set, or (no set code read)
+    // among all its printings, where the set total still tells them apart.
     if (setCode) attempts.push({ name, setCode });
+    else if (number || total) attempts.push({ name });
   }
 
   const found = new Map();
@@ -195,9 +209,12 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
     const sameScript = guesses.filter((g) => hasJapanese(g) === japanese);
     const sim = sameScript.length ? Math.max(...sameScript.map((g) => nameSimilarity(g, card.name))) : null;
     const numberOk = Boolean(number && sameNumber(card.number, number));
+    // One digit misread (6 read as 5, 3 as 8…) in an otherwise matching set: a hint, never enough
+    // on its own for an automatic match (only exact numbers give 'high').
+    const numberNear = !numberOk && nearNumber(card.number, number);
     const setOk = Boolean(setCode && String(card.setCode ?? '').toUpperCase() === setCode.toUpperCase());
     const totalOk = Boolean(total && card.setTotal && Number(card.setTotal) === Number(total));
-    const score = (sim ?? 0) * 4 + (numberOk ? 2 : 0) + (setOk ? 1.5 : 0) + (totalOk ? 1 : 0);
+    const score = (sim ?? 0) * 4 + (numberOk ? 2 : numberNear && (setOk || totalOk) ? 1 : 0) + (setOk ? 1.5 : 0) + (totalOk ? 1 : 0);
     return { card, score, sim, numberOk, setOk, totalOk, japanese };
   }).sort((a, b) => b.score - a.score);
 
