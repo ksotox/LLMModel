@@ -1,0 +1,302 @@
+{
+ "about": "Card dioramas made for the owner's collection (ids are their collection card ids). Imported into data/card-effects on start-up when the card with that id has the same name or card id. WebP copies of the delivered PNGs.",
+ "cards": [
+  {
+   "id": 1,
+   "name": "Meowstic",
+   "tcg_id": "me04-037",
+   "set_code": "CRI",
+   "number": "037",
+   "file": "1.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "5fb57a6055f6dfb83f6098e4cb3b37acd4d1d3dd0713b930c54f609ba8aa02c3"
+  },
+  {
+   "id": 2,
+   "name": "Chespin",
+   "tcg_id": "mep-058",
+   "set_code": "MEP",
+   "number": "058",
+   "file": "2.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "698bd8c389c7267ac797395793a79283e3aba256ce48f97f5f2aff690363430b"
+  },
+  {
+   "id": 3,
+   "name": "Froakie",
+   "tcg_id": "mep-060",
+   "set_code": "MEP",
+   "number": "060",
+   "file": "3.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "65d8d43f0e14e8737b8ea20bbbb08608865e6b1d97d37bed5401dd9ab01d8644"
+  },
+  {
+   "id": 4,
+   "name": "Fennekin",
+   "tcg_id": "mep-059",
+   "set_code": "MEP",
+   "number": "059",
+   "file": "4.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "b0a646634dfaac4eeb53eb18a661e676e9830d4b25181c0fba43e9cf70289354"
+  },
+  {
+   "id": 5,
+   "name": "Jynx",
+   "tcg_id": "me05-032",
+   "set_code": "PBL",
+   "number": "032",
+   "file": "5.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "98a2baf74e8f3acd59462ad40daef6288bd77bdeeb61dbe411e4aee3bbb973c9"
+  },
+  {
+   "id": 6,
+   "name": "Sinistcha",
+   "tcg_id": "me05-006",
+   "set_code": "PBL",
+   "number": "006",
+   "file": "6.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "848fd5c0dc3a539b4156a1b24bf05f950ea2a44758d9c3998c73163d9d30afce"
+  },
+  {
+   "id": 7,
+   "name": "Armarouge",
+   "tcg_id": "me05-012",
+   "set_code": "PBL",
+   "number": "012",
+   "file": "7.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "5ad226ed3ebcf08ee55beb2276b609c7cd706e3958d52a3bd20f506beac3a922"
+  },
+  {
+   "id": 8,
+   "name": "Mega Slowbro ex",
+   "tcg_id": "me05-031",
+   "set_code": "PBL",
+   "number": "031",
+   "file": "8.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "6231e585fce5dbe760358847c3110c52cc389be42eb80b15cd7b474261c8ca93"
+  },
+  {
+   "id": 9,
+   "name": "Ampharos",
+   "tcg_id": "me04-029",
+   "set_code": "CRI",
+   "number": "029",
+   "file": "9.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "47d66caf2c2d2bb0c755578d3fbed096373c935d8f03c6812ef9198cb5ab7ce5"
+  },
+  {
+   "id": 10,
+   "name": "Roxie's Performance",
+   "tcg_id": "me04-081",
+   "set_code": "CRI",
+   "number": "081",
+   "file": "10.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "d05ea55d976ca97dafc7bb62ddd338515102e0e9e30e197dc836e44ec862520a"
+  },
+  {
+   "id": 11,
+   "name": "Litleo",
+   "tcg_id": "me04-014",
+   "set_code": "CRI",
+   "number": "014",
+   "file": "11.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "c2ead2d49f89f0abaff5e6eecbe431b9febc38ae79eb267f74e0805ef8ba65da"
+  },
+  {
+   "id": 12,
+   "name": "Ethan's Typhlosion",
+   "tcg_id": "sv10-190",
+   "set_code": "DRI",
+   "number": "190",
+   "file": "12.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "1b084e678f0f2773e53cb24c1461b883dc6e7fd3572088bd40c565b13c9d0967"
+  },
+  {
+   "id": 13,
+   "name": "Team Rocket's Spidops",
+   "tcg_id": "sv10-020",
+   "set_code": "DRI",
+   "number": "020",
+   "file": "13.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "1fb46a8ad9aea8e073e573ee531585e4cf8b28ecca1784aae34f3ecbd05926f5"
+  },
+  {
+   "id": 14,
+   "name": "Voltorb",
+   "tcg_id": "ptcg:sv2-66",
+   "set_code": "PAL",
+   "number": "066",
+   "file": "14.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "5581e49fa7e4df94ee3f40ca093476f2c5a7d7a85596c322c7c963d0689ffd66"
+  },
+  {
+   "id": 15,
+   "name": "Liepard",
+   "tcg_id": "swsh9-091",
+   "set_code": "BRS",
+   "number": "091",
+   "file": "15.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "005ad63aaed0c45cd105ec7d1cbf30b1505eefc344b197aba7ddaeb1acad1e90"
+  },
+  {
+   "id": 16,
+   "name": "Primarina",
+   "tcg_id": "me05-020",
+   "set_code": "PBL",
+   "number": "020",
+   "file": "16.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "d03c56ef2509a465306c2c41af71b875ed44dffe7e775d0487e4512aae732475"
+  },
+  {
+   "id": 17,
+   "name": "Armarouge",
+   "tcg_id": "me05-012",
+   "set_code": "PBL",
+   "number": "012",
+   "file": "17.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "69b9386753f839bf3e82eec255d2a011597547f799a4a3113dc7cc773151ff2c"
+  },
+  {
+   "id": 18,
+   "name": "Tropius",
+   "tcg_id": "me05-001",
+   "set_code": "PBL",
+   "number": "001",
+   "file": "18.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "da962b65e5f9eedb078217089c35700abd3950c0c6dc649615c490958f4ec201"
+  },
+  {
+   "id": 19,
+   "name": "Mega Dragalge ex",
+   "tcg_id": "me04-104",
+   "set_code": "CRI",
+   "number": "104",
+   "file": "19.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "90f27056514dd142a9f91f4e78e98ce7b67b6e3551a06e7ff46b5b1e75db5a36"
+  },
+  {
+   "id": 20,
+   "name": "Iris's Fighting Spirit",
+   "tcg_id": "sv09-180",
+   "set_code": "JTG",
+   "number": "180",
+   "file": "20.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "6dc646e738757611bbd29d4de884dff2d385596bfbcf7bbae6036809c89ccacd"
+  },
+  {
+   "id": 21,
+   "name": "Talonflame",
+   "tcg_id": "me03-014",
+   "set_code": "POR",
+   "number": "014",
+   "file": "21.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "65195b29a4c1949b747eef5a613d89c772547d2c4f5841e58e5d10dbb2a47e4e"
+  },
+  {
+   "id": 22,
+   "name": "Chesnaught",
+   "tcg_id": "me04-007",
+   "set_code": "CRI",
+   "number": "007",
+   "file": "22.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "256550af123395b619ebe7eefb2259a6af04f6329dbb54c3e101c2bd15b755ee"
+  },
+  {
+   "id": 23,
+   "name": "Tyrantrum",
+   "tcg_id": "me03-045",
+   "set_code": "POR",
+   "number": "045",
+   "file": "23.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "f12a8a794244e933ad882cc55b2e4e7a71f2033ce5fc3125ff941e4c7564f983"
+  },
+  {
+   "id": 24,
+   "name": "Cynthia's Garchomp ex",
+   "tcg_id": "sv10-104",
+   "set_code": "DRI",
+   "number": "104",
+   "file": "24.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "e92b0726d35190c797cf27a42af1f544cf5772f9c0f22f32d51971aa081a638c"
+  },
+  {
+   "id": 25,
+   "name": "Gourgeist ex",
+   "tcg_id": "me04-041",
+   "set_code": "CRI",
+   "number": "041",
+   "file": "25.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "e1b85cdc7b2e218b7bb072beefbcdc89fb62c5273d1635a067819b111be1d7d8"
+  },
+  {
+   "id": 26,
+   "name": "Mega Clefable ex",
+   "tcg_id": "me03-031",
+   "set_code": "POR",
+   "number": "031",
+   "file": "26.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "ce7a9e23693b90641c51fd4bb436996f0765289ff1bc18b8cf549c16cff63998"
+  },
+  {
+   "id": 27,
+   "name": "Mega Greninja ex",
+   "tcg_id": "me04-022",
+   "set_code": "CRI",
+   "number": "022",
+   "file": "27.webp",
+   "width": 1122,
+   "height": 1402,
+   "source_sha256": "43a84a05356311ea30b84e808cd9140ca36aaf951d5bac6ccd807194a000d80a"
+  }
+ ]
+}

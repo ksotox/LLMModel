@@ -10,6 +10,7 @@ import { describeBrief, lookupPanel } from './lookup.js';
 import { readCardText } from './ocr.js';
 import { warmUpCardFinder, warpCard } from './vision.js';
 import { retakeAdvice } from './vision/quality.js';
+import { wakeDioramaMaker } from './dioramas.js';
 import { clear, debounce, dropZone, h, KIND_LABELS, modal, toast, VARIANT_LABELS } from './ui.js';
 
 let keySeq = 0;
@@ -759,6 +760,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
         };
       });
       const saved = await api.createCards(payload);
+      wakeDioramaMaker(); // their 3D Pop-out dioramas are made next, in the background
       toast(`Added ${saved.length} card${saved.length === 1 ? '' : 's'} to your Pokédex`, 'success');
       const packs = new Set(saved.map((c) => c.pack_id));
       navigate(packs.size === 1 && saved[0].pack_id ? `#/packs/${saved[0].pack_id}` : '#/');

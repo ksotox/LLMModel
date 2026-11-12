@@ -20,8 +20,10 @@ import { battleData, isPokemonCard } from './battle.js';
 import { Models3D } from './models3d.js';
 import { AiModels, aiModelsRouter } from './aiModels.js';
 import { scanLabelsRouter } from './scanLabels.js';
+import { CardDioramas, cardDioramasRouter } from './cardDioramas.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+const CARD_EFFECTS_DIR = fileURLToPath(new URL('../assets/card-effects', import.meta.url));
 const require = createRequire(import.meta.url);
 const packageDir = (name) => path.dirname(require.resolve(`${name}/package.json`));
 // Image tools that run in the browser, served from this app so they work without any CDN.
@@ -68,6 +70,17 @@ export function createApp({
   store.purgeSessions();
   initializeGradingTable(store.db);
   for (const { photo_path } of store.purgeTrash(30)) if (photo_path) fs.rmSync(path.join(dataDir, photo_path), { force: true });
+  // Card dioramas for 3D Pop-out (server/cardDioramas.js): the delivered ones are imported for the
+  // cards they were made for; a card's job state follows every change to the card (identity only).
+  const dioramas = new CardDioramas({ db: store.db, dataDir, assetsDir: CARD_EFFECTS_DIR });
+  dioramas.sweep();
+  dioramas.importBundled();
+  const updateCard = store.updateCard.bind(store);
+  store.updateCard = (id, data) => {
+    const result = updateCard(id, data);
+    dioramas.sync(id);
+    return result;
+  };
   // Pre-grading photos of cards deleted for good (their report rows went with the card).
   const sweepGrading = () => sweepGradingOrphans(store.db, dataDir);
   sweepGrading();
@@ -511,6 +524,9 @@ export function createApp({
   // AI model files the browser runs on this device (server/aiModels.js).
   app.use('/api/ai/models', aiModelsRouter(aiModels ?? new AiModels({ dataDir, log: console.log })));
 
+  // Card dioramas: the list, the jobs the browser makes, the finished pictures.
+  app.use('/api/card-effects', cardDioramasRouter(dioramas));
+
   // The owner's own scanner tests (photos with their cards marked), for npm run bench:scan.
   app.use('/api/scan-labels', scanLabelsRouter({ dataDir, isOwner: (req) => Boolean(req.user && store.getUser(req.user.id)?.is_owner) }));
 
@@ -682,6 +698,8 @@ export function createApp({
     const created = ids.map((id) => store.getCard(id));
     created.forEach(snapshotPrice);
     created.forEach((c) => tracker.rememberPictureSearch(c));
+    // Each new card gets its diorama made in the background (by the browser, for free).
+    created.forEach((c) => dioramas.sync(c.id, { create: true }));
     res.status(201).json({ cards: created.map(toJson) });
   });
 
@@ -945,6 +963,7 @@ export function createApp({
   });
 
   app.locals.store = store;
+  app.locals.dioramas = dioramas;
   app.locals.tracker = tracker;
   app.locals.refreshCardMarket = refreshCardMarket;
   return app;

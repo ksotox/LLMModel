@@ -99,14 +99,14 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   look from owner's Hi-Fi v4 mock-up, minus its creatures).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
-  drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card).
-- **Pre-grading (experimental):** `server/grading/` (Express router, `card_grading_reports` table, photos in
-  `data/uploads/grading/<uuid>/`, orphan sweep after any card delete) → optional Python FastAPI
-  `services/grading/app.py` on 127.0.0.1:8765 using MIT Viridian (`third_party/viridian`, gitignored, pinned in
-  `scripts/grading-setup.*`). `precision.py`: flattened sides, corner/edge close-ups + masks matching upstream's
-  regions, surface map, findings; `gradingReport.js`: slab (flip/tilt/PNG), breakdown, scan. Label every result "Experimental CV estimate — not professional grading.";
-  no probabilities, accuracy claims or "worth grading" advice. No trained model; back centering needs
-  `third_party/viridian/data/refs/card_back.jpg` (not shipped). Launcher starts it if set up, keeps it across updates.
+  drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**
+  wins: `server/cardDioramas.js` (27 delivered in `assets/card-effects`, imported only for the same id + name/card id;
+  new cards get a free in-browser one, `dioramaMaker.js`, made once per identity). No paid image API (owner's choice).
+- **Pre-grading (experimental):** `server/grading/` (router, `card_grading_reports`, photos in `data/uploads/grading/`)
+  → optional Python `services/grading/app.py` (127.0.0.1:8765, MIT Viridian in gitignored `third_party/viridian`,
+  pinned by `scripts/grading-setup.*`); `gradingReport.js` shows it. Label every result "Experimental CV estimate —
+  not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs
+  `third_party/viridian/data/refs/card_back.jpg` (not shipped). The launcher starts it if set up.
 - Open gaps: the table in `docs/ROADMAP.md`. Users read `docs/USER_GUIDE.md`.
 - Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`; fix parser gaps from real answers.
 - Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.
