@@ -647,6 +647,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 .read-note.high { color: var(--ok); }
 .read-note.medium { color: #b45309; }
 .read-note.low { color: var(--muted); }
+/* A weak photo of a card (blurry, glare, too small): suggest taking it again. */
+.retake-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; border-left: 3px solid #b45309; background: var(--surface-2); color: #92400e; font-size: 0.86rem; font-weight: 600; }
+:root[data-theme="dark"] .retake-note { color: #fbbf24; border-left-color: #fbbf24; }
+@media (prefers-color-scheme: dark) { :root[data-theme="system"] .retake-note { color: #fbbf24; border-left-color: #fbbf24; } }
 :root[data-theme="dark"] .read-note.medium { color: #fbbf24; }
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] .read-note.medium { color: #fbbf24; }

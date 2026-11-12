@@ -2,7 +2,7 @@
 // photo goes through the app's real pipeline (card finder, straightening, text reading, and the
 // server's /api/identify), and the result is scored against the labels.
 
-import { findCards } from '/js/vision.js';
+import { findCards, warpCard } from '/js/vision.js';
 import { cutCard } from '/js/images.js';
 import { readCardText } from '/js/ocr.js';
 import { matchQuads, sameCard } from './metrics.js';
@@ -23,6 +23,11 @@ async function identify(canvas) {
 
 /** Score one photo: detection against the labels, then reading each card that was found. */
 async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
+  // Long main-thread tasks while finding (the finder runs in a worker; the page should stay smooth).
+  const tasks = [];
+  const observer = typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+    ? new PerformanceObserver((list) => list.getEntries().forEach((e) => tasks.push(e.duration))) : null;
+  observer?.observe({ type: 'longtask' });
   const t0 = performance.now();
   let found = [];
   try {
@@ -31,6 +36,9 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
     console.warn('Card finder failed on', name, err);
   }
   const ms = performance.now() - t0;
+  await new Promise((r) => setTimeout(r, 0)); // let the observer report
+  observer?.disconnect();
+  const longestTask = Math.round(Math.max(0, ...tasks));
   const truths = cards.map((c) => c.corners);
   const { pairs, missed, extra } = matchQuads(truths, found.map((q) => q.map((p) => [p.x, p.y])), tolerance);
   const reads = [];
@@ -38,7 +46,13 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
     for (const p of pairs) {
       const r0 = performance.now();
       const { canvas } = await cutCard(img, found[p.found]);
-      const result = await identify(canvas);
+      let result = await identify(canvas);
+      // As the Add page does: an unsure reading is retried on cuts with slightly different margins.
+      for (const grow of [0.008, 0]) {
+        if (result.match && result.confidence === 'high') break;
+        const other = await identify(await warpCard(img, found[p.found], { width: canvas.width, grow }));
+        if (other.match && (!result.match || (other.confidence === 'high' && result.confidence !== 'high'))) result = other;
+      }
       reads.push({
         card: cards[p.truth].name,
         got: result.match ? `${result.match.name} (${result.match.tcgId})` : null,
@@ -48,7 +62,7 @@ async function scorePhoto({ name, group, img, cards }, { read, tolerance }) {
       });
     }
   }
-  return { name, group, truths: truths.length, found: found.length, pairs, missed, extra, ms, reads };
+  return { name, group, truths: truths.length, found: found.length, pairs, missed, extra, ms, longestTask, reads };
 }
 
 /**

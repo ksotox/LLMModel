@@ -13,7 +13,7 @@ The owner's choices:
 - **AI models:** free models, downloaded once and run on the owner's devices, with a classic fallback.
 - **Earlier plan:** its unbuilt stages (battle graphics, phone bottom menu, tidier collection page) are folded in after the new work.
 
-**Status (2026-11-11):** approved by the owner. M0 is built (in PR #16, not merged yet); the rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
+**Status (2026-11-12):** approved by the owner. M0 is done (PR #16, merged). M1 is built (its own PR): synthetic detection 93% against the 95% target (see A4). The rest is not started. Build the milestones in order, one draft PR each. Tick a milestone off in the table below when its PR is merged.
 
 ## Where things stand (facts the executor needs)
 - **Repo:** `ksotox/LLMModel`, branch `claude/pokemon-collection-catalog-aw6vsc`, `main` at PR #15. Node ≥ 22.5, Express 5, `node:sqlite`, vanilla ES modules with no build step, three.js 0.180 served from `/vendor/three`.
@@ -128,6 +128,31 @@ The owner's choices:
   - glare and blur break the outline.
 
   Finding takes about 230 ms a photo; reading a card about 640 ms.
+
+- **After M1 (2026-11-12, `public/js/vision/`, finder in a worker):**
+
+  | Group | Before | After |
+  |---|---|---|
+  | reference | 100% | 100% (corner error 0.06% → about 0.5%) |
+  | synthetic-single | 17% | 100% |
+  | synthetic-row | 7% | 93% |
+  | synthetic-binder | 96% | 100% |
+  | synthetic-dark | 100% | 100% |
+  | synthetic-glare | 0% | 100% |
+  | synthetic-sleeve | 13% | 63% |
+  | synthetic-blur | 0% | 75% |
+  | **synthetic overall** | **46%** | **93%** (target 95%) |
+
+  - Binder pages pass; confident-but-wrong stays 0; the longest main-thread task while finding is about 50 ms (target 100 ms).
+  - Finding takes about 250 ms a photo, in a worker.
+  - **Reading:** the reference cards are read 5 of 5 and binder cards 56% (was 46%); 72% of the cards found are read correctly. An unsure reading is retried on cuts with slightly different margins, because the reader is that sensitive to the exact cut (a 2 px shift lost the Froakie promo). Making reading robust is M2's job.
+  - **Still missed:** cards on the busy patterned cloth combined with a sleeve or blur (5 cards), and one near miss on a blurred photo (2.13%). Those are the next things to work on if real photos show the same.
+  - **How M1 got there:**
+    - strategies `background` (table colours from the photo's outer ring) and `lines` (63:88 rectangles from straight edges);
+    - snapping on a colour gradient;
+    - ranking by each outline's weakest edge;
+    - groups of cards and parts of a card recognised, with a part completing to the whole card;
+    - sleeves peeled.
 
 ## Workstream B: 3D Pop-out for every card
 
@@ -273,9 +298,9 @@ Runs in a worker (`public/js/popout/generate.worker.js`) on PC-class devices onl
 ## Milestones (one draft PR each, in this order)
 | # | Milestone | Contains | Done |
 |---|---|---|---|
-| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | built, PR #16 |
-| M1 | Detection v2 | A1, with the benchmark targets met | |
-| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline | |
+| M0 | Foundations | CI workflow (T1); worker helper; onnxruntime-web vendored; `server/aiModels.js`; versioned migrations (T5); scan benchmark skeleton (A4) | done (PR #16) |
+| M1 | Detection v2 | A1, with the benchmark targets met | built: 93% of 95%; orientation and the labelling page moved to M2 |
+| M2 | Reading v2 | A2; rarity counts from TCGdex (R1), because of its deadline; from M1: upright choice by the name strip's read confidence, a page to label your own photos | |
 | M3 | Phone live scanner | A3 (HTTPS and the scanner screen); S1's localhost-by-default switch | |
 | M4 | Pop-out for all, classic | B1, B2, and B3 without AI; B4's grid display and queue | |
 | M5 | Pop-out with AI | B5's models for cut-out and depth; the relief picture and card-page parallax | |

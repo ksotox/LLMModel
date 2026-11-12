@@ -33,8 +33,8 @@ const fmtMs = (v) => (v == null ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)} 
 const fmtErr = (v) => (v == null ? '—' : `${(v * 100).toFixed(2)}%`);
 
 function table(summary) {
-  const rows = [['group', 'photos', 'cards', 'found', 'precision', 'corner err', 'find time', 'read', 'correct', 'sure+wrong', 'read time']];
-  const add = (name, s) => rows.push([name, s.photos, s.cards, fmtPct(s.recall), fmtPct(s.precision), fmtErr(s.cornerError), fmtMs(s.detectMs),
+  const rows = [['group', 'photos', 'cards', 'found', 'precision', 'corner err', 'find time', 'longest task', 'read', 'correct', 'sure+wrong', 'read time']];
+  const add = (name, s) => rows.push([name, s.photos, s.cards, fmtPct(s.recall), fmtPct(s.precision), fmtErr(s.cornerError), fmtMs(s.detectMs), fmtMs(s.longestTask),
     s.read, fmtPct(s.correct), s.confidentWrong, fmtMs(s.readMs)].map(String));
   for (const [g, s] of Object.entries(summary.groups)) add(g, s);
   add('ALL', summary.all);
@@ -57,7 +57,7 @@ try {
   const targets = checkTargets(summary);
   console.log(`\n${table(summary)}\n`);
   for (const t of targets) {
-    const v = typeof t.value === 'number' && t.value <= 1 && !/= 0/.test(t.target) ? fmtPct(t.value) : String(t.value ?? '—');
+    const v = /ms/.test(t.target) ? fmtMs(t.value) : typeof t.value === 'number' && t.value <= 1 && !/= 0/.test(t.target) ? fmtPct(t.value) : String(t.value ?? '—');
     console.log(`${t.ok ? 'PASS' : 'MISS'}  ${t.target}  (now ${v})`);
   }
   const wrong = results.flatMap((r) => (r.reads ?? []).filter((x) => !x.correct).map((x) => `${r.name}: ${x.card} → ${x.got ?? 'not identified'} (${x.confidence})`));

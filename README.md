@@ -186,12 +186,12 @@ With 100 credits, that's roughly 30 cards refreshed a day. Every answer is also 
 
 Both run inside your browser, so your photos aren't sent to any outside service. The tools are served by the app itself: [OpenCV.js](https://docs.opencv.org/) for finding cards and [Tesseract.js](https://tesseract.projectnaptha.com/) for reading text, about 25 MB downloaded once and then cached by the browser.
 
-1. **Find each card:** looks for card-shaped outlines (63 × 88 mm) by brightness and by edges, then snaps each side onto the card's real outer edge so the border is never cut off.
+1. **Find each card:** looks for card-shaped outlines (63 × 88 mm) in several ways at once: by brightness, by edges, by what doesn't look like your table, and by long straight edges (for busy cloths, sleeves and blurry photos). Each side is then snapped onto the card's real outer edge, so the border is never cut off. A card in a clear sleeve is cut out without the sleeve. This runs in the background, so the page stays smooth.
 2. **Straighten it:** a perspective correction turns each outline into a flat, upright card picture.
 3. **Read it:** OCR reads the name strip at the top (or the second line on Trainer cards) and the set code and number at the bottom left, several times with different image processing.
 4. **Match it** (`POST /api/identify`): the server votes across those readings. It fixes typical misreads (a slash read as "7", "0" for "O", a dropped leading zero), looks the card up by set and number, and checks that the name agrees before filling anything in automatically. If it isn't sure, it shows its best guesses and asks you to pick.
 
-Small print in blurry or dim photos can still defeat it. In that case, type the details as before.
+Small print in blurry or dim photos can still defeat it. When a card's photo is blurry, has glare on it or is too small, the card says **Retake suggested** with a tip (hold the phone steady, tilt the card away from the light, move closer). You can also type the details as before.
 
 ## Where the numbers come from
 
