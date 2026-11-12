@@ -84,7 +84,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-12)
-- `main` has PRs #1–#16 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
+- `main` has PRs #1–#17 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
   M1 = PR #17 (detection 46% → 93%). M2 built: TCGdex rarity counts, reading 72% → 81%, scanner tests.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
