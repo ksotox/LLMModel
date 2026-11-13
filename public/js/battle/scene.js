@@ -162,7 +162,7 @@ export class BattleStage {
    * @param {HTMLElement} host  element to draw into (gets a canvas and an overlay layer)
    * @param {{mode?: 'battle'|'showcase', dark?: boolean}} options
    */
-  constructor(host, { mode = 'battle', dark = false } = {}) {
+  constructor(host, { mode = 'battle', dark = false, environment = 'meadow', weather = 'clear' } = {}) {
     this.host = host;
     this.mode = mode;
     this.slots = [null, null];
@@ -213,7 +213,7 @@ export class BattleStage {
     this.#fitCamera(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight)); // before the world is built around it
 
     // The world: physical sky and sun, sky lighting, soft shadows, grass field, arena, trees, haze.
-    this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, quality: preferredQuality(this.renderer) });
+    this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, environment, weather, quality: preferredQuality(this.renderer) });
     this.flash = new THREE.PointLight(0xffffff, 0, 6);
     this.scene.add(this.flash);
 

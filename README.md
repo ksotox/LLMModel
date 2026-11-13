@@ -17,7 +17,7 @@ Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they c
 - **Gallery views, filters and bulk changes.** Compact, Detailed or sortable Table view; Compact / Comfortable / Large density; filters for rarity, type, variant, language, condition, value, date, graded and duplicates, all combined, plus one-click views (Most valuable, Missing prices, Grading candidates…). Select many cards to move, re-condition, mark for trade, export to CSV or delete (to a 30-day Trash, with Undo).
 - **Set completion.** The **Sets** page shows how complete each expansion is, with the full checklist (missing cards greyed out), the estimated cost of the missing cards, and Main / Master / Reverse holo goals.
 - **Experimental pre-grading.** Optional: from a front and back photo, the free open-source [Viridian](https://github.com/dylan7077/viridian) engine (MIT, running on your own computer) measures centering and screens corners, edges and surface. The report shows the card in a virtual slab (flip, tilt, save as image), a front/back breakdown per category, close-ups of every corner and edge with the pixels that were counted, a surface map, and a photo-quality check. Reports are saved with each card. *Experimental CV estimate — not professional grading.* Setup: [user guide §6c](docs/USER_GUIDE.md#6c-pre-grade-a-card-experimental).
-- **PokéBattles.** Pick a Pokémon card and it pops out of the card as a 3D model, with its details floating beside it, so you can try its moves. Or pick two and battle with their printed attacks, against the computer or a friend on the same device. Models come from the open-source [Pokémon 3D API](https://github.com/Pokemon-3D-api) and are kept on your computer after the first view.
+- **PokéBattles.** Pick a Pokémon card and it pops out of the card as a 3D model, with its details floating beside it, so you can try its moves. Or pick two and battle with their printed attacks, against the computer or a friend on the same device. Models come from the open-source [Pokémon 3D API](https://github.com/Pokemon-3D-api) and are kept on your computer after the first view. Battles can be held in the meadow or in three stadiums (Night, Floating and League), in clear weather, sun, rain, a sandstorm or snow; the stadiums and weather follow the open-source fan game [PokeBrawl](https://github.com/xjoje6/PokeBrawl), rebuilt in this app's own graphics.
 - **Search any card.** The **Search** page looks up any Pokémon card, not just the ones you own, with its rarity, pull chance and price, and you can add it to your collection in one click.
 - **Date added is recorded** for every card and pack.
 - **Saved between sessions.** Everything goes into a SQLite database and an image folder on disk, so it's still there after you close the browser or restart the server.
@@ -362,6 +362,8 @@ public/         no-build frontend (vanilla ES modules)
   js/battles.js PokéBattles page: picker, summon intro, showcase, battle
   js/battle/engine.js  PokéBattles rules (pure, testable)
   js/battle/scene.js   3D stage (three.js): cards, models, attacks, effects; CSS fallback without WebGL
+  js/battle/world.js   the meadow, sky, fog and lights; arenas.js lists the arenas and weather
+  js/battle/stadiums.js / weatherFx.js  the three stadiums and the weather on screen
   js/foilAsync.js / foilWorker.js  foil measurements in a Web Worker
 tests/
   api.test.js     API tests (node:test) against mock sources

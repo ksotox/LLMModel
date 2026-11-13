@@ -541,9 +541,16 @@ try {
   await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click();
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
+  // The arena and the weather are picked before the battle (and remembered): a stadium, in the rain.
+  await page.getByLabel('Arena').selectOption({ label: 'League Stadium' });
+  await page.getByLabel('Weather').selectOption({ label: 'Rain' });
+  await page.locator('.bt-place-about', { hasText: 'A stone coliseum' }).waitFor();
+  await page.locator('.bt-place-about', { hasText: 'Rain: Water attacks deal 50% more damage' }).waitFor();
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pokedex.battleArena'))), { environment: 'league', weather: 'rain' });
   await page.getByRole('button', { name: '⚔ Battle!' }).click();
   await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 90000 });
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.locator('.bt-message', { hasText: 'Rain over the League Stadium' }).waitFor({ timeout: 90000 });
   await page.locator('.hp-plate.side-0').waitFor({ timeout: 90000 });
   // A move's full card text opens from its ⓘ, above the message box, and closes again.
   await page.locator('.move-grid .move-btn').first().waitFor({ timeout: 90000 });

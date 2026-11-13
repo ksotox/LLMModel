@@ -14,6 +14,10 @@
 .bt-warn { color: #b45309; font-weight: 700; font-size: 0.78rem; }
 .bt-start { font-size: 1.05rem; padding: 12px 22px; }
 .bt-mode button { padding: 8px 12px; }
+.bt-place { flex: 1 1 320px; min-width: 0; }
+.bt-place-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.bt-place-fields .field { flex: 1 1 140px; margin: 0; }
+.bt-place-about { margin: 6px 0 0; }
 .bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .bt-tile { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 8px; font: inherit; text-align: left; color: inherit; background: var(--surface); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
 .bt-tile:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }

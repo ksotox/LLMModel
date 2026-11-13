@@ -10,6 +10,9 @@
 //     otherwise it charges +2 energy.
 //   • Weakness (×2 or +N) and resistance (−N) apply as printed when the attacker's type matches.
 //   • Each ability can be used once per battle: it takes the turn and powers up the next attack by +50%.
+//   • Weather (optional, after the fan game PokeBrawl's, adapted to card types): sun strengthens Fire
+//     and weakens Water attacks, rain the reverse, a sandstorm wears down everyone but Fighting and
+//     Metal types, and snow protects Water types (the card game's Ice Pokémon).
 
 export const MAX_ENERGY = 6;
 export const MAX_ROUNDS = 100;
@@ -25,6 +28,22 @@ export function createRng(seed = Date.now()) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+export const WEATHER_KINDS = ['clear', 'sun', 'rain', 'sand', 'snow'];
+export const SAND_DAMAGE = 10;
+const SNOW_GUARD = 10;
+
+/** How the weather changes an attack's damage before weakness and resistance: ×1.5, ×0.5 or ×1. */
+export function weatherBoost(weather, attacker) {
+  const fire = attacker.types.includes('Fire');
+  const water = attacker.types.includes('Water');
+  if (weather === 'sun') return fire ? 1.5 : water ? 0.5 : 1;
+  if (weather === 'rain') return water ? 1.5 : fire ? 0.5 : 1;
+  return 1;
+}
+
+/** A sandstorm doesn't hurt Fighting (the card game's Rock and Ground) or Metal Pokémon. */
+export const sandProof = (fighter) => fighter.types.some((t) => t === 'Fighting' || t === 'Metal');
 
 export const attackCost = (attack) => (Array.isArray(attack?.cost) ? attack.cost.length : 0);
 const roundTen = (n) => Math.max(0, Math.round(n / 10) * 10);
@@ -58,17 +77,18 @@ export function matchups(attacker, defender) {
   };
 }
 
-function applyMatchups(amount, attacker, defender) {
+function applyMatchups(amount, attacker, defender, weather = 'clear') {
   if (amount <= 0) return { amount: 0, weakness: false, resisted: false };
   const { weakness, resistance } = matchups(attacker, defender);
   let out = amount;
   if (weakness) out = weakness.mult ? out * weakness.mult : out + (weakness.add ?? 0);
   if (resistance) out -= resistance.sub ?? 30;
+  if (weather === 'snow' && defender.types.includes('Water')) out -= SNOW_GUARD;
   return { amount: Math.max(0, out), weakness: Boolean(weakness), resisted: Boolean(resistance) };
 }
 
 /** What an attack deals right now, flipping coins with `rng` when it says to. */
-export function damageFor(attacker, defender, attack, rng = Math.random) {
+export function damageFor(attacker, defender, attack, rng = Math.random, weather = 'clear') {
   const { base = 0, mod = null } = attack?.damage ?? {};
   let coins = [];
   let raw = base;
@@ -80,22 +100,24 @@ export function damageFor(attacker, defender, attack, rng = Math.random) {
     raw = base * coins.filter(Boolean).length;
   }
   if (attacker.boost) raw *= 1 + attacker.boost;
-  const result = applyMatchups(roundTen(raw), attacker, defender);
+  raw *= weatherBoost(weather, attacker);
+  const result = applyMatchups(roundTen(raw), attacker, defender, weather);
   return { ...result, coins, raw: roundTen(raw) };
 }
 
 /** Average damage (for the computer's choice and the move buttons). */
-export function expectedDamage(attacker, defender, attack) {
+export function expectedDamage(attacker, defender, attack, weather = 'clear') {
   const { base = 0, mod = null } = attack?.damage ?? {};
   let raw = mod === '+' || mod === 'x' ? base * 1.5 : base;
   if (attacker.boost) raw *= 1 + attacker.boost;
-  return applyMatchups(roundTen(raw), attacker, defender).amount;
+  raw *= weatherBoost(weather, attacker);
+  return applyMatchups(roundTen(raw), attacker, defender, weather).amount;
 }
 
-export function createBattle(dataA, dataB, { rng = Math.random, mode = 'cpu' } = {}) {
+export function createBattle(dataA, dataB, { rng = Math.random, mode = 'cpu', weather = 'clear' } = {}) {
   const fighters = [makeFighter(dataA.battle, { name: dataA.name, cardId: dataA.cardId, label: 'Player 1' }),
     makeFighter(dataB.battle, { name: dataB.name, cardId: dataB.cardId, label: mode === 'cpu' ? 'Computer' : 'Player 2' })];
-  const battle = { fighters, turn: rng() < 0.5 ? 0 : 1, round: 1, mode, rng, winner: null, over: false, log: [] };
+  const battle = { fighters, turn: rng() < 0.5 ? 0 : 1, round: 1, mode, rng, weather: WEATHER_KINDS.includes(weather) ? weather : 'clear', winner: null, over: false, log: [] };
   battle.opening = [{ type: 'start', first: battle.turn, coin: battle.turn === 0 ? 'heads' : 'tails' }, ...startTurn(battle)];
   return battle;
 }
@@ -104,7 +126,13 @@ function startTurn(battle) {
   const f = battle.fighters[battle.turn];
   const gained = Math.min(1, MAX_ENERGY - f.energy);
   f.energy += gained;
-  return [{ type: 'turn', who: battle.turn, energy: f.energy, round: battle.round }];
+  const events = [{ type: 'turn', who: battle.turn, energy: f.energy, round: battle.round }];
+  // The sandstorm wears the Pokémon down as its turn starts, but never takes its last 10 HP.
+  if (battle.weather === 'sand' && !sandProof(f) && f.hp > SAND_DAMAGE) {
+    f.hp -= SAND_DAMAGE;
+    events.push({ type: 'weather', kind: 'sand', who: battle.turn, amount: SAND_DAMAGE, hp: f.hp, maxHp: f.maxHp });
+  }
+  return events;
 }
 
 /** Everything the side whose turn it is can do now. */
@@ -119,7 +147,7 @@ export function legalActions(battle) {
 
 /**
  * Play one action for the side whose turn it is. Returns the events to animate, in order:
- * use, coins, hit, heal, energy, boost, ko, end, turn.
+ * use, coins, hit, heal, energy, boost, ko, end, turn, weather (sandstorm damage at the start of a turn).
  */
 export function act(battle, action) {
   if (battle.over) throw new Error('The battle is over');
@@ -136,7 +164,7 @@ export function act(battle, action) {
     f.stats.moves++;
     events.push({ type: 'use', who: me, kind: 'attack', name: attack.name, text: attack.effect, attackType: f.types[0], damageText: attack.damage?.text ?? '' });
     if ((attack.damage?.base ?? 0) > 0) {
-      const hit = damageFor(f, foe, attack, battle.rng);
+      const hit = damageFor(f, foe, attack, battle.rng, battle.weather);
       if (hit.coins.length) events.push({ type: 'coins', who: me, coins: hit.coins });
       f.boost = 0;
       foe.hp = Math.max(0, foe.hp - hit.amount);
@@ -193,7 +221,7 @@ export function act(battle, action) {
 export function cpuChoice(battle) {
   const f = battle.fighters[battle.turn];
   const foe = battle.fighters[1 - battle.turn];
-  const options = f.attacks.map((a, index) => ({ a, index, cost: attackCost(a), dmg: expectedDamage(f, foe, a) }))
+  const options = f.attacks.map((a, index) => ({ a, index, cost: attackCost(a), dmg: expectedDamage(f, foe, a, battle.weather) }))
     .filter((o) => o.cost <= f.energy);
   const ko = options.filter((o) => o.dmg >= foe.hp).sort((x, y) => x.cost - y.cost)[0];
   if (ko) return { type: 'attack', index: ko.index };

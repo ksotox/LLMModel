@@ -345,6 +345,21 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - Weakness and resistance work as printed on the card being hit.
 - Each ability can be used once per battle and powers up the next attack by 50%.
 
+**Arena and weather** (chosen under your Pokémon before you start, and remembered):
+- **Arena** changes the scenery only:
+  - **Meadow:** the grass field by the lake (described below).
+  - **Night Stadium:** a packed stadium at night, with mown stripes, lit boards, a strip of pink light and a ring of floodlights.
+  - **Floating Stadium:** a platform on a pillar over a deep pit, the crowd far below, a giant screen, and a city and mountains behind.
+  - **League Stadium:** a stone coliseum on a cool, cloudy day, with flags, banners and a scoreboard tower.
+- **Weather** changes the picture and the battle:
+  - **Clear:** no effect.
+  - **Sunny:** Fire attacks deal 50% more damage, Water attacks half.
+  - **Rain:** Water attacks deal 50% more damage, Fire attacks half.
+  - **Sandstorm:** at the start of its turn, a Pokémon that isn't Fighting or Metal type loses 10 HP. It never takes a Pokémon's last 10 HP.
+  - **Snow:** Water-type Pokémon take 10 less damage from attacks.
+- The move buttons already show damage with the weather counted in, and the computer plans with it too.
+- The stadiums and the kinds of weather follow the open-source fan game PokeBrawl. They are redrawn in this app's own graphics, and the weather rules are adapted to card types.
+
 **Good to know:**
 - Japanese cards battle too. A card not linked to its official card gets one basic attack (Tackle, 20).
 - The 3D models come from the free, fan-made Pokémon 3D API (about 1,000 Pokémon). Each is downloaded the first time it's shown, then kept on your computer, so it opens instantly and works offline next time.
@@ -355,7 +370,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
   - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
   - The app picks a level for your device the first time and remembers your choice.
-- **The setting:** the battles take place outdoors, in an open landscape:
+- **The meadow:** an open landscape outdoors:
   - a blue sky with drifting clouds and a real-looking sun (a pink sunset in dark mode);
   - hills rising to rocky, snow-capped peaks, fading into a blue haze, with mist in the valleys;
   - a small lake with rippling water that reflects the sky and glints in the sun;
