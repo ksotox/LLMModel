@@ -2,7 +2,8 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { act, attackCost, cpuChoice, createBattle, createRng, damageFor, expectedDamage, legalActions, makeFighter, MAX_ENERGY } from '../public/js/battle/engine.js';
+import { act, attackCost, cpuChoice, createBattle, createRng, damageFor, expectedDamage, legalActions, makeFighter, MAX_ENERGY, sandProof, weatherBoost } from '../public/js/battle/engine.js';
+import { ENVIRONMENTS, saveArena, savedArena, WEATHERS } from '../public/js/battle/arenas.js';
 
 const atk = (name, base, cost = 1, mod = null, effect = '') => ({ name, cost: Array(cost).fill('Colorless'), damage: { base, mod, text: `${base}${mod ?? ''}` }, effect });
 const voltorb = { hp: 70, types: ['Lightning'], attacks: [atk('Rollout', 10, 1), atk('Lightning Ball', 30, 2)], abilities: [], weaknesses: [{ type: 'Fighting', mult: 2 }], resistances: [] };
@@ -105,5 +106,62 @@ describe('PokéBattles rules', () => {
       return out.join(',');
     };
     assert.equal(run(), run());
+  });
+});
+
+describe('PokéBattles weather (after PokeBrawl’s, adapted to card types)', () => {
+  const fire = { hp: 100, types: ['Fire'], attacks: [atk('Ember', 40, 1)] };
+  const water = { hp: 100, types: ['Water'], attacks: [atk('Water Gun', 40, 1)] };
+  const rock = { hp: 100, types: ['Fighting'], attacks: [atk('Rock Throw', 40, 1)] };
+  const steel = { hp: 100, types: ['Metal'], attacks: [atk('Metal Claw', 40, 1)] };
+  const plain = { hp: 100, types: ['Colorless'], attacks: [atk('Tackle', 40, 1)] };
+
+  test('sun strengthens Fire and weakens Water; rain is the reverse; other types are unchanged', () => {
+    const [f, w, c] = [makeFighter(fire), makeFighter(water), makeFighter(plain)];
+    assert.equal(damageFor(f, c, fire.attacks[0], Math.random, 'sun').amount, 60);
+    assert.equal(damageFor(w, c, water.attacks[0], Math.random, 'sun').amount, 20);
+    assert.equal(damageFor(w, c, water.attacks[0], Math.random, 'rain').amount, 60);
+    assert.equal(damageFor(f, c, fire.attacks[0], Math.random, 'rain').amount, 20);
+    assert.equal(damageFor(c, f, plain.attacks[0], Math.random, 'sun').amount, 40);
+    assert.equal(expectedDamage(f, c, fire.attacks[0], 'sun'), 60, 'the move buttons and the computer see it too');
+    assert.equal(weatherBoost('clear', f), 1);
+    assert.equal(damageFor(f, c, fire.attacks[0]).amount, 40, 'clear weather by default');
+  });
+
+  test('snow: Water types take 10 less', () => {
+    const [w, c] = [makeFighter(water), makeFighter(plain)];
+    assert.equal(damageFor(c, w, plain.attacks[0], Math.random, 'snow').amount, 30);
+    assert.equal(damageFor(w, c, water.attacks[0], Math.random, 'snow').amount, 40);
+    assert.equal(damageFor(c, w, atk('Poke', 10), Math.random, 'snow').amount, 0, 'never below 0');
+  });
+
+  test('a sandstorm takes 10 HP at the start of each turn, except from Fighting and Metal, and never the last 10', () => {
+    assert.ok(sandProof(makeFighter(rock)) && sandProof(makeFighter(steel)) && !sandProof(makeFighter(plain)));
+    const b = createBattle({ battle: plain, name: 'Plain' }, { battle: rock, name: 'Rock' }, { rng: createRng(3), weather: 'sand' });
+    const plainSide = 0;
+    const openingHit = b.opening.find((e) => e.type === 'weather');
+    assert.equal(Boolean(openingHit), b.turn === plainSide, 'the first side is hit as its first turn starts, if it isn’t sand-proof');
+    for (let i = 0; i < 30 && !b.over; i++) {
+      const events = act(b, { type: 'rest' });
+      for (const e of events.filter((x) => x.type === 'weather')) {
+        assert.equal(e.who, plainSide);
+        assert.equal(e.amount, 10);
+      }
+    }
+    assert.equal(b.fighters[plainSide].hp, 10, 'worn down to its last 10 HP, not knocked out');
+    assert.equal(b.fighters[1].hp, 100, 'the Fighting type is untouched');
+    assert.equal(b.over, false);
+  });
+
+  test('an unknown weather is clear; the arena choice is remembered and checked', () => {
+    assert.equal(createBattle({ battle: plain }, { battle: rock }, { weather: 'meteors' }).weather, 'clear');
+    assert.deepEqual(ENVIRONMENTS.map((e) => e.id), ['meadow', 'night', 'floating', 'league']);
+    assert.deepEqual(WEATHERS.map((w) => w.id), ['clear', 'sun', 'rain', 'sand', 'snow']);
+    const store = new Map();
+    const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+    assert.deepEqual(savedArena(storage), { environment: 'meadow', weather: 'clear' });
+    saveArena({ environment: 'league', weather: 'rain' }, storage);
+    assert.deepEqual(savedArena(storage), { environment: 'league', weather: 'rain' });
+    assert.deepEqual(saveArena({ environment: 'moon', weather: 'fog' }, storage), { environment: 'meadow', weather: 'clear' });
   });
 });

@@ -624,6 +624,17 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   - the setup script end to end as a normal user, with `sudo`, `systemctl`, `tailscale` and `apt-get` replaced by stand-ins.
   - Real Tailscale, systemd and Oracle still need the owner's first run.
 
+## Phase 31: PokéBattles arenas and weather (after PokeBrawl)
+
+- **Owner's ask:** enhance PokéBattles with more environments based on github.com/xjoje6/PokeBrawl, keeping the same graphics.
+- **What PokeBrawl is:** a real-time Godot fan game (code MIT; Cobblemon assets CC BY-NC / MPL) with three stadiums and four kinds of weather. Nothing of it is copied: its stadium scripts were read for layout and ideas only.
+- **Arenas** (`public/js/battle/stadiums.js`, listed in `arenas.js`): Night Stadium, Floating Stadium and League Stadium, built in code under the meadow's sky dome, fog, lights and tone mapping (`world.js` takes `environment`). Each has stands with an instanced crowd that bobs in the vertex shader; fewer spectators on Standard and Basic.
+- **Weather** (`weatherFx.js`, `world.js` takes `weather`): rain streaks, snow or sand round the camera, and a tint of sky, fog and light.
+- **Rules** (`engine.js`): sun Fire ×1.5 / Water ×0.5, rain the reverse, sandstorm −10 HP at the start of a turn except Fighting and Metal (never the last 10 HP), snow −10 damage to Water types. The move buttons and the computer count it in.
+- **Setup screen:** Arena and Weather pickers, remembered (`pokedex.battleArena`).
+- **Not taken over:** PokeBrawl's real-time fighting, ring-outs and the League field that closes in; our battles stay turn-based on the cards' own data.
+- **Tests:** weather rules and the arena choice (unit), and the e2e battle now runs in the League Stadium in the rain. Each arena and weather was also checked on screenshots.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

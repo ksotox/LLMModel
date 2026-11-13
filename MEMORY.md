@@ -23,9 +23,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (csc.exe) into `%LOCALAPPDATA%\Pokedex`; it runs
   `launcher.mjs` (self-updating): newest commit via `.git/info/refs`, codeload zip, swap `LLMModel-main` (keeps
   `.previous`, moves `data/` + grading setup, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
-- **Cloud (PC off):** `scripts/cloud-setup.sh` (Ubuntu: systemd `pokedex` runs `launcher.mjs --server`: auto-updates,
-  nightly `VACUUM INTO` backups; `HOST=127.0.0.1`, `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop
-  `remoteUrl` opens it; `cloud-move.ps1` copies `data\`. Not yet run for real on Oracle/Tailscale.
+- **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: auto-updates, nightly
+  backups; `HOST=127.0.0.1` + `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop `remoteUrl` opens it;
+  `cloud-move.ps1` copies `data\`. Not yet run on real Oracle/Tailscale.
 - Old start: `Start Pokedex.cmd` (CRLF) runs `npm start -- --open`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
@@ -82,9 +82,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - The cloud sandbox reaches only GitHub and npm: the owner checks live sources with `npm run check:live`.
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
-## Current state (2026-11-12)
-- `main` has PRs #1–#20 (M0: migrations, `workers/rpc.js`, AI runtime, `bench:scan`, CI). **Plan: `docs/ROADMAP.md`.**
-  M1 = PR #17 (detection 46% → 93%). M2 = PR #18: TCGdex rarity counts, reading 72% → 81%, scanner tests. #19 dioramas, #20 scanner.
+## Current state (2026-11-13)
+- `main` has PRs #1–#21. **Plan: `docs/ROADMAP.md`** (M0–M2 done: detection 93%, reading 81%). #19 dioramas,
+  #20 scanner, #21 cloud.
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas
@@ -96,7 +96,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb cache in data/models3d), `public/js/battle/`
-  (engine = rules, pure + seeded; scene = stage + summon; world = owner's Hi-Fi v4 look, High/Standard/Basic).
+  (engine = rules + weather, pure + seeded; scene = stage + summon; world = owner's Hi-Fi v4 meadow, High/Standard/
+  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + weather after PokeBrawl: ideas only, no assets).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**

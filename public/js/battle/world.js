@@ -5,9 +5,14 @@
 // instanced shader grass bending in gusts, pine and broadleaf woods, ruins, flowers, pollen and mist.
 //
 // Everything here is generated in code (procedural textures and shapes): no downloaded assets.
+//
+// Besides this meadow, a battle can be held in three stadiums (stadiums.js) under the same sky dome,
+// fog, lights and tone mapping, and in sun, rain, a sandstorm or snow (weatherFx.js).
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildStadium, STADIUM_LOOK, starField } from './stadiums.js';
+import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
 
@@ -203,8 +208,9 @@ const GLSL_NOISE = `
  * The colours the sky, fog and water share. Like the reference, the custom shaders work with
  * display (sRGB) values, so the fog meets the sky's horizon exactly.
  */
-function palette(dark) {
+function palette(dark, look = null) {
   const c = (r, g, b) => new THREE.Color(r, g, b); // raw display values for the shaders
+  if (look) return Object.fromEntries(Object.entries(look.sky).map(([k, v]) => [k, c(...v)]));
   return dark
     ? { horizon: c(0.86, 0.62, 0.58), zenith: c(0.17, 0.17, 0.36), glow: c(1.0, 0.62, 0.38), sunCol: c(1.0, 0.74, 0.52), cloudShade: c(0.38, 0.32, 0.48), cloudLit: c(1.0, 0.76, 0.64), deep: c(0.06, 0.08, 0.14) }
     : { horizon: c(0.74, 0.80, 0.86), zenith: c(0.22, 0.43, 0.78), glow: c(1.0, 0.86, 0.66), sunCol: c(1.0, 0.94, 0.85), cloudShade: c(0.58, 0.63, 0.72), cloudLit: c(1.0, 0.98, 0.95), deep: c(0.05, 0.17, 0.21) };
@@ -770,7 +776,9 @@ function fieldLines(radius) {
 /**
  * Build the world into `scene`. Returns { sun, update(seconds), setQuality(q), render(), resize(w,h), dispose() }.
  */
-export function buildWorld({ scene, renderer, camera, dark = false, mode = 'battle', quality = 'high' }) {
+export function buildWorld({ scene, renderer, camera, dark = false, mode = 'battle', quality = 'high', environment = 'meadow', weather = 'clear' }) {
+  const look = STADIUM_LOOK[environment] ?? null; // null: the meadow
+  const wx = WEATHER_LOOK[weather] ?? WEATHER_LOOK.clear;
   const disposables = [];
   const track = (o) => { disposables.push(o); return o; };
   // Where the (fixed) battle camera stands and looks, on the ground: grass, mist and pollen go there.
@@ -788,30 +796,66 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.environment = null;
 
   // Sky dome (follows the camera) with the sun low over the field; at dusk in dark mode.
-  const colors = palette(dark);
-  const sunDir = dark
-    ? new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(84), THREE.MathUtils.degToRad(235))
-    : new THREE.Vector3(0.75, 0.32, -0.55).normalize();
+  const colors = palette(dark, look);
+  // The weather tints the sky (and so the fog, which takes the horizon's colour).
+  const tint = new THREE.Color(...wx.tint);
+  for (const key of ['horizon', 'zenith', 'cloudShade', 'cloudLit', 'glow']) {
+    const lum = Math.max(colors[key].r, colors[key].g, colors[key].b, 0.12);
+    colors[key].lerp(tint.clone().multiplyScalar(key === 'zenith' ? lum * 0.9 : lum), wx.strength);
+  }
+  const sunDir = look ? new THREE.Vector3(...look.skyDir).normalize()
+    : dark
+      ? new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(84), THREE.MathUtils.degToRad(235))
+      : new THREE.Vector3(0.75, 0.32, -0.55).normalize();
+  const lightDir = look ? new THREE.Vector3(...look.lightDir).normalize() : sunDir;
   const sky = skyDome({ colors, sunDir });
   scene.add(sky.mesh);
+  const stars = look?.stars && weather !== 'sand' ? starField() : null;
+  if (stars) scene.add(stars);
 
   // Fog in the sky's exact horizon colour, thickening with distance (FogExp2, as in the reference).
   const haze = new THREE.Color().setRGB(colors.horizon.r, colors.horizon.g, colors.horizon.b, THREE.SRGBColorSpace);
-  scene.fog = new THREE.FogExp2(haze, 0.0042);
+  scene.fog = new THREE.FogExp2(haze, (look?.fog ?? 0.0042) * wx.fog);
 
   // Light: sky/ground hemisphere light and an angled sun with soft shadows; no ambient or sky (IBL) light.
   // (Intensities are the reference's ×π: three.js now uses physical light units.)
-  const sun = new THREE.DirectionalLight(dark ? 0xffb27a : 0xfff0d8, (dark ? 1.2 : 1.55) * Math.PI);
-  sun.position.copy(sunDir).multiplyScalar(30);
-  if (dark) sun.position.y = Math.max(sun.position.y, 6); // a low sun still needs to light the arena
+  const sun = new THREE.DirectionalLight(look ? look.sun[0] : dark ? 0xffb27a : 0xfff0d8, (look ? look.sun[1] : dark ? 1.2 : 1.55) * Math.PI * wx.light);
+  sun.color.lerp(new THREE.Color().setRGB(...wx.tint, THREE.SRGBColorSpace), wx.strength * 0.6);
+  sun.position.copy(lightDir).multiplyScalar(30);
+  if (dark && !look) sun.position.y = Math.max(sun.position.y, 6); // a low sun still needs to light the arena
   sun.castShadow = true;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   const sc = sun.shadow.camera;
   sc.left = -10; sc.right = 10; sc.top = 10; sc.bottom = -10; sc.near = 1; sc.far = 80;
   scene.add(sun, sun.target);
-  const hemi = new THREE.HemisphereLight(dark ? 0x9a9ad0 : 0xc4d8ff, dark ? 0x3a3326 : 0x4c5a2c, (dark ? 0.5 : 0.65) * Math.PI);
+  const skyLight = wx.strength ? Math.min(1.1, wx.light + 0.15) : 1; // the sky's own light dims less than the sun
+  const hemi = look
+    ? new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2] * Math.PI * skyLight)
+    : new THREE.HemisphereLight(dark ? 0x9a9ad0 : 0xc4d8ff, dark ? 0x3a3326 : 0x4c5a2c, (dark ? 0.5 : 0.65) * Math.PI * skyLight);
   scene.add(hemi);
+  const fieldR = mode === 'showcase' ? 4.6 : 6.2;
+  const bigSurfaces = [];
+  const dotTex = track(dotTexture());
+  let grass = null;
+  let flowers = null;
+  let air = null;
+  let woods = null;
+  let trees = null;
+  let mistBanks = null;
+  let water = null;
+  let stadium = null;
+
+  if (look) {
+    // A stadium: its own floor, walls, stands and crowd; the chalk lines are the same everywhere.
+    stadium = buildStadium(environment, { fieldR });
+    scene.add(stadium.group);
+    bigSurfaces.push(stadium.group);
+    const lines = fieldLines(fieldR - 0.25);
+    lines.position.y = 0.016;
+    scene.add(lines);
+    bigSurfaces.push(lines);
+  } else {
 
   // Ground: rolling grass land, flat around the arena.
   // One mesh from the arena out to the mountains (fewer segments on phones).
@@ -825,12 +869,11 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   paintTerrain(groundGeo, dark);
   const groundMat = new THREE.MeshStandardMaterial({ map: track(speckleTexture()), vertexColors: true, roughness: 0.95 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
-  const bigSurfaces = [ground];
+  bigSurfaces.push(ground);
   ground.receiveShadow = true;
   scene.add(ground);
 
   // The battle field: packed dirt with chalk lines, ringed by stones.
-  const fieldR = mode === 'showcase' ? 4.6 : 6.2;
   const dirtTex = track(noiseTexture({
     base: dark ? '#7a6550' : '#b79b74', seed: 11, repeat: 3, blotches: 1400, specks: 16000,
     tones: dark ? ['rgba(96,80,62,ALPHA)', 'rgba(70,58,46,ALPHA)', 'rgba(120,102,80,ALPHA)'] : ['rgba(160,132,98,ALPHA)', 'rgba(198,176,140,ALPHA)', 'rgba(140,112,82,ALPHA)', 'rgba(214,196,160,ALPHA)'],
@@ -870,7 +913,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   bigSurfaces.push(rocks);
 
   // Trees around the field, more of them further out; none in front of the camera.
-  const trees = new THREE.Group();
+  trees = new THREE.Group();
   const tr = rng(17);
   let placed = 0;
   for (let i = 0; placed < 18 && i < 400; i++) {
@@ -888,21 +931,25 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(trees);
   bigSurfaces.push(trees);
 
-  const woods = forest(1400, { minR: 40, maxR: 190, dark });
+  woods = forest(1400, { minR: 40, maxR: 190, dark });
   scene.add(woods);
   bigSurfaces.push(woods);
-  const mistBanks = mist(dark, track(cloudPuffTexture()), view);
+  mistBanks = mist(dark, track(cloudPuffTexture()), view);
   scene.add(mistBanks);
-  const water = lake({ colors, sunDir });
+  water = lake({ colors, sunDir });
   scene.add(water.mesh);
 
   // Swaying grass around the field (fewer blades on "Standard", none on "Basic"), flowers, pollen.
-  const grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors });
+  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors });
   scene.add(grass.mesh);
-  const flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
+  flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
-  const air = pollen(600, { dark, tex: track(dotTexture()), view });
+  air = pollen(600, { dark, tex: dotTex, view });
   scene.add(air.points);
+  } // the meadow
+
+  // Rain, snow or sand round the camera (the sky, fog and lights were tinted above).
+  const weatherFx = buildWeather(weather, { scene, camera, dot: dotTex });
 
   let current = null;
   const setQuality = (q) => {
@@ -911,7 +958,9 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     const basic = current === 'basic';
     renderer.setPixelRatio(basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5));
     sky.uniforms.uClouds.value = basic ? 0 : 1;
-    mistBanks.visible = !basic;
+    if (mistBanks) mistBanks.visible = !basic;
+    stadium?.setQuality(current);
+    weatherFx?.setQuality(current);
     renderer.shadowMap.enabled = !basic;
     sun.castShadow = !basic;
     sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
@@ -932,6 +981,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       });
     }
     scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; }); // shadows / lighting changes recompile
+    if (!grass) return; // a stadium: no meadow to thin out
     grass.mesh.visible = !basic;
     grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 95000 : 28000); // the reference's desktop / phone counts
     air.points.visible = !basic;
@@ -948,14 +998,20 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   return {
     sun,
+    environment: look ? environment : 'meadow',
+    weather: WEATHER_LOOK[weather] ? weather : 'clear',
     get quality() { return current; },
     setQuality,
     update(seconds) {
       const dt = Math.min(0.1, Math.max(0, seconds - (last ?? seconds)));
       last = seconds;
-      grass.uniforms.uTime.value = seconds;
       sky.uniforms.uTime.value = seconds;
       sky.mesh.position.copy(camera.position); // the sky moves with the camera
+      stars?.position.copy(camera.position);
+      stadium?.update(seconds);
+      weatherFx?.update(seconds, dt);
+      if (!grass) return;
+      grass.uniforms.uTime.value = seconds;
       water.uniforms.uTime.value = seconds;
       if (air.points.visible) air.update(seconds, dt);
     },
@@ -965,6 +1021,10 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     resize() {},
     dispose() {
       for (const d of disposables) d.dispose?.();
+      stadium?.dispose();
+      weatherFx?.dispose();
+      stars?.geometry.dispose();
+      stars?.material.dispose();
     },
   };
 }

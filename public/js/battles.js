@@ -4,6 +4,7 @@
 //
 // three.js is only loaded when a showcase or battle starts, so the rest of the app stays light.
 
+import { ENVIRONMENTS, environmentName, saveArena, savedArena, weatherName, WEATHERS } from './battle/arenas.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
 
@@ -55,6 +56,27 @@ let activeCleanup = null;
  * The picker. After a battle, "Different opponent" comes back here with `keep` (your Pokémon,
  * still chosen) and the same mode, so only a new opponent has to be picked.
  */
+// Where the next battle happens and its weather: chosen on the setup screen, remembered.
+let arena = savedArena();
+
+/** The two pickers on the setup screen: the place and the weather, each with a line saying what it is. */
+function arenaPicker() {
+  const about = h('p.muted.small.bt-place-about');
+  const describe = () => {
+    const place = ENVIRONMENTS.find((e) => e.id === arena.environment);
+    const sky = WEATHERS.find((w) => w.id === arena.weather);
+    about.textContent = `${place.about}${sky.id === 'clear' ? '' : ` ${sky.name}: ${sky.about}`}`;
+  };
+  const picker = (label, list, key) => h('label.field',
+    h('span', label),
+    h('select', {
+      'aria-label': label,
+      onchange: (e) => { arena = saveArena({ ...arena, [key]: e.target.value }); describe(); },
+    }, list.map((x) => h('option', { value: x.id, selected: x.id === arena[key] }, x.name))));
+  describe();
+  return h('div.bt-place', h('div.bt-place-fields', picker('Arena', ENVIRONMENTS, 'environment'), picker('Weather', WEATHERS, 'weather')), about);
+}
+
 export async function renderBattles(root, { keep = null, mode: startMode = 'cpu' } = {}) {
   activeCleanup?.();
   activeCleanup = null;
@@ -122,6 +144,7 @@ export async function renderBattles(root, { keep = null, mode: startMode = 'cpu'
         [['cpu', 'vs Computer'], ['pvp', 'Two players']].map(([v, label]) => h('button', {
           type: 'button', class: v === mode ? 'active' : '', onclick: () => { mode = v; drawTray(); },
         }, label))),
+      selected.length > 0 && arenaPicker(),
       h('button.btn.primary.bt-start', {
         type: 'button',
         disabled: !ready,
@@ -164,7 +187,9 @@ function rulesHelp() {
       h('li', '“30+” flips a coin: heads doubles it. “20×” flips 3 coins: 20 for each heads. An attack with no damage heals 20 if it mentions healing, otherwise it gives 2 energy.'),
       h('li', 'Weakness (×2 or +N) and resistance (−N) apply as printed on the card being hit.'),
       h('li', 'Each ability can be used once per battle: it takes your turn and powers up your next attack by 50%.'),
-      h('li', 'A coin flip decides who goes first. The first Pokémon to reach 0 HP faints.')));
+      h('li', 'A coin flip decides who goes first. The first Pokémon to reach 0 HP faints.'),
+      h('li', 'Arena: the meadow or one of three stadiums. It changes the scenery only.'),
+      h('li', 'Weather changes the battle: ', WEATHERS.filter((w) => w.id !== 'clear').map((w, i) => [i ? ' ' : '', h('strong', `${w.name}: `), w.about]))));
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +201,7 @@ async function makeStage(host, mode) {
   const scene = await import('./battle/scene.js');
   if (scene.webglAvailable()) {
     try {
-      return new scene.BattleStage(host, { mode, dark });
+      return new scene.BattleStage(host, { mode, dark, environment: arena.environment, weather: arena.weather });
     } catch (err) {
       console.warn('3D unavailable, using cards:', err);
     }
@@ -378,7 +403,7 @@ async function startShowcase(root, sel, onBack) {
   };
 
   const tryAttack = (attack) => run(async () => {
-    const hit = damageFor(me, dummy, attack);
+    const hit = damageFor(me, dummy, attack, Math.random, arena.weather);
     me.boost = 0;
     stage.boost(0, false);
     say(a.message, `${sel.card.name} used ${attack.name}!`, { hold: 0 });
@@ -424,7 +449,7 @@ function infoButton(a, name, text) {
 function moveButton(a, attack, me, foe, onClick, practice = false) {
   const cost = attackCost(attack);
   const enough = practice || me.energy >= cost;
-  const est = expectedDamage(me, foe, attack);
+  const est = expectedDamage(me, foe, attack, arena.weather);
   return h('div.move', { class: attack.effect ? 'has-info' : '' },
     h('button.move-btn', {
       type: 'button',
@@ -479,7 +504,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const newBattle = () => createBattle(
     { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id },
     { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id },
-    { mode },
+    { mode, weather: arena.weather },
   );
   battle = newBattle();
   const plates = battle.fighters.map((f, i) => plate(f, i, i === 0 ? 'Player 1' : mode === 'cpu' ? 'Computer' : 'Player 2'));
@@ -494,6 +519,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
     for (const e of events) {
       if (e.type === 'start') {
         await say(a.message, `Coin flip: ${e.coin}! ${name(e.first)} goes first.`);
+        if (battle.weather !== 'clear') await say(a.message, `${weatherName(battle.weather)} over the ${environmentName(arena.environment)}. ${WEATHERS.find((w) => w.id === battle.weather).about}`);
       } else if (e.type === 'turn') {
         refresh();
         banner.textContent = mode === 'pvp' ? `Player ${e.who + 1}'s turn` : e.who === 0 ? 'Your turn' : 'Computer’s turn';
@@ -519,6 +545,10 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
         else if (e.weakness) await say(a.message, `It hit ${name(e.who)}’s weakness! ${e.amount} damage!`);
         else if (e.resisted) await say(a.message, `${name(e.who)} resisted some of it. ${e.amount} damage.`);
         else await say(a.message, `${e.amount} damage!`, { hold: 250 });
+      } else if (e.type === 'weather') {
+        await stage.hit(e.who, { amount: e.amount, weakness: false, attackType: 'Fighting' });
+        refresh();
+        await say(a.message, `The sandstorm wears ${name(e.who)} down: ${e.amount} damage.`, { hold: 250 });
       } else if (e.type === 'heal') {
         await stage.heal(e.who, e.amount);
         refresh();
