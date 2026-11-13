@@ -155,13 +155,13 @@ describe('PokéBattles weather (after PokeBrawl’s, adapted to card types)', ()
 
   test('an unknown weather is clear; the arena choice is remembered and checked', () => {
     assert.equal(createBattle({ battle: plain }, { battle: rock }, { weather: 'meteors' }).weather, 'clear');
-    assert.deepEqual(ENVIRONMENTS.map((e) => e.id), ['meadow', 'night', 'floating', 'league']);
+    assert.deepEqual(ENVIRONMENTS.map((e) => e.id), ['meadow', 'night', 'floating', 'league', 'beach']);
     assert.deepEqual(WEATHERS.map((w) => w.id), ['clear', 'sun', 'rain', 'sand', 'snow']);
     const store = new Map();
     const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
-    assert.deepEqual(savedArena(storage), { environment: 'meadow', weather: 'clear' });
-    saveArena({ environment: 'league', weather: 'rain' }, storage);
-    assert.deepEqual(savedArena(storage), { environment: 'league', weather: 'rain' });
-    assert.deepEqual(saveArena({ environment: 'moon', weather: 'fog' }, storage), { environment: 'meadow', weather: 'clear' });
+    assert.deepEqual(savedArena(storage), { environment: 'meadow', weather: 'clear', style: 'turns', difficulty: 'normal' });
+    saveArena({ environment: 'league', weather: 'rain', style: 'realtime', difficulty: 'hard' }, storage);
+    assert.deepEqual(savedArena(storage), { environment: 'league', weather: 'rain', style: 'realtime', difficulty: 'hard' });
+    assert.deepEqual(saveArena({ environment: 'moon', weather: 'fog', style: 'chess' }, storage), { environment: 'meadow', weather: 'clear', style: 'turns', difficulty: 'normal' });
   });
 });

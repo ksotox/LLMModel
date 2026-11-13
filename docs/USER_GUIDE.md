@@ -345,12 +345,23 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - Weakness and resistance work as printed on the card being hit.
 - Each ability can be used once per battle and powers up the next attack by 50%.
 
+**Real-time battles** (pick **Real-time** beside **Turn-based** before you start; needs 3D graphics):
+- Both Pokémon move, dodge and attack at the same time. Your camera follows behind your Pokémon, and moving forward always goes towards the rival.
+- **Keys:** WASD move · Space jump · Shift dodge · Q, E, right click and F (or 1–4) use the moves shown at the bottom. A second player uses the arrows, K (jump), L (dodge) and U, I, O, P.
+- **Gamepad:** left stick · A jump · B dodge · LB, RB, LT, RT moves. **Touch:** the joystick and the Jump, Dodge and move buttons.
+- Your moves are the card's attacks, then its ability (a 10-second power-up, once), then a free **Quick Strike**. Attacks cost energy (20 per energy symbol on the card) and wait a moment before they can be used again. Energy refills by itself.
+- Fire, Water, Lightning, Psychic, Grass, Dragon and Fairy types throw their attacks; the others lunge in close. Step aside or **dodge** (2 charges, refilling) to avoid them: a dodge can't be hit for a moment.
+- Hit in a row and a Pokémon is stunned; the fifth hit in a row knocks it down.
+- **Floating Stadium:** fall off the edge and you're out. **League Stadium:** the field closes in after 30 seconds.
+- Against the computer, choose **Easy**, **Normal** or **Hard**. A battle lasts at most 3 minutes; then the side with more HP left (as a share) wins.
+
 **Arena and weather** (chosen under your Pokémon before you start, and remembered):
 - **Arena** changes the scenery only:
   - **Meadow:** the grass field by the lake (described below).
   - **Night Stadium:** a packed stadium at night, with mown stripes, lit boards, a strip of pink light and a ring of floodlights.
   - **Floating Stadium:** a platform on a pillar over a deep pit, the crowd far below, a giant screen, and a city and mountains behind.
   - **League Stadium:** a stone coliseum on a cool, cloudy day, with flags, banners and a scoreboard tower.
+  - **Tropical Beach:** pale sand in a turquoise sea with foam on the shore, palms that sway and throw their shadows on the sand, a rowing boat, a pier and buoys. In dark mode it is a sunset over the sea.
 - **Weather** changes the picture and the battle:
   - **Clear:** no effect.
   - **Sunny:** Fire attacks deal 50% more damage, Water attacks half.
@@ -368,6 +379,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - **Graphics** (top right of the battle screen):
   - **High:** the sharpest picture, detailed shadows, and the densest grass and forest.
   - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
+  - High and Standard also give surfaces their grain, light the scene from the sky, and put soft shadows under rocks and trees.
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
   - The app picks a level for your device the first time and remembers your choice.
 - **The meadow:** an open landscape outdoors:

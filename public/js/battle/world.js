@@ -11,7 +11,8 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildStadium, STADIUM_LOOK, starField } from './stadiums.js';
+import { buildStadium, lookFor, starField } from './stadiums.js';
+import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, skyEnvironment } from './surface.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
@@ -715,7 +716,7 @@ function rockGeometry(r, seed, detail = 2) {
   return g;
 }
 
-function tree(seed, dark) {
+function tree(seed, dark, leaves = null) {
   const r = rng(seed);
   const group = new THREE.Group();
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.95 });
@@ -734,9 +735,18 @@ function tree(seed, dark) {
       group.add(cone);
     }
   } else {
-    // Broadleaf: a cluster of lumpy spheres.
-    for (let i = 0; i < 4; i++) {
-      const blob = new THREE.Mesh(rockGeometry(0.75 + r() * 0.45, seed * 10 + i), new THREE.MeshStandardMaterial({ color: greens[Math.floor(r() * greens.length)], roughness: 0.9 }));
+    // Broadleaf: a dark core of lumpy spheres (the crown's shaded inside), covered in leaf cards.
+    if (leaves) {
+      const crown = new THREE.Mesh(leaves.crown(1.25 + r() * 0.3, seed * 7 + 3, 44), leaves.material);
+      crown.customDepthMaterial = leaves.depthMaterial;
+      crown.position.y = h + 0.75;
+      crown.scale.y = 1.15;
+      crown.castShadow = true;
+      crown.userData.leaves = true;
+      group.add(crown);
+    }
+    for (let i = 0; i < (leaves ? 2 : 4); i++) {
+      const blob = new THREE.Mesh(rockGeometry((leaves ? 0.6 : 0.75) + r() * 0.45, seed * 10 + i), new THREE.MeshStandardMaterial({ color: leaves ? (dark ? 0x1f3319 : 0x2c5a22) : greens[Math.floor(r() * greens.length)], roughness: 0.9 }));
       blob.position.set((r() - 0.5) * 0.9, h + 0.2 + r() * 0.7, (r() - 0.5) * 0.9);
       blob.scale.y = 1.4;
       blob.castShadow = true;
@@ -777,7 +787,7 @@ function fieldLines(radius) {
  * Build the world into `scene`. Returns { sun, update(seconds), setQuality(q), render(), resize(w,h), dispose() }.
  */
 export function buildWorld({ scene, renderer, camera, dark = false, mode = 'battle', quality = 'high', environment = 'meadow', weather = 'clear' }) {
-  const look = STADIUM_LOOK[environment] ?? null; // null: the meadow
+  const look = lookFor(environment, dark); // null: the meadow
   const wx = WEATHER_LOOK[weather] ?? WEATHER_LOOK.clear;
   const disposables = [];
   const track = (o) => { disposables.push(o); return o; };
@@ -815,7 +825,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   // Fog in the sky's exact horizon colour, thickening with distance (FogExp2, as in the reference).
   const haze = new THREE.Color().setRGB(colors.horizon.r, colors.horizon.g, colors.horizon.b, THREE.SRGBColorSpace);
-  scene.fog = new THREE.FogExp2(haze, (look?.fog ?? 0.0042) * wx.fog);
+  scene.fog = new THREE.FogExp2(haze, (look?.fog ?? 0.0034) * wx.fog);
 
   // Light: sky/ground hemisphere light and an angled sun with soft shadows; no ambient or sky (IBL) light.
   // (Intensities are the reference's ×π: three.js now uses physical light units.)
@@ -834,6 +844,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     ? new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2] * Math.PI * skyLight)
     : new THREE.HemisphereLight(dark ? 0x9a9ad0 : 0xc4d8ff, dark ? 0x3a3326 : 0x4c5a2c, (dark ? 0.5 : 0.65) * Math.PI * skyLight);
   scene.add(hemi);
+  const hemiBase = hemi.intensity;
   const fieldR = mode === 'showcase' ? 4.6 : 6.2;
   const bigSurfaces = [];
   const dotTex = track(dotTexture());
@@ -845,10 +856,18 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   let mistBanks = null;
   let water = null;
   let stadium = null;
+  // Depth: soft dark patches under things, leaf-card crowns, and (below) normal maps and sky light.
+  const time = { value: 0 };
+  const contacts = contactShadows(track(contactTexture()));
+  scene.add(contacts.mesh);
+  const leafTex = track(leafClusterTexture(dark ? ['#3c5e30', '#2f4a26', '#4a6e38'] : ['#4f9438', '#3f7d2f', '#6aa845', '#356b29']));
+  const leaves = leafCards(leafTex, time);
+  track(leaves.material);
+  track(leaves.depthMaterial);
 
   if (look) {
     // A stadium: its own floor, walls, stands and crowd; the chalk lines are the same everywhere.
-    stadium = buildStadium(environment, { fieldR });
+    stadium = buildStadium(environment, { fieldR, look, contact: contacts.add });
     scene.add(stadium.group);
     bigSurfaces.push(stadium.group);
     const lines = fieldLines(fieldR - 0.25);
@@ -908,6 +927,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     big.rotation.y = rr() * Math.PI;
     big.castShadow = big.receiveShadow = true;
     rocks.add(big);
+    contacts.add(big.position.x, big.position.y - 0.1, big.position.z, big.geometry.boundingSphere?.radius ?? 1.1);
   }
   scene.add(rocks);
   bigSurfaces.push(rocks);
@@ -923,9 +943,10 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     const z = Math.sin(a) * d;
     if (z > fieldR - 1 && Math.abs(x) < d * 0.75) continue; // keep the view open
     if (inLake(x, z, 3)) continue;
-    const t = tree(1000 + i, dark);
+    const t = tree(1000 + i, dark, leaves);
     t.position.set(x, terrainHeight(x, z) - 0.05, z);
     trees.add(t);
+    contacts.add(x, terrainHeight(x, z), z, 1.5 * t.scale.x);
     placed++;
   }
   scene.add(trees);
@@ -948,6 +969,14 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(air.points);
   } // the meadow
 
+  // Every painted solid surface gets a normal map worked out from its own texture, and the sky lights
+  // the scene (an environment map baked from the sky dome): off on "Basic".
+  contacts.finish();
+  for (const map of addSurfaceDepth(scene)) track(map);
+  const skyEnv = skyEnvironment(renderer, sky.mesh);
+  track(skyEnv);
+  scene.environmentIntensity = look?.stars ? 0.3 : 0.5;
+
   // Rain, snow or sand round the camera (the sky, fog and lights were tinted above).
   const weatherFx = buildWeather(weather, { scene, camera, dot: dotTex });
 
@@ -959,6 +988,9 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     renderer.setPixelRatio(basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5));
     sky.uniforms.uClouds.value = basic ? 0 : 1;
     if (mistBanks) mistBanks.visible = !basic;
+    scene.environment = basic ? null : skyEnv.texture;
+    hemi.intensity = hemiBase * (basic ? 1 : 0.8); // the sky's own light takes over part of it
+    contacts.mesh.visible = !basic;
     stadium?.setQuality(current);
     weatherFx?.setQuality(current);
     renderer.shadowMap.enabled = !basic;
@@ -1006,6 +1038,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       const dt = Math.min(0.1, Math.max(0, seconds - (last ?? seconds)));
       last = seconds;
       sky.uniforms.uTime.value = seconds;
+      time.value = seconds;
       sky.mesh.position.copy(camera.position); // the sky moves with the camera
       stars?.position.copy(camera.position);
       stadium?.update(seconds);

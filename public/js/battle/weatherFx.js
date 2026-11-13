@@ -10,7 +10,7 @@ export const WEATHER_LOOK = {
   clear: { tint: [1, 1, 1], strength: 0, fog: 1, light: 1 },
   sun: { tint: [1.0, 0.82, 0.45], strength: 0.16, fog: 0.8, light: 1.22 },
   rain: { tint: [0.28, 0.36, 0.52], strength: 0.42, fog: 2.4, light: 0.62 },
-  sand: { tint: [0.80, 0.62, 0.36], strength: 0.62, fog: 5.5, light: 0.8 },
+  sand: { tint: [0.80, 0.62, 0.36], strength: 0.5, fog: 3.4, light: 0.85 },
   snow: { tint: [0.88, 0.93, 1.0], strength: 0.4, fog: 2.6, light: 0.9 },
 };
 
