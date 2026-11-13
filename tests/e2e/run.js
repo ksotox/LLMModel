@@ -625,6 +625,50 @@ try {
   await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
   await page.evaluate(() => localStorage.removeItem('pokedex.battleArena'));
 
+  step('Sanctuary: walk your trainer among your Pokémon; follow, pet, card, and off to a battle');
+  await page.getByRole('link', { name: 'Sanctuary' }).click();
+  await page.locator('.sanc canvas').waitFor({ timeout: 90000 });
+  await page.locator('.sanc-title', { hasText: /Sanctuary · \d+ Pokémon/ }).waitFor();
+  assert.ok(await page.locator('.topbar').isHidden(), 'the menu bar is hidden in the Sanctuary');
+  const sanc = (fn) => page.evaluate(fn);
+  await page.waitForFunction(() => document.querySelector('.sanc')?.sanctuary?.creatures.length > 0, null, { timeout: 90000 });
+  const z0 = await sanc(() => document.querySelector('.sanc').sanctuary.player.z);
+  await page.keyboard.down('KeyW');
+  await page.waitForFunction((z) => Math.abs(document.querySelector('.sanc').sanctuary.player.z - z) > 1, z0, { timeout: 60000 });
+  await page.keyboard.up('KeyW');
+  // The trainer is chosen in a small dialog, and remembered.
+  await page.getByRole('button', { name: '👤 Trainer' }).click();
+  await page.getByRole('button', { name: 'Ace Explorer' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  assert.equal(await sanc(() => localStorage.getItem('pokedex.trainer')), 'ace');
+  // Walk up to a Pokémon (placed beside it here): E opens the wheel.
+  const who = await sanc(() => {
+    const { player, creatures } = document.querySelector('.sanc').sanctuary;
+    const c = creatures.find((x) => x.card.name === 'Voltorb') ?? creatures[0];
+    player.x = c.x + 1.2; player.z = c.z; player.vx = 0; player.vz = 0;
+    return c.card.name;
+  });
+  await page.locator('.sanc-prompt', { hasText: who }).waitFor({ timeout: 60000 });
+  assert.ok(await page.locator('.stamina-ring').isHidden(), 'no stamina ring while it is full');
+  await shot('36-sanctuary');
+  await page.keyboard.press('KeyE');
+  await page.locator('.radial-menu .radial-center', { hasText: who }).waitFor();
+  await page.getByRole('menuitem', { name: 'Follow' }).click();
+  assert.equal(await sanc(() => document.querySelector('.sanc').sanctuary.creatures.filter((c) => c.state === 'follow').length), 1, 'it follows');
+  await page.locator('.sanc-prompt').click();
+  await page.getByRole('menuitem', { name: 'Stay' }).waitFor();
+  await page.getByRole('menuitem', { name: 'Pet' }).click();
+  await page.locator('.sanc-heart').first().waitFor();
+  await page.keyboard.press('KeyE');
+  await page.getByRole('menuitem', { name: 'Card' }).click();
+  await page.locator('.sanc-card h3', { hasText: who }).waitFor();
+  await page.locator('.sanc-card').getByRole('button', { name: '⚔ Battle' }).click();
+  // Off to PokéBattles, with that Pokémon chosen already.
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  await page.locator('.bt-slot strong', { hasText: who }).waitFor();
+  assert.ok(await page.locator('.topbar').isVisible(), 'the menu bar is back');
+  await page.locator('.bt-slot', { hasText: who }).getByRole('button', { name: `Remove ${who}` }).click();
+
   step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
   // (Cards without a diorama: the list of dioramas is emptied for this step; the next one has them.)
   await page.route('**/api/card-effects', (r) => r.fulfill({ json: { cards: {} } }));

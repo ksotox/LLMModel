@@ -198,6 +198,11 @@ export async function renderBattles(root, { keep = null, mode: startMode = 'cpu'
     return;
   }
   drawList();
+  // Sent here from the Sanctuary ("Battle" on a Pokémon there): it is chosen already.
+  let sent = null;
+  try { sent = sessionStorage.getItem('pokedex.battleKeep'); sessionStorage.removeItem('pokedex.battleKeep'); } catch { /* storage unavailable */ }
+  const card = sent && cards.find((c) => String(c.id) === sent);
+  if (card && !selected.some((sel) => sel.id === card.id)) toggle(card);
 }
 
 function rulesHelp() {

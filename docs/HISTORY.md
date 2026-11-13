@@ -670,6 +670,18 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Basic graphics** turns the sky light and contact shadows off and uses the cheap materials (no normal maps).
 - **Not done:** downloaded HDRI or PBR texture sets (no outside assets), the three.js `Sky`/`Water` objects (ours stay), screen-space ambient occlusion (a post-processing pass), detail-texture blending on the ground, and leaf cards for the distant instanced forest and pines.
 
+## Phase 35: Sanctuary (PR B and C of the plan, together)
+
+- **Owner's ask:** a third-person creature zoo of their own collection: trainer selector, terrain and traversal with jump, glider and stamina, creature AI, a radial wheel, and a handoff to battles. They supplied `sanctuaryUI.js` and its markup and styles.
+- **World:** the PokéBattles meadow itself (`buildWorld` with `mode: 'sanctuary'`: no chalk lines, grass all round), so both modes share one visual pipeline. `terrainHeight` and `LAKE` are exported for grounding. The planned separate `worldVisuals.js` wasn't needed.
+- **`sanctuary/player.js`** (pure): walk, sprint, jump (with a grace time after an edge and a remembered press), glider (slow capped fall), swimming, slopes too steep to climb, stamina with exhaustion. Written from scratch; the two gists the owner linked (Unreal Engine source and Palworld identifiers) were not used.
+- **`sanctuary/zoo.js`** (pure): habitats by card type, a seeded layout (one per different Pokémon, off the water and the plaza), and idle / wander / follow behaviour with hops.
+- **`sanctuary/sanctuaryUI.js`:** the owner's module, built with `h()`; key `pokedex.trainer`.
+- **`sanctuary/sanctuary.js`:** the page: an original low-poly trainer in the preset's colours, an orbit camera, creatures as cards until their 3D model loads (nearest 24), nameplates that fade with distance, the wheel (Follow/Stay, Pet, Card, Battle), touch controls, and a list by habitat without WebGL.
+- **Handoff:** `sessionStorage` `pokedex.battleKeep` → PokéBattles opens with that Pokémon chosen.
+- **Tests:** `tests/sanctuary.test.js` (movement and zoo), and an e2e step through the whole flow.
+- **Not done:** separate biome scenery (the habitats are areas of the one meadow), creature animations beyond a hop, and a gamepad in the Sanctuary.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

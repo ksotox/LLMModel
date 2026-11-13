@@ -124,7 +124,7 @@ const smooth = (e0, e1, x) => {
 };
 
 /** A small lake out in the meadow, front right of the battle camera. */
-const LAKE = { x: 27, z: -21, r: 10, level: -0.6 };
+export const LAKE = { x: 27, z: -21, r: 10, level: -0.6 };
 const lakeDistance = (x, z) => Math.hypot(x - LAKE.x, z - LAKE.z);
 const inLake = (x, z, pad = 0) => lakeDistance(x, z) < LAKE.r * 1.3 + pad;
 
@@ -132,7 +132,7 @@ const inLake = (x, z, pad = 0) => lakeDistance(x, z) < LAKE.r * 1.3 + pad;
  * The land, one surface from the arena to the peaks: flat around the arena, a softly uneven meadow,
  * rolling hills, then ridged mountains far out; with a hollow for the lake.
  */
-function terrainHeight(x, z, flat = 16) {
+export function terrainHeight(x, z, flat = 16) {
   const d = Math.hypot(x, z);
   let h = (fbm(x * 0.035, z * 0.035, 4) - 0.48) * 1.8 * smooth(flat, flat + 14, d);
   h += smooth(flat + 14, 110, d) * (fbm(x * 0.011 + 7.3, z * 0.011 - 2.1, 5) - 0.4) * 16;
@@ -793,7 +793,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const track = (o) => { disposables.push(o); return o; };
   // Where the (fixed) battle camera stands and looks, on the ground: grass, mist and pollen go there.
   let view = null;
-  if (mode !== 'showcase') {
+  if (mode === 'battle') { // (the showcase and the Sanctuary are seen from all round)
     const dir = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
     view = { x: camera.position.x, z: camera.position.z, fx: dir.x, fz: dir.z };
   }
@@ -902,9 +902,12 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   field.position.y = 0.002;
   field.receiveShadow = true;
   bigSurfaces.push(field);
-  const lines = fieldLines(fieldR - 0.25);
-  scene.add(field, lines);
-  bigSurfaces.push(lines);
+  scene.add(field);
+  if (mode !== 'sanctuary') { // the Sanctuary's plaza has no battle lines
+    const lines = fieldLines(fieldR - 0.25);
+    scene.add(lines);
+    bigSurfaces.push(lines);
+  }
 
   const stoneTex = track(noiseTexture({
     base: dark ? '#77777c' : '#a7a6a2', seed: 21, repeat: 1, size: 256, blotches: 300, specks: 3000,

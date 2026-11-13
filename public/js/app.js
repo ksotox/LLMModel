@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { renderSearch } from './search.js';
 import { renderGradingLab } from './grading.js';
 import { renderBattles } from './battles.js';
+import { renderSanctuary } from './sanctuary/sanctuary.js';
 import { clear, h } from './ui.js';
 import { renderSet, renderSets } from './sets.js';
 import { renderCollection, renderPack, renderPacks } from './views.js';
@@ -60,6 +61,9 @@ async function route() {
     } else if (parts[0] === 'battles') {
       setActiveNav('battles');
       await renderBattles(root);
+    } else if (parts[0] === 'sanctuary') {
+      setActiveNav('sanctuary');
+      await renderSanctuary(root);
     } else if (parts[0] === 'grading') {
       setActiveNav('grading');
       await renderGradingLab(root);
