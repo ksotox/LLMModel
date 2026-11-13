@@ -379,6 +379,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - **Graphics** (top right of the battle screen):
   - **High:** the sharpest picture, detailed shadows, and the densest grass and forest.
   - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
+  - High and Standard also give surfaces their grain, light the scene from the sky, and put soft shadows under rocks and trees.
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.
   - The app picks a level for your device the first time and remembers your choice.
 - **The meadow:** an open landscape outdoors:

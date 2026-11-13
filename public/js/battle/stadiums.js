@@ -587,7 +587,7 @@ function palm({ height, lean, seed, trunkMat, frondMat, frondDepth }) {
   return group;
 }
 
-function beach({ fieldR, time, glow, add, keep, look }) {
+function beach({ fieldR, time, glow, add, keep, look, contact }) {
   const std = (opts) => keep(new THREE.MeshStandardMaterial({ roughness: 0.95, ...opts }));
   const r = rng(131);
   // The sand: one mesh from the field out under the sea, paler where dry and darker where wet.
@@ -754,6 +754,7 @@ function beach({ fieldR, time, glow, add, keep, look }) {
     const tree = palm({ height, lean: a + Math.PI + (r() - 0.5) * 1.2, seed: 141 + i, trunkMat, frondMat, frondDepth });
     tree.position.set(x, beachHeight(x, z, fieldR), z);
     add(tree);
+    contact(x, beachHeight(x, z, fieldR), z, 0.7);
   });
 
   // Rocks, driftwood and a rowing boat pulled up on the sand.
@@ -769,6 +770,7 @@ function beach({ fieldR, time, glow, add, keep, look }) {
     rock.rotation.y = r() * Math.PI;
     rock.castShadow = rock.receiveShadow = true;
     add(rock);
+    contact(x, beachHeight(x, z, fieldR), z, 0.95 * rock.scale.x * (rock.geometry.parameters.radius ?? 0.5) * 2);
   }
   const wood = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 3.4, 7), std({ color: 0xb9ab95 }));
   wood.rotation.set(Math.PI / 2, 0, 0.4);
@@ -788,6 +790,7 @@ function beach({ fieldR, time, glow, add, keep, look }) {
   boat.position.set(-3.2, beachHeight(-3.2, -11.6, fieldR) + 0.62, -11.6);
   boat.rotation.set(0.12, 0.5, 0.06);
   add(boat);
+  contact(-3.2, beachHeight(-3.2, -11.6, fieldR), -11.6, 2.5);
 
   // A wooden pier out over the water, with a lamp at its end, and two buoys bobbing.
   const plank = std({ color: 0x9a7a55, roughness: 0.9 });
@@ -860,7 +863,7 @@ export function starField(count = 900) {
  * Build a stadium ("night", "floating" or "league") round a field of radius `fieldR`.
  * Returns { group, update(seconds), setQuality(q), dispose() }.
  */
-export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind] }) {
+export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind], contact = () => {} }) {
   const group = new THREE.Group();
   const kept = [];
   const keep = (o) => { kept.push(o); return o; };
@@ -869,7 +872,7 @@ export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind] }) {
   const add = (o) => { group.add(o); return o; };
   const make = { night: nightStadium, floating: floatingStadium, league: leagueStadium, beach }[kind];
   if (!make) throw new Error(`Unknown stadium: ${kind}`);
-  const parts = make({ fieldR, time, glow, add, keep, look });
+  const parts = make({ fieldR, time, glow, add, keep, look, contact });
   let lively = true;
   return {
     group,

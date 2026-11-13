@@ -657,6 +657,19 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Found on screenshots:** fronds first had zero width (a geometry bug) and a thin-line leaf texture that vanished with distance; both fixed.
 - **Not done:** true mirror reflections of the scene in the water (it reflects the sky only), and HDR/bloom post-processing.
 
+## Phase 34: More depth in every arena
+
+- **Owner's ask:** more depth in all environments (lighting, atmosphere, materials, foliage, grounding, water), with a five-point list.
+- **Already there:** soft sun shadows at 2048, ACES tone mapping, FogExp2, the procedural sky dome with clouds, and water shaders with Fresnel on the lake and the sea.
+- **Added (`public/js/battle/surface.js`), all made in code:**
+  - a normal map for every painted solid surface, worked out from its own texture (`addSurfaceDepth`);
+  - light from the sky: an environment map baked from the sky dome with `PMREMGenerator` (intensity 0.5, 0.3 at night; the hemisphere light gives up a fifth);
+  - contact shadows: soft dark patches under boulders, trees, palms, beach rocks and the boat (one instanced mesh);
+  - leaf cards: broadleaf crowns are cut-out leaf clusters with outward normals that sway and cast leaf shadows, over a dark core;
+  - thinner haze: meadow fog 0.0042 → 0.0034, sandstorm fog ×5.5 → ×3.4.
+- **Basic graphics** turns the sky light and contact shadows off and uses the cheap materials (no normal maps).
+- **Not done:** downloaded HDRI or PBR texture sets (no outside assets), the three.js `Sky`/`Water` objects (ours stay), screen-space ambient occlusion (a post-processing pass), detail-texture blending on the ground, and leaf cards for the distant instanced forest and pines.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

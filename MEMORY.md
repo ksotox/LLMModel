@@ -26,7 +26,6 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: auto-updates, nightly
   backups; `HOST=127.0.0.1` + `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop `remoteUrl` opens it;
   `cloud-move.ps1` copies `data\`. Not yet run on real Oracle/Tailscale.
-- Old start: `Start Pokedex.cmd` (CRLF) runs `npm start -- --open`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
 ## Architecture (where to look)
@@ -97,7 +96,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb cache in data/models3d), `public/js/battle/`
   (engine = rules + weather, pure + seeded; realtime = real-time sim + AI, `controls.js` input; scene = stage + summon; world = owner's Hi-Fi v4 meadow, High/Standard/
-  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only, no assets).
+  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only; `surface.js` = normal maps, sky light, contact shadows).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**

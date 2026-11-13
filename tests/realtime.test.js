@@ -167,3 +167,15 @@ describe('Tropical Beach arena', () => {
     assert.equal(lookFor('meadow'), null);
   });
 });
+
+describe('surface depth', () => {
+  test('a normal map from heights: flat stays flat, a slope leans away from the rise', async () => {
+    const { normalsFromHeights } = await import('../public/js/battle/surface.js');
+    const flat = normalsFromHeights(new Float32Array(16).fill(0.5), 4, 4);
+    assert.deepEqual([...flat.slice(0, 4)], [128, 128, 255, 255]);
+    const ramp = new Float32Array(16);
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) ramp[y * 4 + x] = x / 4;
+    const n = normalsFromHeights(ramp, 4, 4);
+    assert.ok(n[4 + 0] < 128 && n[4 + 2] < 255, 'rising to the right: the normal tilts left');
+  });
+});
