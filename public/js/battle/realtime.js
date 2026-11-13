@@ -48,6 +48,7 @@ export const ARENA_RULES = {
   meadow: { radius: 5.8, wall: true },
   night: { radius: 5.8, wall: true },
   league: { radius: 5.8, wall: true, shrink: [[30, 5.0], [55, 4.2], [80, 3.5]] },
+  beach: { radius: 5.8, wall: true },
   floating: { radius: 10.3, wall: false }, // the deck's edge: off it is a ring-out
 };
 

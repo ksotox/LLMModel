@@ -11,6 +11,7 @@ export const ENVIRONMENTS = [
   { id: 'night', name: 'Night Stadium', about: 'A packed stadium at night, under a ring of floodlights.' },
   { id: 'floating', name: 'Floating Stadium', about: 'A platform on a pillar over a deep pit, the crowd far below.' },
   { id: 'league', name: 'League Stadium', about: 'A stone coliseum on a cool, cloudy day.' },
+  { id: 'beach', name: 'Tropical Beach', about: 'Pale sand in a turquoise sea, under swaying palms (a sunset in dark mode).' },
 ];
 
 export const WEATHERS = [

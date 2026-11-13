@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildStadium, STADIUM_LOOK, starField } from './stadiums.js';
+import { buildStadium, lookFor, starField } from './stadiums.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
@@ -777,7 +777,7 @@ function fieldLines(radius) {
  * Build the world into `scene`. Returns { sun, update(seconds), setQuality(q), render(), resize(w,h), dispose() }.
  */
 export function buildWorld({ scene, renderer, camera, dark = false, mode = 'battle', quality = 'high', environment = 'meadow', weather = 'clear' }) {
-  const look = STADIUM_LOOK[environment] ?? null; // null: the meadow
+  const look = lookFor(environment, dark); // null: the meadow
   const wx = WEATHER_LOOK[weather] ?? WEATHER_LOOK.clear;
   const disposables = [];
   const track = (o) => { disposables.push(o); return o; };
@@ -848,7 +848,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   if (look) {
     // A stadium: its own floor, walls, stands and crowd; the chalk lines are the same everywhere.
-    stadium = buildStadium(environment, { fieldR });
+    stadium = buildStadium(environment, { fieldR, look });
     scene.add(stadium.group);
     bigSurfaces.push(stadium.group);
     const lines = fieldLines(fieldR - 0.25);

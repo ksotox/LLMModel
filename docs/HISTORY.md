@@ -645,6 +645,18 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Not ported:** the Godot game's assets, real-time online play and its full move list (moves come from the cards).
 - **Tests:** `tests/realtime.test.js` (determinism, energy/cooldowns, hits and dodges, combo knockdown, ring-out, closing field, weather, time-up); the e2e plays a real-time battle against the computer to the end.
 
+## Phase 33: Tropical Beach arena
+
+- **Owner's ask:** make the environment feel more realistic, like their three reference pictures (a sunset pier, a sandy cove with a boat, palms over a beach).
+- **`stadiums.js` `beach()`**, all made in code:
+  - one sand mesh (`beachHeight`: flat field, low dunes, sloping under the sea; wet sand darker);
+  - a sea shader: waves that mirror the sky, a sun glint, turquoise shallows to deep blue, two foam lines washing along the shore (`shoreRadius` is the same formula in JS and GLSL), calm at a distance;
+  - palms (tapered bent trunk, drooping fronds with a saw-toothed leaf texture, swaying, with alpha-tested shadows on the sand);
+  - rocks, driftwood, a rowing boat, a pier with a lamp, two bobbing buoys.
+- **Look:** day in light mode, a sunset with the low sun ahead in dark mode (`lookFor(environment, dark)`).
+- **Found on screenshots:** fronds first had zero width (a geometry bug) and a thin-line leaf texture that vanished with distance; both fixed.
+- **Not done:** true mirror reflections of the scene in the water (it reflects the sky only), and HDR/bloom post-processing.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

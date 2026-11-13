@@ -146,3 +146,24 @@ describe('real-time PokéBattles', () => {
     assert.equal(s.winner, 0);
   });
 });
+
+describe('Tropical Beach arena', () => {
+  test('the sand is flat on the field, rises in low dunes, and slopes under the sea past the shore', async () => {
+    const { beachHeight, lookFor, shoreRadius } = await import('../public/js/battle/stadiums.js');
+    for (const [x, z] of [[0, 0], [3, -4], [-6, 2]]) assert.equal(beachHeight(x, z, 6.2), 0, 'flat where the Pokémon stand');
+    for (let a = 0; a < Math.PI * 2; a += 0.3) {
+      const shore = shoreRadius(a);
+      assert.ok(shore > 12 && shore < 19);
+      const at = (r) => beachHeight(Math.cos(a) * r, Math.sin(a) * r, 6.2);
+      assert.ok(at(shore - 5) >= 0, 'dry sand inside the shore');
+      assert.ok(at(shore + 1) < -0.45, 'under water past it');
+      assert.ok(at(9) <= 0.6, 'dunes stay low');
+    }
+    assert.ok(ARENA_RULES.beach.wall);
+    // Day in light mode, a sunset in dark mode; the other places look the same in both.
+    assert.notDeepEqual(lookFor('beach', true).sky, lookFor('beach', false).sky);
+    assert.ok(lookFor('beach', true).skyDir[1] < 0.2, 'the sun is low at sunset');
+    assert.deepEqual(lookFor('league', true), lookFor('league', false));
+    assert.equal(lookFor('meadow'), null);
+  });
+});

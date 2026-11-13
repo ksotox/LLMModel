@@ -97,7 +97,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
   `server/models3d.js` (Pokémon 3D API list + .glb cache in data/models3d), `public/js/battle/`
   (engine = rules + weather, pure + seeded; realtime = real-time sim + AI, `controls.js` input; scene = stage + summon; world = owner's Hi-Fi v4 meadow, High/Standard/
-  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + weather after PokeBrawl: ideas only, no assets).
+  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only, no assets).
   Models are Nintendo IP (fan project): never commit them.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**

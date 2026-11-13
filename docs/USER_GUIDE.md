@@ -361,6 +361,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
   - **Night Stadium:** a packed stadium at night, with mown stripes, lit boards, a strip of pink light and a ring of floodlights.
   - **Floating Stadium:** a platform on a pillar over a deep pit, the crowd far below, a giant screen, and a city and mountains behind.
   - **League Stadium:** a stone coliseum on a cool, cloudy day, with flags, banners and a scoreboard tower.
+  - **Tropical Beach:** pale sand in a turquoise sea with foam on the shore, palms that sway and throw their shadows on the sand, a rowing boat, a pier and buoys. In dark mode it is a sunset over the sea.
 - **Weather** changes the picture and the battle:
   - **Clear:** no effect.
   - **Sunny:** Fire attacks deal 50% more damage, Water attacks half.
