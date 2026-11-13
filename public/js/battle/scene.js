@@ -275,6 +275,7 @@ export class BattleStage {
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const now = performance.now();
+    this.beforeFrame?.(dt); // a real-time battle advances here, once per drawn frame
     for (const tw of [...this.tweens]) {
       const t = this.skipping ? 1 : Math.min(1, (now - tw.start) / tw.ms);
       tw.update(tw.ease(t), t);
@@ -289,9 +290,10 @@ export class BattleStage {
       s.mixer?.update(dt);
       if (s.ready && !s.fainted) {
         const t = now / 1000 + s.phase;
-        s.body.position.y = s.lift + Math.sin(t * 2.2) * 0.035;
+        s.body.position.y = s.lift + (s.poseY ?? 0) + Math.sin(t * 2.2) * 0.035;
         s.body.scale.setScalar(s.scale * (1 + Math.sin(t * 2.2 + 1) * 0.012));
         if (s.aura) s.aura.material.opacity = 0.35 + Math.sin(t * 6) * 0.2;
+        if (s.aura && s.live) s.aura.position.set(s.base.x, 0.3 + (s.poseY ?? 0), s.base.z);
       }
     }
     this.controls?.update();
@@ -643,19 +645,19 @@ export class BattleStage {
     s.body.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if ('emissive' in m) mats.push([m, m.emissive.clone(), m.emissiveIntensity]); });
     const x0 = s.base.x;
     await this.tween(420, (t) => {
-      s.body.position.x = x0 + Math.sin(t * Math.PI * 8) * 0.12 * (1 - t);
+      if (!s.live) s.body.position.x = x0 + Math.sin(t * Math.PI * 8) * 0.12 * (1 - t); // (a live fighter is moved by the battle)
       const k = Math.sin(t * Math.PI * 3) > 0 ? 1 : 0;
       for (const [m] of mats) { m.emissive.setRGB(k, 0.05 * k, 0.05 * k); m.emissiveIntensity = k * 0.9; }
     }, (t) => t);
     for (const [m, e, i] of mats) { m.emissive.copy(e); m.emissiveIntensity = i; }
-    s.body.position.x = x0;
+    if (!s.live) s.body.position.x = x0;
   }
 
   async heal(slot, amount) {
     const s = this.slots[slot];
     if (!s) return;
     this.float(slot, `+${amount}`, 'heal');
-    this.#sparkles(s.pos.clone().setY(0.2), 0x4ade80, 1.4);
+    this.#sparkles((s.live ? s.base : s.pos).clone().setY(0.2), 0x4ade80, 1.4);
     await this.wait(700);
   }
 
@@ -663,7 +665,7 @@ export class BattleStage {
     const s = this.slots[slot];
     if (!s) return;
     this.float(slot, `+${amount} energy`, 'energy');
-    this.#sparkles(s.pos.clone().setY(0.2), 0xfacc15, 1.1);
+    this.#sparkles((s.live ? s.base : s.pos).clone().setY(0.2), 0xfacc15, 1.1);
     await this.wait(600);
   }
 
@@ -701,6 +703,114 @@ export class BattleStage {
       s.faceMat.opacity = 1 - t * 0.45;
     });
     s.body.visible = false;
+  }
+
+  // ---- real-time battles ----
+
+  /**
+   * After the intro of a real-time battle: the cards, platforms and Poké Balls go away and the
+   * Pokémon move freely (setPose each frame); the camera follows behind your Pokémon (slot 0).
+   */
+  goLive() {
+    for (const s of this.slots) {
+      if (!s) continue;
+      s.live = true;
+      this.scene.remove(s.platform, s.card, s.ball?.group);
+      s.lift = 0.02;
+    }
+    this.liveFx = { shots: new Map(), zone: null };
+  }
+
+  /** Where a fighter is now: { x, y, z, facing, down }. */
+  setPose(slot, { x, y = 0, z, facing = 0, down = false }) {
+    const s = this.slots[slot];
+    if (!s?.live || s.fainted) return;
+    s.base.set(x, 0, z);
+    s.body.position.x = x;
+    s.body.position.z = z;
+    s.poseY = y;
+    s.body.rotation.y = facing;
+    s.body.rotation.z += ((down ? 1.25 * (slot ? 1 : -1) : 0) - s.body.rotation.z) * 0.3;
+  }
+
+  /** The chase camera: behind fighter `me`, looking past it at `foe` (smoothed). */
+  follow(me, foe) {
+    if (!this.camBase) return;
+    const dx = foe.x - me.x;
+    const dz = foe.z - me.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const fx = dx / d;
+    const fz = dz / d;
+    const back = 5.4 + Math.min(2.5, d * 0.3);
+    const goalBase = new THREE.Vector3(me.x - fx * back - fz * 1.6, 3.1 + Math.min(1.4, d * 0.1), me.z - fz * back + fx * 1.6);
+    const goalLook = new THREE.Vector3(me.x + fx * Math.min(d, 4) * 0.55, 1.0, me.z + fz * Math.min(d, 4) * 0.55);
+    const k = this.calm ? 1 : 0.12;
+    this.camBase.lerp(goalBase, k);
+    this.camLook.lerp(goalLook, k);
+  }
+
+  /** A move goes off: its animation, and a type-coloured flash in front for a close-up strike. */
+  liveMove(slot, { kind, type }) {
+    const s = this.slots[slot];
+    if (!s?.live) return;
+    if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
+    const color = typeColor(type ?? s.info.types?.[0]);
+    const f = s.body.rotation.y;
+    const at = new THREE.Vector3(s.base.x + Math.sin(f) * 0.8, 0.7, s.base.z + Math.cos(f) * 0.8);
+    this.#burst(at, color, kind === 'melee' ? { count: 30, speed: 2.2, life: 0.35, size: 0.08 } : { count: 14, speed: 1, life: 0.25, size: 0.06 });
+  }
+
+  /** The projectiles in flight, by id: glowing orbs in their type's colour; gone ones are removed. */
+  syncShots(shots) {
+    const live = this.liveFx?.shots;
+    if (!live) return;
+    const seen = new Set();
+    for (const p of shots) {
+      seen.add(p.id);
+      let orb = live.get(p.id);
+      if (!orb) {
+        const color = typeColor(p.move.type);
+        orb = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dot, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+        orb.scale.setScalar(0.75);
+        const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dot, color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+        core.scale.setScalar(0.45);
+        orb.add(core);
+        this.scene.add(orb);
+        live.set(p.id, orb);
+      }
+      orb.position.set(p.x, p.y, p.z);
+    }
+    for (const [id, orb] of live) {
+      if (seen.has(id)) continue;
+      this.scene.remove(orb);
+      orb.material.dispose();
+      live.delete(id);
+    }
+  }
+
+  /** A projectile bursts (on a hit, or fizzling out at the edge). */
+  burstAt(x, z, type, small = false) {
+    this.#burst(new THREE.Vector3(x, 0.75, z), typeColor(type), small ? { count: 12, speed: 0.8, life: 0.3, size: 0.06 } : { count: 36, speed: 2, life: 0.45, size: 0.09 });
+  }
+
+  /** A dodge: a quick white puff where it started. */
+  dodgeFx(slot) {
+    const s = this.slots[slot];
+    if (s) this.#burst(s.base.clone().setY(0.4), 0xffffff, { count: 18, speed: 1.4, life: 0.3, size: 0.07 });
+  }
+
+  /** The edge of the field when it closes in (League Stadium): a glowing ring on the ground. */
+  setZone(radius) {
+    if (!this.liveFx) return;
+    let ring = this.liveFx.zone;
+    if (!ring) {
+      ring = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 96), new THREE.MeshBasicMaterial({ color: 0xff6a4a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.03;
+      this.scene.add(ring);
+      this.liveFx.zone = ring;
+    }
+    ring.scale.setScalar(radius);
   }
 
   // ---- effects ----

@@ -635,6 +635,16 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Not taken over:** PokeBrawl's real-time fighting, ring-outs and the League field that closes in; our battles stay turn-based on the cards' own data.
 - **Tests:** weather rules and the arena choice (unit), and the e2e battle now runs in the League Stadium in the rain. Each arena and weather was also checked on screenshots.
 
+## Phase 32: Real-time PokéBattles (after PokeBrawl)
+
+- **Owner's ask:** add PokeBrawl's real-time battle mode; plan a shared visual pipeline and a Sanctuary (in `/root` plan; PR B and C follow).
+- **`public/js/battle/realtime.js`** (pure, 60 steps a second, seeded): free movement on the field, energy 0–100 (+12/s), moves from the card (20 energy per symbol, cooldown 0.6 s + 0.5 s per symbol, damage = printed × 0.12, weakness/resistance/weather scaled), ranged types fire projectiles, others lunge in close, two dodge charges with invulnerable frames, stun shortening through a combo and a knockdown on the fifth hit, jump, ability as a 10 s ×1.5 power-up, a free Quick Strike, ring-out on the Floating Stadium, the League field closing in by phases, sandstorm every 6 s, a 3-minute limit.
+- **Computer:** fills an intent like a gamepad, seeing the rival with a delay and an error; dodges incoming shots by chance; keeps its preferred distance; easy/normal/hard.
+- **Tuning:** AI-vs-AI runs across arenas and difficulties: battles of 30–60 s; melee and ranged Pokémon both win some (melee got a lunge after ranged ones always kited it).
+- **`controls.js`:** keyboard (two players), gamepads and a touch joystick, relative to the rival. **`scene.js`:** `goLive()`, `setPose`, a chase camera, projectile orbs, a closing ring; `beforeFrame` drives the battle once per drawn frame.
+- **Not ported:** the Godot game's assets, real-time online play and its full move list (moves come from the cards).
+- **Tests:** `tests/realtime.test.js` (determinism, energy/cooldowns, hits and dodges, combo knockdown, ring-out, closing field, weather, time-up); the e2e plays a real-time battle against the computer to the end.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

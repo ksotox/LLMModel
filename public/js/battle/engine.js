@@ -77,7 +77,7 @@ export function matchups(attacker, defender) {
   };
 }
 
-function applyMatchups(amount, attacker, defender, weather = 'clear') {
+export function applyMatchups(amount, attacker, defender, weather = 'clear') {
   if (amount <= 0) return { amount: 0, weakness: false, resisted: false };
   const { weakness, resistance } = matchups(attacker, defender);
   let out = amount;

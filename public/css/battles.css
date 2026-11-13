@@ -226,3 +226,27 @@ body.battle-mode .topbar { display: none; }
 .bt-slot.empty.wanted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .bt-slot.empty.wanted span { color: var(--accent); font-weight: 700; }
 .bt-controls:not(:has(.move-grid.side)) > .move-grid { grid-column: 1 / -1; }
+
+/* ---------- Real-time battles ---------- */
+.bt-arena.realtime .bt-dock { gap: 6px; }
+.rt-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rt-grid.p2 { opacity: 0.92; }
+.rt-move { position: relative; overflow: hidden; padding: 8px 10px; touch-action: none; user-select: none; -webkit-user-select: none; pointer-events: auto; }
+.rt-move .move-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-cool { position: absolute; inset: 0; pointer-events: none; background: conic-gradient(rgb(0 0 0 / 0.45) calc(var(--cool, 0) * 360deg), transparent 0); }
+.rt-key { font-size: 0.7rem; padding: 0 5px; border-radius: 4px; border: 1px solid var(--glass-line); color: var(--glass-dim); }
+.rt-bar { display: flex; align-items: center; gap: 12px; pointer-events: auto; color: var(--glass-ink); font-size: 0.85rem; }
+.rt-clock { font-variant-numeric: tabular-nums; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-line); }
+.rt-dodges { letter-spacing: 2px; color: #7dd3fc; }
+.rt-help { font-size: 0.75rem; color: var(--glass-dim); }
+.rt-energy { flex: 1; height: 6px; margin-right: 10px; max-width: 120px; border-radius: 3px; background: rgb(255 255 255 / 0.15); overflow: hidden; }
+.rt-energy-fill { display: block; height: 100%; width: 0; background: #facc15; }
+.hp-plate.boosted { box-shadow: 0 0 0 2px #c084fc, 0 4px 24px rgb(0 0 0 / 0.3); }
+.rt-touch { display: flex; gap: 8px; justify-content: flex-end; pointer-events: auto; }
+.rt-act { min-width: 84px; touch-action: none; }
+.rt-stick { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left, 0px) + 22px); bottom: calc(var(--dock, 160px) + 18px); width: 112px; height: 112px; border-radius: 50%; background: rgb(255 255 255 / 0.12); border: 2px solid rgb(255 255 255 / 0.35); touch-action: none; display: grid; place-items: center; }
+.rt-knob { width: 48px; height: 48px; border-radius: 50%; background: rgb(255 255 255 / 0.75); box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); transition: transform 0.05s; }
+@media (max-width: 720px) {
+  .rt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rt-help { display: none; }
+}

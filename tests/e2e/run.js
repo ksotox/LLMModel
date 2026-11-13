@@ -546,7 +546,7 @@ try {
   await page.getByLabel('Weather').selectOption({ label: 'Rain' });
   await page.locator('.bt-place-about', { hasText: 'A stone coliseum' }).waitFor();
   await page.locator('.bt-place-about', { hasText: 'Rain: Water attacks deal 50% more damage' }).waitFor();
-  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pokedex.battleArena'))), { environment: 'league', weather: 'rain' });
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pokedex.battleArena'))), { environment: 'league', weather: 'rain', style: 'turns', difficulty: 'normal' });
   await page.getByRole('button', { name: '⚔ Battle!' }).click();
   await page.locator('.card-info-panel.slot-0.in').waitFor({ timeout: 90000 });
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
@@ -597,6 +597,33 @@ try {
   await page.waitForFunction((t) => { const el = document.querySelector('.bt-whose'); return el && /^Player \d: choose/.test(el.textContent) && el.textContent !== t; }, first, { timeout: 90000 });
   assert.notEqual(first.slice(0, 8), (await page.locator('.bt-whose').textContent()).slice(0, 8), 'the other player’s turn');
   await page.getByRole('button', { name: '← Back' }).click();
+
+  step('PokéBattles real-time: move, dodge and attack against the computer until one side wins');
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  await page.locator('.bt-tile', { hasText: 'Voltorb' }).first().click();
+  await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
+  await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
+  await page.getByRole('button', { name: 'Real-time' }).click();
+  await page.getByLabel('Difficulty').selectOption({ label: 'Easy' });
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pokedex.battleArena')).style), 'realtime', 'the style is remembered');
+  await page.getByRole('button', { name: '⚔ Battle!' }).click();
+  await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
+  await page.locator('.rt-move', { hasText: 'Lightning Ball' }).waitFor({ timeout: 90000 });
+  assert.match(await page.locator('.rt-clock').textContent(), /^\d:\d\d$/);
+  // Keep attacking (Q, E) and step aside now and then, until the battle ends.
+  await page.keyboard.down('KeyA');
+  for (let i = 0; i < 2400 && !(await page.locator('.bt-result').count()); i++) {
+    await page.keyboard.press(i % 2 ? 'KeyQ' : 'KeyE');
+    if (i % 25 === 0) await page.keyboard.press('ShiftLeft');
+    if (i === 40) await shot('32-pokebattles-realtime');
+    await page.waitForTimeout(100);
+  }
+  await page.keyboard.up('KeyA');
+  await page.locator('.bt-result h3', { hasText: /wins|draw/ }).waitFor({ timeout: 30000 });
+  assert.ok(await page.getByRole('button', { name: '↻ Same battle again' }).isVisible());
+  await page.getByRole('button', { name: 'Choose both again' }).click();
+  await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
+  await page.evaluate(() => localStorage.removeItem('pokedex.battleArena'));
 
   step('3D Pop-out: each Pokémon steps out of its card in 3D, drawn once; Trainers, My photos and Select stay plain');
   // (Cards without a diorama: the list of dioramas is emptied for this step; the next one has them.)

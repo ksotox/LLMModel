@@ -4,7 +4,9 @@
 //
 // three.js is only loaded when a showcase or battle starts, so the rest of the app stays light.
 
-import { ENVIRONMENTS, environmentName, saveArena, savedArena, weatherName, WEATHERS } from './battle/arenas.js';
+import { DIFFICULTIES, ENVIRONMENTS, environmentName, saveArena, savedArena, STYLES, weatherName, WEATHERS } from './battle/arenas.js';
+import { createControls, joystick, toWorld } from './battle/controls.js';
+import { createRealtime, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
 
@@ -59,8 +61,22 @@ let activeCleanup = null;
 // Where the next battle happens and its weather: chosen on the setup screen, remembered.
 let arena = savedArena();
 
+/** WebGL (3D) is needed for real-time battles; without it only turn-based battles are offered. */
+let webgl = null;
+function hasWebGL() {
+  if (webgl == null) {
+    try {
+      const c = document.createElement('canvas');
+      webgl = Boolean(c.getContext('webgl2') || c.getContext('webgl'));
+    } catch {
+      webgl = false;
+    }
+  }
+  return webgl;
+}
+
 /** The two pickers on the setup screen: the place and the weather, each with a line saying what it is. */
-function arenaPicker() {
+function arenaPicker({ difficulty = false } = {}) {
   const about = h('p.muted.small.bt-place-about');
   const describe = () => {
     const place = ENVIRONMENTS.find((e) => e.id === arena.environment);
@@ -74,7 +90,8 @@ function arenaPicker() {
       onchange: (e) => { arena = saveArena({ ...arena, [key]: e.target.value }); describe(); },
     }, list.map((x) => h('option', { value: x.id, selected: x.id === arena[key] }, x.name))));
   describe();
-  return h('div.bt-place', h('div.bt-place-fields', picker('Arena', ENVIRONMENTS, 'environment'), picker('Weather', WEATHERS, 'weather')), about);
+  return h('div.bt-place', h('div.bt-place-fields', picker('Arena', ENVIRONMENTS, 'environment'), picker('Weather', WEATHERS, 'weather'),
+    difficulty && picker('Difficulty', DIFFICULTIES, 'difficulty')), about);
 }
 
 export async function renderBattles(root, { keep = null, mode: startMode = 'cpu' } = {}) {
@@ -144,12 +161,17 @@ export async function renderBattles(root, { keep = null, mode: startMode = 'cpu'
         [['cpu', 'vs Computer'], ['pvp', 'Two players']].map(([v, label]) => h('button', {
           type: 'button', class: v === mode ? 'active' : '', onclick: () => { mode = v; drawTray(); },
         }, label))),
-      selected.length > 0 && arenaPicker(),
+      selected.length === 2 && hasWebGL() && h('div.segmented.bt-mode', { role: 'group', 'aria-label': 'Battle style' },
+        STYLES.map((st) => h('button', {
+          type: 'button', class: st.id === arena.style ? 'active' : '', title: st.about,
+          onclick: () => { arena = saveArena({ ...arena, style: st.id }); drawTray(); },
+        }, st.name))),
+      selected.length > 0 && arenaPicker({ difficulty: selected.length === 2 && mode === 'cpu' && arena.style === 'realtime' && hasWebGL() }),
       h('button.btn.primary.bt-start', {
         type: 'button',
         disabled: !ready,
         onclick: () => (selected.length === 2
-          ? startBattle(root, [...selected], mode, () => renderBattles(root), (picks, m) => renderBattles(root, { keep: picks[0], mode: m }))
+          ? (arena.style === 'realtime' && hasWebGL() ? startRealtime : startBattle)(root, [...selected], mode, () => renderBattles(root), (picks, m) => renderBattles(root, { keep: picks[0], mode: m }))
           : startShowcase(root, selected[0], () => renderBattles(root))),
       }, selected.length === 2 ? '⚔ Battle!' : selected.length === 1 ? '✨ Showcase' : 'Pick a Pokémon'));
   }
@@ -627,4 +649,172 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   await play(battle.opening);
   await say(a.message, 'Battle start!', { hold: 300 });
   next();
+}
+
+// ---------------------------------------------------------------------------
+// Real-time battle: both Pokémon move, dodge and attack at the same time (battle/realtime.js)
+
+const KEY_HINTS = ['Q', 'E', 'Right click', 'F'];
+const PAD_HINTS = ['U', 'I', 'O', 'P'];
+
+/** A real-time HP plate: name, HP bar and an energy bar. */
+function livePlate(f, side, label) {
+  const bar = h('span.hp-fill');
+  const hpText = h('span.hp-text');
+  const energy = h('span.rt-energy-fill');
+  const status = h('span.plate-status');
+  const el = h('div.hp-plate', { class: `side-${side}` },
+    h('div.plate-top', h('strong', f.name), h('small', label)),
+    h('div.hp-bar', h('span.hp-label', 'HP'), h('span.hp-track', bar)),
+    h('div.plate-bottom', h('span.rt-energy', { title: 'Energy' }, energy), hpText, status));
+  const update = () => {
+    const pct = Math.max(0, f.hp / f.maxHp);
+    bar.style.width = `${pct * 100}%`;
+    bar.className = `hp-fill ${pct > 0.5 ? 'high' : pct > 0.2 ? 'mid' : 'low'}`;
+    hpText.textContent = `${Math.ceil(f.hp)}/${f.maxHp}`;
+    energy.style.width = `${f.energy}%`;
+    status.textContent = f.boost > 0 ? 'Powered up' : f.down > 0 ? 'Knocked down' : '';
+    el.classList.toggle('boosted', f.boost > 0);
+  };
+  update();
+  return { el, update };
+}
+
+async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) {
+  const [p1, p2] = picks;
+  const a = arenaShell(`${p1.card.name} vs ${p2.card.name}`, () => { cleanup(); onBack(); });
+  a.el.classList.add('realtime');
+  clear(root, a.el);
+  const stage = await makeStage(a.host, 'battle');
+  let controls = null;
+  const leave = cleanupOnLeave(stage, a);
+  const cleanup = () => { stage.beforeFrame = null; controls?.dispose(); leave(); };
+  window.addEventListener('hashchange', () => controls?.dispose(), { once: true });
+  graphicsToggle(a, stage);
+  a.skip.hidden = false;
+  a.skip.onclick = () => stage.skip();
+  say(a.message, 'Getting the cards ready…', { hold: 0 });
+  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel) })));
+  a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
+  await say(a.message, `${p1.card.name}, come on out!`, { hold: 0 });
+  const panel1 = await introduce(stage, a, 0, p1);
+  await say(a.message, `${mode === 'cpu' ? 'The computer' : 'Player 2'} sends out ${p2.card.name}!`, { hold: 0 });
+  const panel2 = await introduce(stage, a, 1, p2);
+  await stage.wait(900);
+  a.skip.hidden = true;
+  stage.resume();
+  panel1.remove();
+  panel2.remove();
+
+  const battle = createRealtime(
+    { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id },
+    { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id },
+    { mode, weather: arena.weather, arena: arena.environment, difficulty: arena.difficulty },
+  );
+  const [f1, f2] = battle.fighters;
+  const plates = [livePlate(f1, 0, 'Player 1'), livePlate(f2, 1, mode === 'cpu' ? `Computer · ${arena.difficulty}` : 'Player 2')];
+  a.hud.append(plates[1].el);
+  a.plateSlot.append(plates[0].el);
+  stage.goLive();
+  if (battle.rules.shrink) stage.setZone(battle.zone);
+
+  // The dock: your moves (with their cooldown), Dodge and Jump, and the clock.
+  controls = createControls(a.host, { players: mode === 'pvp' ? 2 : 1 });
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const clock = h('span.rt-clock');
+  const dodges = h('span.rt-dodges', { title: 'Dodges' });
+  const moveBtns = (side) => battle.fighters[side].moves.map((m, i) => {
+    const btn = h('button.move-btn.rt-move', {
+      type: 'button',
+      style: { '--move': typeHex(m.type) },
+      title: m.kind === 'boost' ? 'Powers up your attacks by 50% for 10 seconds, once' : m.kind === 'heal' ? 'Heals you' : m.kind === 'charge' ? 'Refills your energy' : `${m.kind === 'melee' ? 'Close-up' : 'Ranged'} attack`,
+      onpointerdown: (e) => { e.preventDefault(); controls.hold(side, i, true); },
+      onpointerup: () => controls.hold(side, i, false),
+      onpointerleave: () => controls.hold(side, i, false),
+      onpointercancel: () => controls.hold(side, i, false),
+    },
+    h('span.move-top', h('span.move-name', m.name), h('b.move-dmg', m.damage ? String(m.damage) : m.kind === 'boost' ? '✦' : m.kind === 'heal' ? '+' : '⚡')),
+    h('span.move-bottom', h('span.rt-key', (side ? PAD_HINTS : KEY_HINTS)[i]), m.energy ? h('span.move-type', `${m.energy} energy`) : h('span.move-type', 'free')),
+    h('span.rt-cool'));
+    return btn;
+  });
+  const mine = moveBtns(0);
+  const theirs = mode === 'pvp' ? moveBtns(1) : [];
+  const tap = (side, what, label) => h('button.btn.rt-act', { type: 'button', onpointerdown: (e) => { e.preventDefault(); controls.press(side, what); } }, label);
+  clear(a.controls,
+    h('div.rt-bar', clock, dodges, h('span.rt-help.muted', touch ? 'Drag the stick to move' : mode === 'pvp' ? 'P1: WASD · Space jump · Shift dodge   P2: arrows · K jump · L dodge' : 'WASD move · Space jump · Shift dodge · Q E right-click F moves')),
+    h('div.move-grid.rt-grid', mine),
+    theirs.length ? h('div.move-grid.rt-grid.p2', theirs) : '',
+    touch ? h('div.rt-touch', tap(0, 'jump', 'Jump'), tap(0, 'dodge', 'Dodge')) : '');
+  if (touch) a.frame.append(joystick((x, y) => controls.setStick(0, x, y)));
+  say(a.message, 'Battle start!', { hold: 0 });
+
+  let acc = 0;
+  let ended = false;
+  const name = (side) => battle.fighters[side].name;
+  const handle = (e) => {
+    if (e.type === 'move') stage.liveMove(e.side, e);
+    else if (e.type === 'hit') {
+      stage.hit(e.side, { amount: e.amount, weakness: e.weakness });
+      if (e.down) say(a.message, `${name(e.side)} was knocked down!`, { hold: 0 });
+      else if (e.weakness) say(a.message, `It hit ${name(e.side)}’s weakness!`, { hold: 0 });
+    } else if (e.type === 'burst') stage.burstAt(e.x, e.z, e.moveType, e.fizzle);
+    else if (e.type === 'dodge') stage.dodgeFx(e.side);
+    else if (e.type === 'evade') stage.float(e.side, 'Dodged!', 'miss');
+    else if (e.type === 'boost') { stage.boost(e.side, true); say(a.message, `${name(e.side)} is powered up for 10 seconds!`, { hold: 0 }); }
+    else if (e.type === 'heal') stage.heal(e.side, e.amount);
+    else if (e.type === 'charge') stage.charge(e.side, 'full');
+    else if (e.type === 'weather') stage.hit(e.side, { amount: e.amount });
+    else if (e.type === 'ringout') say(a.message, `${name(e.side)} fell off the stadium!`, { hold: 0 });
+    else if (e.type === 'zone') say(a.message, 'The field is closing in!', { hold: 0 });
+    else if (e.type === 'ko') { say(a.message, `${name(e.side)} fainted!`, { hold: 0 }); stage.faint(e.side); }
+    else if (e.type === 'end') { ended = true; setTimeout(() => showResult(e), 1300); }
+  };
+  stage.beforeFrame = (dt) => {
+    if (ended) return;
+    acc += dt;
+    while (acc >= STEP && !battle.over) {
+      acc -= STEP;
+      const intents = [0, 1].map((side) => {
+        if (side === 1 && mode === 'cpu') return null;
+        const i = controls.read(side);
+        const me = battle.fighters[side];
+        return { move: toWorld(i, me, battle.fighters[1 - side]), jump: i.jump, dodge: i.dodge, use: i.use };
+      });
+      for (const e of stepRealtime(battle, intents)) handle(e);
+    }
+    for (const f of battle.fighters) stage.setPose(f.side, { x: f.x, y: f.out ? -2 : f.y, z: f.z, facing: f.facing, down: f.down > 0 });
+    stage.follow(f1, f2);
+    stage.syncShots(battle.projectiles);
+    if (battle.rules.shrink) stage.setZone(battle.zone);
+    plates.forEach((p) => p.update());
+    const left = Math.max(0, TIME_LIMIT - battle.t);
+    clock.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    dodges.textContent = '●'.repeat(f1.dodges) + '○'.repeat(2 - f1.dodges);
+    const cools = (btns, f) => btns.forEach((btn, i) => {
+      const m = f.moves[i];
+      const wait = m.once && f.usedOnce.includes(i) ? 1 : f.cooldowns[i] / m.cooldown;
+      btn.style.setProperty('--cool', String(Math.max(0, Math.min(1, wait))));
+      btn.disabled = f.energy < m.energy || (m.once && f.usedOnce.includes(i));
+    });
+    cools(mine, f1);
+    if (theirs.length) cools(theirs, f2);
+  };
+
+  const showResult = (e) => {
+    const w = e.winner;
+    const f = battle.fighters;
+    controls?.dispose();
+    stage.syncShots([]);
+    a.frame.querySelector('.rt-stick')?.remove();
+    clear(a.controls, h('div.bt-result', { role: 'group', 'aria-label': 'Battle result' },
+      h('h3', w == null ? 'It’s a draw!' : mode === 'cpu' ? (w === 0 ? `🏆 You win with ${f[0].name}!` : `The computer’s ${f[1].name} wins!`) : `🏆 Player ${w + 1} wins with ${f[w].name}!`),
+      h('p.muted', `${e.timeUp ? 'Time up · ' : ''}${Math.round(battle.t)} s · ${f[0].name} dealt ${f[0].stats.dealt} · ${f[1].name} dealt ${f[1].stats.dealt}`),
+      h('p.bt-next', `Battle ${f[1].name} again, or choose a different opponent for ${f[0].name}?`),
+      h('div.bt-row',
+        h('button.btn.primary', { type: 'button', onclick: () => { cleanup(); startRealtime(root, picks, mode, onBack, onNewOpponent); } }, '↻ Same battle again'),
+        h('button.btn', { type: 'button', onclick: () => { cleanup(); onNewOpponent(picks, mode); } }, '⇄ Different opponent'),
+        h('button.btn.ghost', { type: 'button', onclick: () => { cleanup(); onBack(); } }, 'Choose both again'))));
+    a.controls.querySelector('.btn.primary')?.focus();
+  };
 }

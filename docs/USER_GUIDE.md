@@ -345,6 +345,16 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - Weakness and resistance work as printed on the card being hit.
 - Each ability can be used once per battle and powers up the next attack by 50%.
 
+**Real-time battles** (pick **Real-time** beside **Turn-based** before you start; needs 3D graphics):
+- Both Pokémon move, dodge and attack at the same time. Your camera follows behind your Pokémon, and moving forward always goes towards the rival.
+- **Keys:** WASD move · Space jump · Shift dodge · Q, E, right click and F (or 1–4) use the moves shown at the bottom. A second player uses the arrows, K (jump), L (dodge) and U, I, O, P.
+- **Gamepad:** left stick · A jump · B dodge · LB, RB, LT, RT moves. **Touch:** the joystick and the Jump, Dodge and move buttons.
+- Your moves are the card's attacks, then its ability (a 10-second power-up, once), then a free **Quick Strike**. Attacks cost energy (20 per energy symbol on the card) and wait a moment before they can be used again. Energy refills by itself.
+- Fire, Water, Lightning, Psychic, Grass, Dragon and Fairy types throw their attacks; the others lunge in close. Step aside or **dodge** (2 charges, refilling) to avoid them: a dodge can't be hit for a moment.
+- Hit in a row and a Pokémon is stunned; the fifth hit in a row knocks it down.
+- **Floating Stadium:** fall off the edge and you're out. **League Stadium:** the field closes in after 30 seconds.
+- Against the computer, choose **Easy**, **Normal** or **Hard**. A battle lasts at most 3 minutes; then the side with more HP left (as a share) wins.
+
 **Arena and weather** (chosen under your Pokémon before you start, and remembered):
 - **Arena** changes the scenery only:
   - **Meadow:** the grass field by the lake (described below).
