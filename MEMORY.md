@@ -70,9 +70,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - OpenCV.js 4.12 module is a *thenable*: wrap it as `{cv}` before resolving, or `await` hangs.
   Free every `cv.Mat` after use (an earlier `approx.rows` use-after-free crashed).
 - tcgcsv.com answered **401** to the owner's PC (2026-10-30): the client sends `USER_AGENT` (`server/prices.js`).
-  Promo pictures also fall back to guessed dataset image URLs (`images.scrydex.com/pokemon/mep-59/large`),
-  then (with a key) PokemonPriceTracker: its picture links / TCGplayer product id → TCGplayer CDN image
-  (`tracker.pictureUrls`, one search per card, budget-checked). Froakie MEP 060 = TCGplayer 709974.
+  Promo pictures fall back to guessed dataset image URLs, then (with a key) PokemonPriceTracker's picture links
+  (`tracker.pictureUrls`, budget-checked).
 - Updater data safety (keep): backup to `<app>.backups/` before each swap; a failed `data/` move undoes it; a `data/`
   left in `.previous` goes to `<app>.rescued-data-*`.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
@@ -98,6 +97,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   (engine = rules + weather, pure + seeded; realtime = real-time sim + AI, `controls.js` input; scene = stage + summon; world = owner's Hi-Fi v4 meadow, High/Standard/
   Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only; `surface.js` = normal maps, sky light, contact shadows).
   Models are Nintendo IP (fan project): never commit them.
+- **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
+  owner's `sanctuaryUI.js`; Battle hands off via sessionStorage `pokedex.battleKeep`.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**
   wins: `server/cardDioramas.js` (27 delivered in `assets/card-effects`, imported only for the same id + name/card id;
@@ -108,9 +109,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). The launcher starts it if set up.
 - Open gaps: the table in `docs/ROADMAP.md`. Users read `docs/USER_GUIDE.md`.
-- Have the owner run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`; fix parser gaps from real answers.
-- Pull-rate tables cover the Scarlet & Violet and Mega Evolution eras only. Older eras show no estimate.
-- Forgotten owner password: no reset flow yet (delete the `users`/`sessions` rows to rerun setup).
+- Owner to run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`.
+- Pull-rate tables: Scarlet & Violet and Mega Evolution eras only.
+- Forgotten owner password: no reset flow (delete `users`/`sessions` rows to rerun setup).
 
 ## Conventions
 - Plain, friendly UI text. The README is written for a non-developer.

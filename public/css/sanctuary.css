@@ -1,0 +1,48 @@
+/* The Sanctuary: a full-window 3D view with a light overlay (the owner's radial wheel, trainer
+   chooser and stamina ring, in this app's style). */
+body.sanctuary-mode .topbar { display: none; }
+body.sanctuary-mode { overflow: hidden; }
+.sanc { position: fixed; inset: 0; background: #0b1220; color: #fff; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sanc canvas { display: block; width: 100%; height: 100%; }
+.sanc-top { position: absolute; z-index: 10; top: calc(env(safe-area-inset-top, 0px) + 12px); right: calc(env(safe-area-inset-right, 0px) + 12px); display: flex; gap: 8px; }
+.sanc-title { position: absolute; z-index: 10; top: calc(env(safe-area-inset-top, 0px) + 12px); left: calc(env(safe-area-inset-left, 0px) + 14px); margin: 0; padding: 6px 12px; border-radius: 999px; background: rgb(18 28 24 / 0.75); font-size: 0.9rem; font-weight: 600; }
+.sanc-help { position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); margin: 0 auto; width: max-content; max-width: 94%; padding: 6px 14px; border-radius: 999px; background: rgb(18 28 24 / 0.75); font-size: 0.8rem; text-align: center; }
+.sanc-prompt { position: absolute; z-index: 12; left: 50%; top: 66%; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.3); background: rgb(24 38 32 / 0.92); color: #f4f7f5; font: inherit; font-weight: 600; cursor: pointer; }
+.sanc-plates { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.sanc-plate { position: absolute; left: 0; top: 0; padding: 2px 9px; border-radius: 999px; background: rgb(18 28 24 / 0.78); font-size: 0.75rem; font-weight: 600; white-space: nowrap; will-change: transform, opacity; }
+.sanc-plate.following { box-shadow: 0 0 0 2px #6ee7b7; }
+.sanc-heart { position: absolute; z-index: 6; font-size: 22px; pointer-events: none; animation: sanc-heart 1.1s ease-out forwards; }
+@keyframes sanc-heart { from { opacity: 1; transform: translate(-50%, 0) scale(0.6); } to { opacity: 0; transform: translate(-50%, -90px) scale(1.3); } }
+.sanc [hidden] { display: none !important; }
+
+.radial-menu { position: absolute; inset: 0; margin: auto; width: 220px; height: 220px; pointer-events: auto; z-index: 20; }
+.radial-center { position: absolute; inset: 0; margin: auto; width: 84px; height: 84px; border-radius: 50%; background: rgb(18 28 24 / 0.9); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 13px; border: 2px solid rgb(255 255 255 / 0.2); text-align: center; padding: 4px; overflow: hidden; }
+.radial-btn { position: absolute; width: 68px; height: 34px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.25); background: rgb(24 38 32 / 0.92); color: #f4f7f5; font-size: 12px; font-weight: 600; cursor: pointer; transition: transform 0.12s ease, background 0.12s ease; }
+.radial-btn:hover, .radial-btn:focus-visible { background: #2e6f56; transform: scale(1.08); outline: none; }
+.pos-top { top: 4px; left: 76px; }
+.pos-right { top: 93px; right: 2px; }
+.pos-bottom { bottom: 4px; left: 76px; }
+.pos-left { top: 93px; left: 2px; }
+
+.stamina-ring { position: absolute; z-index: 8; left: 50%; top: 58%; width: 44px; height: 44px; transform: translate(-50%, -50%) rotate(-90deg); pointer-events: none; }
+.ring-bg { fill: none; stroke: rgb(0 0 0 / 0.35); stroke-width: 4; }
+.ring-fg { fill: none; stroke: #6ee7b7; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 0; transition: stroke 0.15s; }
+
+.sanctuary-modal { position: absolute; inset: 0; background: rgb(10 16 14 / 0.55); display: grid; place-items: center; z-index: 30; }
+.sanctuary-modal .modal-card { background: #16221d; color: #fff; padding: 18px; border-radius: 14px; width: min(380px, 90vw); border: 1px solid rgb(255 255 255 / 0.15); }
+.sanctuary-modal h3 { margin: 0 0 4px; }
+.trainer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.trainer-swatch { display: grid; gap: 6px; justify-items: center; padding: 10px 6px; border-radius: 10px; background: rgb(255 255 255 / 0.08); border: 2px solid transparent; color: #fff; cursor: pointer; font-size: 12px; font: inherit; font-size: 0.75rem; }
+.trainer-swatch.active { border-color: #6ee7b7; background: rgb(110 231 183 / 0.15); }
+.trainer-dots { display: flex; gap: 3px; }
+.trainer-dots i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgb(255 255 255 / 0.4); }
+.sanc-card img { display: block; width: min(240px, 60vw); margin: 10px auto; border-radius: 10px; }
+.sanc-card .btn-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.sanc-touch { position: absolute; z-index: 9; right: calc(env(safe-area-inset-right, 0px) + 16px); bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); display: grid; gap: 8px; }
+.sanc .rt-stick { bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); }
+
+/* Without 3D graphics: your Pokémon listed by habitat. */
+.sanc-flat h2 { margin: 18px 0 8px; font-size: 1rem; }
+.sanc-flat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.sanc-flat-item { display: grid; gap: 4px; text-align: center; font-size: 0.8rem; }
+.sanc-flat-item img { width: 100%; border-radius: 8px; }

@@ -395,6 +395,26 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 
 ---
 
+## 6e. Sanctuary
+
+Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
+
+- **Who is there:** one of each different Pokémon in your collection. Each lives where its card's type belongs: Water at the lake shore, Grass in the woods, Fire on the warm rocks, Lightning on the open plain, Psychic at the old ruins, Fighting and Metal on the stony ridge, Darkness, Dragon and Fairy in the shady hollow, and Colorless on the meadow round the plaza.
+- **How they look:** the nearest ones (up to 24) are shown as 3D models; the others stand as their cards until you come close.
+- **Moving:** WASD (or the arrows) to walk, **Shift** to sprint, **Space** to jump. Hold **Space** while falling to open your glider. Drag the view to look round, and use the mouse wheel to zoom. On a phone, use the joystick and the **Jump** and **Sprint** buttons.
+- **Stamina:** a ring appears when you sprint or glide. When it runs out (it turns red), you walk slowly and can't sprint or glide until it has partly refilled.
+- **Water:** you swim across the lake. Your Pokémon stay on land.
+- **Meeting a Pokémon:** walk up to it and press **E** (or tap its name at the bottom). A wheel opens:
+  - **Follow / Stay:** it comes along with you, or goes back to wandering.
+  - **Pet:** hearts, and a happy hop.
+  - **Card:** its card, with a **Battle** button.
+  - **Battle:** opens PokéBattles with that Pokémon already chosen.
+- **Trainer:** **👤 Trainer** changes your trainer's colours (three to choose from). Your choice is remembered.
+- **Graphics:** the same High, Standard and Basic settings as PokéBattles.
+- Without 3D graphics, the page lists your Pokémon by habitat instead, each with a **Battle** button.
+
+---
+
 ## 7. Searching any card
 
 **Search** looks up any Pokémon card, even ones you don't own:
