@@ -378,7 +378,12 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 - A Pokémon with no model (or no internet the first time) fights as its card, standing on the platform.
 - On a phone, the floating card details shrink to a small tag after a few seconds; tap it to open them again.
 - **Graphics** (top right of the battle screen):
-  - **High:** the sharpest picture, detailed shadows, and the densest grass and forest.
+  - **High:** the sharpest picture, detailed shadows, and the densest grass and forest, plus:
+    - soft shading where things meet the ground and in corners;
+    - a gentle glow round the sun, its glint on water, lamps and the Reef's sparkles;
+    - lakes and the sea that mirror the trees, palms and sky round them;
+    - pines with layers of needles and leafy distant woods.
+    If frames get slow, these extras switch off by themselves before the picture gets less sharp.
   - **Standard:** lighter, for phones and older computers (fewer grass blades, a lower resolution).
   - High and Standard also give surfaces their grain, light the scene from the sky, and put soft shadows under rocks and trees.
   - **Basic (fastest):** for computers without a graphics card (virtual machines, remote desktop, missing drivers): no shadows, grass blades, pollen or clouds, at a slightly lower resolution.

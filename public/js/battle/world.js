@@ -12,9 +12,10 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildStadium, lookFor, starField } from './stadiums.js';
-import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, skyEnvironment } from './surface.js';
+import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, needleClusterTexture, skirtGeometry, skyEnvironment } from './surface.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 import { addCaustics, buildReef } from '../reef/reef.js';
+import { createEffects, MIRROR_GLSL, planarMirror } from './postfx.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
 
@@ -288,7 +289,7 @@ export function shoreRadius() {
   return sum / 32;
 }
 
-function lake({ colors, sunDir }) {
+function lake({ colors, sunDir, mirror }) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     toneMapped: false,
@@ -302,14 +303,17 @@ function lake({ colors, sunDir }) {
       uHorizon: { value: colors.horizon },
       uDeep: { value: colors.deep },
       uLake: { value: new THREE.Vector3(LAKE.x, LAKE.z, shoreRadius()) },
+      ...mirror.uniforms, // High: what stands round the lake, mirrored in it
     },
     vertexShader: `
       varying vec3 vW;
+      ${MIRROR_GLSL.vertexDecl}
       #include <common>
       #include <fog_pars_vertex>
       void main() {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vW = w.xyz;
+        ${MIRROR_GLSL.vertex}
         vec4 mvPosition = viewMatrix * w;
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -317,6 +321,7 @@ function lake({ colors, sunDir }) {
     fragmentShader: `
       uniform float uTime; uniform vec3 uSun, uSunCol, uZenith, uHorizon, uDeep, uLake;
       varying vec3 vW;
+      ${MIRROR_GLSL.fragmentDecl}
       #include <common>
       #include <fog_pars_fragment>
       ${GLSL_NOISE}
@@ -329,6 +334,7 @@ function lake({ colors, sunDir }) {
         vec3 R = reflect(-V, N);
         float fr = 0.03 + 0.97 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
         vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.8, 0.0, 1.0));
+        ${MIRROR_GLSL.mix('sky', 'N.xz * 0.035')}
         vec3 col = mix(uDeep, sky, fr) + uSunCol * pow(max(dot(R, uSun), 0.0), 220.0) * 2.5;
         // Foam where the water laps the shore, washing in and out.
         float edge = uLake.z - length(p - uLake.xy) + sin(uTime * 0.8 + atan(p.y - uLake.y, p.x - uLake.x) * 5.0) * 0.12;
@@ -496,6 +502,8 @@ function broadleafGeometry(dark) {
   return mergeGeometries([paint(trunk.toNonIndexed(), 0x6b4a2f), paint(top1.toNonIndexed(), dark ? 0x2c4424 : 0x3f7a2f), paint(top2.toNonIndexed(), dark ? 0x355128 : 0x5a9a3c)]);
 }
 
+const PINE_TIERS = [[0.38, 0.3, 0.55], [0.6, 0.23, 0.45], [0.8, 0.15, 0.35]]; // centre, radius, height
+
 /** One pine shape, 1 unit tall: a short trunk under three stacked cones with crisp facets. */
 function pineGeometry(dark) {
   const trunk = new THREE.CylinderGeometry(0.11, 0.18, 0.4, 6);
@@ -503,7 +511,7 @@ function pineGeometry(dark) {
   trunk.deleteAttribute('uv');
   const parts = [paint(trunk.toNonIndexed(), 0x4a3524)];
   const greens = dark ? [0x203820, 0x243e23, 0x294526] : [0x2b5426, 0x30602b, 0x386b31];
-  [[0.38, 0.3, 0.55], [0.6, 0.23, 0.45], [0.8, 0.15, 0.35]].forEach(([y, rad, h], i) => {
+  PINE_TIERS.forEach(([y, rad, h], i) => {
     const cone = new THREE.ConeGeometry(rad, h, 8, 1);
     cone.translate(0, y, 0);
     cone.deleteAttribute('uv');
@@ -518,7 +526,7 @@ function pineGeometry(dark) {
  * A forest stretching away to the hills, in clumps with meadows between: broadleaf trees and pines,
  * each one shape instanced many times. Returns a group of the two instanced meshes.
  */
-function forest(count, { minR, maxR, dark, seed = 61 }) {
+function forest(count, { minR, maxR, dark, seed = 61, leaves = null }) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
   const pineMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
   const broad = new THREE.InstancedMesh(broadleafGeometry(dark), mat, count);
@@ -560,6 +568,21 @@ function forest(count, { minR, maxR, dark, seed = 61 }) {
   pines.count = np;
   const group = new THREE.Group();
   group.add(broad, pines);
+  // High: leaf and needle cards over the same trees (one card set per tree shape, instanced alike).
+  if (leaves?.needles) {
+    const crowns = mergeGeometries([
+      leaves.crown(1.05, 71, 26).scale(1, 1.25, 1).translate(0, 2.3, 0),
+      leaves.crown(0.78, 73, 14).translate(0.25, 3.1, 0.1),
+    ]);
+    const skirt = skirtGeometry(PINE_TIERS.map(([y, rad, h]) => [y, rad * 1.05, h]), 75, 9);
+    for (const [geo, mat, of] of [[crowns, leaves.matte, broad], [skirt, leaves.needles.material, pines]]) {
+      const cards = new THREE.InstancedMesh(geo, mat, count);
+      cards.instanceMatrix.array.set(of.instanceMatrix.array);
+      cards.count = of.count;
+      cards.userData.cards = true;
+      group.add(cards);
+    }
+  }
   return group;
 }
 
@@ -747,12 +770,21 @@ export function tree(seed, dark, leaves = null, kind = null) {
   group.add(trunk);
   const greens = dark ? [0x2f4a26, 0x36552a, 0x2a4221] : [0x3f7d2f, 0x4a8c35, 0x356b29, 0x5a9a3c];
   if (kind ? kind === 'pine' : r() < 0.45) {
-    // Pine: stacked cones.
+    // Pine: stacked cones, with layers of needle cards down their sides (a ragged, airy edge).
+    const tiers = [];
     for (let i = 0; i < 3; i++) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0 - i * 0.25, 1.3, 9), new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true }));
       cone.position.y = h * 0.7 + i * 0.6;
       cone.castShadow = true;
       group.add(cone);
+      tiers.push([cone.position.y, (1.0 - i * 0.25) * 1.12, 1.3]);
+    }
+    if (leaves?.needles) {
+      const skirt = new THREE.Mesh(skirtGeometry(tiers, seed * 5 + 1, 11), leaves.needles.material);
+      skirt.customDepthMaterial = leaves.needles.depthMaterial;
+      skirt.castShadow = true;
+      skirt.userData.leaves = true;
+      group.add(skirt);
     }
   } else {
     // Broadleaf: a dark core of lumpy spheres (the crown's shaded inside), covered in leaf cards.
@@ -807,6 +839,7 @@ function fieldLines(radius) {
 function reefWorld({ scene, renderer, camera, mode, quality }) {
   const fieldR = mode === 'showcase' ? 4.6 : 6.2;
   const reef = buildReef({ scene, renderer, mode: 'battle', fieldR });
+  const effects = createEffects(renderer, { threshold: 0.9, bloom: 0.45, fade: [10, 26] }); // (short sight underwater)
   let current = null;
   let pixelTop = 1;
   const setQuality = (q) => {
@@ -814,6 +847,7 @@ function reefWorld({ scene, renderer, camera, mode, quality }) {
     pixelTop = current === 'basic' ? 0.75 : Math.min(window.devicePixelRatio || 1, current === 'high' ? 2 : 1.5);
     renderer.setPixelRatio(pixelTop);
     reef.setQuality(current);
+    effects.setLevel(current);
   };
   setQuality(quality);
   return {
@@ -825,9 +859,10 @@ function reefWorld({ scene, renderer, camera, mode, quality }) {
     get pixelTop() { return pixelTop; },
     setQuality,
     update(seconds) { reef.update(seconds, camera); },
-    render() { renderer.render(scene, camera); },
+    effects,
+    render() { effects.render(scene, camera); },
     resize() {},
-    dispose() { reef.dispose(); },
+    dispose() { effects.dispose(); reef.dispose(); },
   };
 }
 
@@ -913,10 +948,18 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const leaves = leafCards(leafTex, time);
   track(leaves.material);
   track(leaves.depthMaterial);
+  leaves.needles = leafCards(track(needleClusterTexture(dark ? ['#172f1a', '#1d3a20', '#244426'] : ['#22482a', '#2b5a2a', '#1e4224', '#30602e'])), time, { matte: true });
+  track(leaves.needles.material);
+  track(leaves.needles.depthMaterial);
+  leaves.matte = track(leafCards(leafTex, time, { matte: true }).material); // the far woods' crowns (no sheen)
+  // High: occlusion, bloom and mirror water (postfx.js).
+  const effects = createEffects(renderer);
+  const mirror = planarMirror(renderer);
+  track(mirror);
 
   if (look) {
     // A stadium: its own floor, walls, stands and crowd; the chalk lines are the same everywhere.
-    stadium = buildStadium(environment, { fieldR, look, contact: contacts.add });
+    stadium = buildStadium(environment, { fieldR, look, contact: contacts.add, mirror });
     scene.add(stadium.group);
     bigSurfaces.push(stadium.group);
     const lines = fieldLines(fieldR - 0.25);
@@ -1006,12 +1049,12 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(trees);
   bigSurfaces.push(trees);
 
-  woods = forest(1400, { minR: 40, maxR: 190, dark });
+  woods = forest(1400, { minR: 40, maxR: 190, dark, leaves });
   scene.add(woods);
   bigSurfaces.push(woods);
   mistBanks = mist(dark, track(cloudPuffTexture()), view);
   scene.add(mistBanks);
-  water = lake({ colors, sunDir });
+  water = lake({ colors, sunDir, mirror });
   scene.add(water.mesh);
 
   // Swaying grass around the field (fewer blades on "Standard", none on "Basic"), flowers, pollen.
@@ -1043,6 +1086,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     const basic = current === 'basic';
     pixelTop = basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5);
     renderer.setPixelRatio(pixelTop);
+    effects.setLevel(current);
     sky.uniforms.uClouds.value = basic ? 0 : 1;
     if (mistBanks) mistBanks.visible = !basic;
     scene.environment = basic ? null : skyEnv.texture;
@@ -1079,6 +1123,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     for (const kind of woods.children) {
       kind.userData.max ??= kind.count;
       kind.count = high ? kind.userData.max : Math.round(kind.userData.max * (basic ? 0.25 : 0.5));
+      if (kind.userData.cards) kind.visible = high;
     }
     trees.traverse((o) => { if (o.isMesh) o.castShadow = high; });
   };
@@ -1107,11 +1152,16 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       water.uniforms.uTime.value = seconds;
       if (air.points.visible) air.update(seconds, dt);
     },
+    effects, // perf.js turns them off when frames are slow
     render() {
-      renderer.render(scene, camera);
+      const mirrored = water?.mesh ?? stadium?.water;
+      mirror.on = effects.on && Boolean(mirrored);
+      if (mirrored) mirror.render(scene, camera, mirrored, grass ? [grass.mesh, air.points] : []);
+      effects.render(scene, camera);
     },
     resize() {},
     dispose() {
+      effects.dispose();
       for (const d of disposables) d.dispose?.();
       stadium?.dispose();
       weatherFx?.dispose();

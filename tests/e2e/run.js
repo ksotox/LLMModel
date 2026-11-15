@@ -87,6 +87,8 @@ page.on('pageerror', (e) => errors.push(e.message));
 // such as a blurry photo "Image too small to scale" / "Line cannot be recognized"): not app errors.
 const TESSERACT_NOISE = /^(Warning: Parameter not found|Image too small to scale|Line cannot be recognized)/;
 page.on('console', (m) => m.type() === 'error' && !TESSERACT_NOISE.test(m.text()) && errors.push(m.text()));
+// WebGL misuse (e.g. a pass reading the texture it draws into) is only a console warning.
+page.on('console', (m) => m.type() === 'warning' && /GL_INVALID|Feedback loop/.test(m.text()) && errors.push(m.text()));
 const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -646,6 +648,13 @@ try {
   await page.getByRole('button', { name: 'Ace Explorer' }).click();
   await page.getByRole('button', { name: 'Done' }).click();
   assert.equal(await sanc(() => localStorage.getItem('pokedex.trainer')), 'ace');
+  // High graphics: occlusion, bloom and mirror water draw without WebGL errors; then back again.
+  const level = await page.getByLabel('Graphics quality').inputValue();
+  await page.getByLabel('Graphics quality').selectOption('high');
+  assert.equal(await sanc(() => document.querySelector('.sanc').sanctuary.effects.on), true, 'the High passes are on');
+  await page.waitForTimeout(3000);
+  assert.deepEqual(errors, [], 'no WebGL errors on High');
+  await page.getByLabel('Graphics quality').selectOption(level);
   if (SHOTS) { // (screenshots only) a look at each habitat
     for (const [name, x, z] of [['woods', -34, -8], ['rocks', 30, 24], ['shore', 18, -4], ['ruins', -13, -22], ['dusk', -32, 26], ['ridge', -4, -44], ['plain', 2, 34]]) {
       await sanc(`(() => { const p = document.querySelector('.sanc').sanctuary.player; p.x = ${x} - Math.sign(${x} || 1) * 7; p.z = ${z} - Math.sign(${z} || 1) * 7; })()`);

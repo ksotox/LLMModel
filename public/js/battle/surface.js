@@ -149,11 +149,102 @@ export function leafClusterTexture(colors, seed = 5) {
 }
 
 /**
+ * A spray of pine needles on a see-through background, for needle cards: twigs that fan out from
+ * the top middle and droop, each bristling with short needles.
+ */
+export function needleClusterTexture(colors, seed = 9) {
+  let a = seed >>> 0;
+  const r = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.lineCap = 'round';
+  for (let t = 0; t < 16; t++) {
+    // A twig: from near the top middle, out and down in a gentle curve.
+    let x = 128 + (r() - 0.5) * 40;
+    let y = 6 + r() * 60;
+    let ang = Math.PI / 2 + (r() - 0.5) * 1.5; // pointing down, fanned
+    const steps = 10 + Math.floor(r() * 8);
+    for (let i = 0; i < steps; i++) {
+      const nx = x + Math.cos(ang) * 9;
+      const ny = y + Math.sin(ang) * 9;
+      g.strokeStyle = colors[Math.floor(r() * colors.length)];
+      g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(nx, ny); g.stroke();
+      // Needles on both sides, swept forward.
+      g.lineWidth = 1.6;
+      for (const side of [-1, 1]) {
+        for (let k = 0; k < 4; k++) {
+          const px = x + (nx - x) * (k / 4);
+          const py = y + (ny - y) * (k / 4);
+          const na = ang + side * (0.75 + r() * 0.35);
+          const len = 8 + r() * 6;
+          g.strokeStyle = colors[Math.floor(r() * colors.length)];
+          g.beginPath(); g.moveTo(px, py); g.lineTo(px + Math.cos(na) * len, py + Math.sin(na) * len); g.stroke();
+        }
+      }
+      x = nx; y = ny;
+      ang += (Math.cos(ang) > 0 ? 1 : -1) * 0.02 + (r() - 0.5) * 0.12; // droop a little more as it goes
+      if (x < 12 || x > 244 || y > 244) break;
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Cards laid round cones (a pine's tiers), sloping down their sides like layers of branches.
+ * `tiers`: [[centreY, radius, height], ...] as the cones are built. Pure geometry, for the tests.
+ */
+export function skirtGeometry(tiers, seed = 1, perRing = 9) {
+  let a = seed >>> 0;
+  const r = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
+  const pos = [];
+  const nor = [];
+  const uv = [];
+  const idx = [];
+  for (const [cy, rad, h] of tiers) {
+    for (const [s, turn] of [[0.32, 0], [0.72, 0.5]]) { // two rings per tier: near the top, near the hem
+      const y = cy + h / 2 - h * s;
+      const ringR = rad * s * 1.08;
+      const n = Math.max(5, Math.round(perRing * (0.55 + s)));
+      for (let i = 0; i < n; i++) {
+        const th = ((i + turn + (r() - 0.5) * 0.4) / n) * Math.PI * 2;
+        const cx = Math.cos(th);
+        const cz = Math.sin(th);
+        const slant = Math.hypot(rad, h);
+        const dx = (cx * rad) / slant; const dy = -h / slant; const dz = (cz * rad) / slant; // down the side
+        const tx = -cz; const tz = cx; // round the cone
+        const wide = ((2 * Math.PI * ringR) / n) * 1.7;
+        const len = slant * 0.5;
+        const nl = Math.hypot(cx * h, rad, cz * h);
+        const nx = (cx * h) / nl; const ny = rad / nl; const nz = (cz * h) / nl;
+        const base = pos.length / 3;
+        for (const [u, v] of [[-1, 1], [1, 1], [1, -1], [-1, -1]]) {
+          pos.push(cx * ringR + tx * u * wide * 0.5 + dx * -v * len * 0.5, y + dy * -v * len * 0.5, cz * ringR + tz * u * wide * 0.5 + dz * -v * len * 0.5);
+          nor.push(nx, ny, nz);
+          uv.push(u * 0.5 + 0.5, v * 0.5 + 0.5);
+        }
+        idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/**
  * A crown of leaf cards: `count` cut-out planes scattered in a rounded crown, their normals pointing
  * out from its middle (so it is lit as one soft ball of leaves), swaying in the wind (uTime).
  * Returns { material, depthMaterial, crown(radius, seed) → geometry }.
  */
-export function leafCards(texture, time) {
+export function leafCards(texture, time, { matte = false } = {}) {
   const sway = (shader) => {
     shader.uniforms.uTime = time;
     shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace('#include <begin_vertex>',
@@ -161,7 +252,10 @@ export function leafCards(texture, time) {
        float lw = sin(uTime * 1.6 + position.x * 2.1 + position.z * 1.7 + modelMatrix[3].x) * 0.035;
        transformed.x += lw; transformed.y += lw * 0.5;`);
   };
-  const material = new THREE.MeshStandardMaterial({ map: texture, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
+  // (`matte`: no sheen at all, for cards often seen edge-on, such as needles along a pine's sides.)
+  const material = matte
+    ? new THREE.MeshLambertMaterial({ map: texture, alphaTest: 0.5, side: THREE.DoubleSide })
+    : new THREE.MeshStandardMaterial({ map: texture, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
   material.onBeforeCompile = sway;
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: texture, alphaTest: 0.5 });
   depthMaterial.onBeforeCompile = sway;

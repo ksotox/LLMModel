@@ -1,6 +1,7 @@
 // Keeping the 3D pages smooth on any computer, after the MIT-licensed Abyssal Garden's approach:
-//   • dynamic resolution: every second, if frames take too long, draw fewer pixels (down to 60% of
-//     the graphics level's own resolution), and more again when there is room;
+//   • dynamic resolution: every second, if frames take too long, first turn off the High level's
+//     extra passes (postfx.js: occlusion, bloom, mirror water), then draw fewer pixels (down to 60%
+//     of the graphics level's own resolution), and more again when there is room;
 //   • a crash-safe start: a 3D page marks that it is loading; if the browser tab crashed during the
 //     load, the mark is still there next time and that visit starts one graphics level lower.
 
@@ -18,8 +19,20 @@ export function nextPixelRatio(frameMs, ratio, top, { floor = 0.6, slow = 19, fa
   return ratio;
 }
 
-/** Watches the frame times and adjusts `renderer`'s pixel ratio. `top()`: the level's own ratio now. */
-export function createPerf(renderer, top) {
+/**
+ * One step: { ratio, drop }. With the extra passes on (`effects`), slow frames drop them first and
+ * leave the pixels as they are. Pure, for the tests.
+ */
+export function perfStep(frameMs, ratio, top, effects = false, options = {}) {
+  if (effects && frameMs > (options.slow ?? 19)) return { ratio, drop: true };
+  return { ratio: nextPixelRatio(frameMs, ratio, top, options), drop: false };
+}
+
+/**
+ * Watches the frame times and adjusts `renderer`'s pixel ratio. `top()`: the level's own ratio now;
+ * `effects`: the High passes ({ on, drop() }, from postfx.js createEffects), if the page has them.
+ */
+export function createPerf(renderer, top, effects = null) {
   let sum = 0;
   let n = 0;
   let wait = 2000; // let the page settle first
@@ -35,8 +48,9 @@ export function createPerf(renderer, top) {
       n = 0;
       wait = 1000;
       const now = renderer.getPixelRatio();
-      const next = nextPixelRatio(average, now, top());
-      if (Math.abs(next - now) > 0.01) renderer.setPixelRatio(next);
+      const { ratio: next, drop } = perfStep(average, now, top(), Boolean(effects?.on));
+      if (drop) effects.drop();
+      else if (Math.abs(next - now) > 0.01) renderer.setPixelRatio(next);
     },
   };
 }

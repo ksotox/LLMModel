@@ -8,6 +8,7 @@
 import { clear, h } from '../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
+import { createEffects } from '../battle/postfx.js';
 import { createAmbience } from '../ambience.js';
 import { addLook, createLook, ease, stepLook } from './look.js';
 import { createSwimmer, stepSwimmer } from './player.js';
@@ -95,12 +96,13 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 600);
   const reef = buildReef({ scene, renderer, mode: 'sanctuary' });
   let level = markLoad(preferredQuality(renderer));
+  const effects = createEffects(renderer, { threshold: 0.9, bloom: 0.45, fade: [10, 26] }); // High: occlusion and bloom (short sight underwater)
   const pixelTop = () => (level === 'basic' ? 0.75 : Math.min(window.devicePixelRatio || 1, level === 'high' ? 2 : 1.5));
-  const setLevel = (q) => { level = q; renderer.setPixelRatio(pixelTop()); reef.setQuality(q); };
+  const setLevel = (q) => { level = q; renderer.setPixelRatio(pixelTop()); reef.setQuality(q); effects.setLevel(q); };
   setLevel(level);
   quality.value = level;
   quality.addEventListener('change', () => { setLevel(quality.value); saveQuality(level); resize(); });
-  const perf = createPerf(renderer, pixelTop);
+  const perf = createPerf(renderer, pixelTop, effects);
   const loadTimer = setTimeout(clearLoad, 12000);
   const resize = () => {
     const w = Math.max(1, el.clientWidth);
@@ -343,7 +345,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     ui.updateStamina(swimmer.stamina, swimmer.exhausted);
     ambience.update({ speed: swimmer.moving, depth: 1 - swimmer.y / REEF.top });
     reef.update(t, camera, swimmer);
-    renderer.render(scene, camera);
+    effects.render(scene, camera);
   });
 
   leave = () => {
@@ -361,6 +363,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     window.removeEventListener('hashchange', leave);
     document.body.classList.remove('sanctuary-mode');
     ambience.dispose();
+    effects.dispose();
     reef.dispose();
     models.dispose();
     scene.traverse((o) => { o.geometry?.dispose?.(); for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); } });
