@@ -716,6 +716,15 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - `docs/GAME_ARCHITECTURE.md`: the 3D games in depth (battles, Sanctuary, Reef, 3D models, graphics, movement,
   input, saved state, tests) with recipes for common changes.
 
+## Phase 40: HD scenery (Poly Haven, CC0)
+- `public/assets/realism/` (~21 MB): Poly Haven CC0 skies, 1K photo textures (grass, soil, rock, cliff, sand, snow,
+  bark) and scanned mossy rocks. Fetched by `scripts/fetch-realism-assets.mjs`, run in GitHub Actions (the
+  "Realism assets" workflow), because the dev sandbox can't reach Poly Haven.
+- `battle/assets.js` loads them (null on failure); `battle/hdScenery.js` lays them over the world on High/Standard:
+  the ground blends layers by height, slope and lake (`groundWeights`, `aLayers`), two texture scales, triplanar
+  rock, fading to the painted colours far out; photo stones, bark and beach sand; scanned rocks for the boulders;
+  the sky HDRI lights the scene (sunset in dark mode). Basic and a missing set keep the procedural look.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

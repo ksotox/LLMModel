@@ -16,6 +16,7 @@ import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafCluster
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 import { addCaustics, buildReef } from '../reef/reef.js';
 import { createEffects, MIRROR_GLSL, planarMirror } from './postfx.js';
+import { addGroundLayers, hdScenery } from './hdScenery.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
 
@@ -763,6 +764,7 @@ export function tree(seed, dark, leaves = null, kind = null) {
   const r = rng(seed);
   const group = new THREE.Group();
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.95 });
+  trunkMat.userData.bark = true; // (High/Standard: photo bark, hdScenery.js)
   const h = 1.6 + r() * 1.4;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, h, 7), trunkMat);
   trunk.position.y = h / 2;
@@ -940,6 +942,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   let mistBanks = null;
   let water = null;
   let stadium = null;
+  let ground = null; // the meadow's land and stone material (for hdScenery)
+  let stoneMat = null;
   // Depth: soft dark patches under things, leaf-card crowns, and (below) normal maps and sky light.
   const time = { value: 0 };
   const contacts = contactShadows(track(contactTexture()));
@@ -978,10 +982,11 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   for (let i = 0; i < gp.count; i++) gp.setY(i, terrainHeight(gp.getX(i), gp.getZ(i)) - 0.03);
   groundGeo.computeVertexNormals();
   paintTerrain(groundGeo, dark);
+  addGroundLayers(groundGeo, { inLake: (x, z) => lakeDistance(x, z) < LAKE.r * 1.6, noise: (x, z) => fbm(x, z, 3) });
   const groundMat = new THREE.MeshStandardMaterial({ map: track(speckleTexture()), vertexColors: true, roughness: 0.95 });
   // Rippling light (caustics) on the lake floor.
   addCaustics(groundMat, time, { strength: 0.8, mask: `clamp((${LAKE.level.toFixed(2)} - 0.05 - cw.y) / 0.9, 0.0, 1.0)` });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground = new THREE.Mesh(groundGeo, groundMat);
   bigSurfaces.push(ground);
   ground.receiveShadow = true;
   scene.add(ground);
@@ -1007,7 +1012,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     base: dark ? '#77777c' : '#a7a6a2', seed: 21, repeat: 1, size: 256, blotches: 300, specks: 3000,
     tones: ['rgba(120,120,118,ALPHA)', 'rgba(160,158,150,ALPHA)', 'rgba(90,90,92,ALPHA)', 'rgba(130,140,120,ALPHA)'],
   }));
-  const stoneMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.85 });
+  stoneMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.85 });
   const rocks = new THREE.Group();
   const rr = rng(5);
   rocks.add(stoneRing(fieldR + 0.05, stoneMat, 9));
@@ -1023,6 +1028,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     big.position.set(Math.cos(a) * d, terrainHeight(Math.cos(a) * d, Math.sin(a) * d) + 0.1, Math.sin(a) * d);
     big.rotation.y = rr() * Math.PI;
     big.castShadow = big.receiveShadow = true;
+    big.userData.boulder = true;
     rocks.add(big);
     contacts.add(big.position.x, big.position.y - 0.1, big.position.z, big.geometry.boundingSphere?.radius ?? 1.1);
   }
@@ -1074,6 +1080,14 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const skyEnv = skyEnvironment(renderer, sky.mesh);
   track(skyEnv);
   scene.environmentIntensity = look?.stars ? 0.3 : 0.5;
+  // High/Standard: Poly Haven's CC0 photo textures, sky light and rock scans over all this (hdScenery.js).
+  const boulders = [];
+  scene.traverse((o) => { if (o.userData.boulder) boulders.push(o); });
+  const hd = hdScenery({
+    renderer, scene, dark, procEnv: skyEnv.texture,
+    ground: ground?.material ?? null, stoneMat, boulders, trees, sand: stadium?.sandMaterial ?? null,
+    envSlot: look?.stars ? null : dark ? 'sky-sunset' : 'sky-day',
+  });
 
   // Rain, snow or sand round the camera (the sky, fog and lights were tinted above).
   const weatherFx = buildWeather(weather, { scene, camera, dot: dotTex });
@@ -1090,6 +1104,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     sky.uniforms.uClouds.value = basic ? 0 : 1;
     if (mistBanks) mistBanks.visible = !basic;
     scene.environment = basic ? null : skyEnv.texture;
+    hd.set(!basic);
     hemi.intensity = hemiBase * (basic ? 1 : 0.8); // the sky's own light takes over part of it
     contacts.mesh.visible = !basic;
     stadium?.setQuality(current);
@@ -1162,6 +1177,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     resize() {},
     dispose() {
       effects.dispose();
+      hd.dispose();
       for (const d of disposables) d.dispose?.();
       stadium?.dispose();
       weatherFx?.dispose();

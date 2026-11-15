@@ -187,7 +187,7 @@ buildWorld / buildReef  →  scene graph  →  world.render()
 | --- | --- | --- |
 | Quality levels | `world.js` `setQuality`, `preferredQuality`, `pokedex.battleGraphics` | High / Standard / Basic. Basic has no shadows or grass and uses Lambert materials |
 | Sky, fog, lights | `world.js` (meadow), `stadiums.js` `STADIUM_LOOK` + `lookFor(env, dark)` | ACES tone mapping. The sky dome follows the camera |
-| Textures | All **procedural**: `noiseTexture` and `canvasTexture` / `speckle`; `leafClusterTexture` and `needleClusterTexture` | No image assets. Normal maps are made from the textures (`normalMapFor`) |
+| Textures | Procedural (`noiseTexture`, `canvasTexture` / `speckle`, `leafClusterTexture`, `needleClusterTexture`); on High/Standard the **HD set** from `public/assets/realism/` (Poly Haven CC0) via `assets.js` + `hdScenery.js` | The ground blends grass / soil / sand / rock / snow by height, slope and lake (`groundWeights`, `aLayers` attribute, two scales, triplanar rock). Add an asset: add a slot to `scripts/fetch-realism-assets.mjs`, push (the workflow fetches it), use it through `surface(slot)` / `modelSet(slot)` |
 | Vegetation | Instanced grass shader (`grassField`); `forest()`; `tree()`; leaf and needle cards (`leafCards`, `skirtGeometry`) | Cards sway in the vertex shader (`uTime`) |
 | Water | Lake shader (`lake()`), beach sea (`stadiums.js`), mirror on High | Custom shaders write **display-referred** colour (`toneMapped: false`) |
 | Light tricks | `surface.js`: sky environment map, contact shadows, `addSurfaceDepth`; `addCaustics` | |

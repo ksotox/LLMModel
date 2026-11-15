@@ -98,7 +98,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Models are Nintendo IP (fan project): never commit them.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
   owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids); `look.js`; Battle hands off via `pokedex.battleKeep`.
-- `battle/perf.js`: dynamic resolution + crash-safe start; drops `postfx.js` (High: AO, bloom, mirror water) first. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+- `battle/perf.js`: dynamic resolution + crash-safe start; drops `postfx.js` (High: AO, bloom, mirror water) first. `hdScenery.js` + `assets.js`: Poly Haven CC0 set in `public/assets/realism` (High/Standard). **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,

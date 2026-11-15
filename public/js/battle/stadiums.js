@@ -845,6 +845,7 @@ function beach({ fieldR, time, glow, add, keep, look, contact, mirror }) {
   }
   return {
     water,
+    sand: sand.material, // (High/Standard: photo sand, hdScenery.js)
     update(seconds) {
       for (const b of buoys) {
         b.position.y = WATER_LEVEL + 0.12 + Math.sin(seconds * 1.1 + b.userData.phase) * 0.07;
@@ -890,6 +891,7 @@ export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind], contact 
   return {
     group,
     water: parts.water ?? null, // the sea (mirrored on High)
+    sandMaterial: parts.sand ?? null,
     update(seconds) {
       if (lively || parts.water) time.value = seconds; // the sea always moves
       parts.update?.(seconds);
