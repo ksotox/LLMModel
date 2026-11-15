@@ -4,6 +4,8 @@ Before doing anything, read [`MEMORY.md`](MEMORY.md): the project's current stat
 decisions that must hold and open items. It stays short on purpose.
 
 - Full history: [`docs/HISTORY.md`](docs/HISTORY.md). Sources and APIs: [`docs/SOURCES.md`](docs/SOURCES.md).
+  The system at a glance: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); battles, Sanctuary and Reef:
+  [`docs/GAME_ARCHITECTURE.md`](docs/GAME_ARCHITECTURE.md).
 - When you finish a change, update `MEMORY.md` (replace lines, don't append; `npm test` fails if it
   goes over 150 lines / 10 KB), add a line to `docs/HISTORY.md`, and update `docs/SOURCES.md` if a
   source changed.
