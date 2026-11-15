@@ -115,3 +115,80 @@ export function stepPlayer(p, input, dt, ground) {
   }
   return p;
 }
+
+// ---------------------------------------------------------------------------
+// Swimming in the Reef: free movement in three dimensions. Velocity eases towards what is wanted
+// with 1 − e^(−rate·dt) (the same at any frame rate), and moves in steps shorter than the body, each
+// pushed back out of rock and wreck with the speed into them dropped, so the swimmer slides along
+// instead of passing through (both ideas from the MIT-licensed Abyssal Garden).
+//
+//   world: { heightAt(x, z), top (the surface), radius, obstacles [{ x, y, z, r }] }
+//   input: { x, z } direction on the level (length up to 1), up (−1…1), fast
+
+export const SWIM = { speed: 3.4, fast: 8, rate: 4.5, body: 0.5, drain: 14, regen: 20, drift: 0.12 };
+
+export function createSwimmer({ x = 0, y = 4, z = 6 } = {}) {
+  return { x, y, z, vx: 0, vy: 0, vz: 0, facing: Math.PI, stamina: MOVE.staminaMax, exhausted: false, mode: 'swim', moving: 0 };
+}
+
+export function stepSwimmer(p, input, dt, world) {
+  const len = Math.hypot(input.x, input.z);
+  const ix = len > 1 ? input.x / len : input.x;
+  const iz = len > 1 ? input.z / len : input.z;
+  const up = Math.max(-1, Math.min(1, input.up ?? 0));
+  const wants = Math.hypot(ix, iz, up) > 0.05;
+  const fast = input.fast && wants && !p.exhausted;
+  if (fast) {
+    p.stamina = Math.max(0, p.stamina - SWIM.drain * dt);
+    if (p.stamina === 0) p.exhausted = true;
+  } else {
+    p.stamina = Math.min(MOVE.staminaMax, p.stamina + SWIM.regen * dt);
+    if (p.exhausted && p.stamina >= MOVE.recovered) p.exhausted = false;
+  }
+  const top = fast ? SWIM.fast : SWIM.speed * (p.exhausted ? 0.7 : 1);
+  const k = 1 - Math.exp(-dt * SWIM.rate);
+  p.vx += (ix * top - p.vx) * k;
+  p.vz += (iz * top - p.vz) * k;
+  p.vy += ((wants ? up * top * 0.8 : SWIM.drift) - p.vy) * k; // left alone, a swimmer drifts gently up
+  // Move in steps shorter than the body, pushing out of anything solid after each one.
+  const dx = p.vx * dt;
+  const dy = p.vy * dt;
+  const dz = p.vz * dt;
+  const n = Math.floor(Math.hypot(dx, dy, dz) / (SWIM.body * 0.8)) + 1;
+  for (let i = 0; i < n; i++) {
+    p.x += dx / n;
+    p.y += dy / n;
+    p.z += dz / n;
+    for (const o of world.obstacles ?? []) {
+      const ox = p.x - o.x;
+      const oy = p.y - o.y;
+      const oz = p.z - o.z;
+      const d = Math.hypot(ox, oy, oz);
+      const min = o.r + SWIM.body;
+      if (d < min && d > 1e-6) {
+        const nx = ox / d;
+        const ny = oy / d;
+        const nz = oz / d;
+        p.x += nx * (min - d);
+        p.y += ny * (min - d);
+        p.z += nz * (min - d);
+        const into = p.vx * nx + p.vy * ny + p.vz * nz;
+        if (into < 0) { p.vx -= nx * into; p.vy -= ny * into; p.vz -= nz * into; }
+      }
+    }
+    const floor = world.heightAt(p.x, p.z) + SWIM.body;
+    if (p.y < floor) { p.y = floor; if (p.vy < 0) p.vy = 0; }
+  }
+  const ceiling = world.top - 0.35;
+  if (p.y > ceiling) { p.y = ceiling; if (p.vy > 0) p.vy = 0; }
+  const r = Math.hypot(p.x, p.z);
+  if (world.radius && r > world.radius) { p.x *= world.radius / r; p.z *= world.radius / r; }
+  p.moving = Math.hypot(p.vx, p.vy, p.vz);
+  if (Math.hypot(p.vx, p.vz) > 0.3) {
+    const want = Math.atan2(p.vx, p.vz);
+    const turn = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    p.facing += turn * Math.min(1, dt * 8);
+  }
+  p.atSurface = p.y >= ceiling - 0.05;
+  return p;
+}

@@ -76,11 +76,16 @@ function hasWebGL() {
 }
 
 /** The two pickers on the setup screen: the place and the weather, each with a line saying what it is. */
+/** The weather the battle has: always clear under the sea. */
+const weatherNow = () => (arena.environment === 'reef' ? 'clear' : arena.weather);
+
 function arenaPicker({ difficulty = false } = {}) {
   const about = h('p.muted.small.bt-place-about');
   const describe = () => {
     const place = ENVIRONMENTS.find((e) => e.id === arena.environment);
-    const sky = WEATHERS.find((w) => w.id === arena.weather);
+    const sky = WEATHERS.find((w) => w.id === weatherNow());
+    const weatherSelect = wrap.querySelector('select[aria-label="Weather"]');
+    if (weatherSelect) weatherSelect.disabled = arena.environment === 'reef'; // no weather under the sea
     about.textContent = `${place.about}${sky.id === 'clear' ? '' : ` ${sky.name}: ${sky.about}`}`;
   };
   const picker = (label, list, key) => h('label.field',
@@ -89,9 +94,10 @@ function arenaPicker({ difficulty = false } = {}) {
       'aria-label': label,
       onchange: (e) => { arena = saveArena({ ...arena, [key]: e.target.value }); describe(); },
     }, list.map((x) => h('option', { value: x.id, selected: x.id === arena[key] }, x.name))));
-  describe();
-  return h('div.bt-place', h('div.bt-place-fields', picker('Arena', ENVIRONMENTS, 'environment'), picker('Weather', WEATHERS, 'weather'),
+  const wrap = h('div.bt-place', h('div.bt-place-fields', picker('Arena', ENVIRONMENTS, 'environment'), picker('Weather', WEATHERS, 'weather'),
     difficulty && picker('Difficulty', DIFFICULTIES, 'difficulty')), about);
+  describe();
+  return wrap;
 }
 
 export async function renderBattles(root, { keep = null, mode: startMode = 'cpu' } = {}) {
@@ -228,7 +234,7 @@ async function makeStage(host, mode) {
   const scene = await import('./battle/scene.js');
   if (scene.webglAvailable()) {
     try {
-      return new scene.BattleStage(host, { mode, dark, environment: arena.environment, weather: arena.weather });
+      return new scene.BattleStage(host, { mode, dark, environment: arena.environment, weather: weatherNow() });
     } catch (err) {
       console.warn('3D unavailable, using cards:', err);
     }
@@ -430,7 +436,7 @@ async function startShowcase(root, sel, onBack) {
   };
 
   const tryAttack = (attack) => run(async () => {
-    const hit = damageFor(me, dummy, attack, Math.random, arena.weather);
+    const hit = damageFor(me, dummy, attack, Math.random, weatherNow());
     me.boost = 0;
     stage.boost(0, false);
     say(a.message, `${sel.card.name} used ${attack.name}!`, { hold: 0 });
@@ -476,7 +482,7 @@ function infoButton(a, name, text) {
 function moveButton(a, attack, me, foe, onClick, practice = false) {
   const cost = attackCost(attack);
   const enough = practice || me.energy >= cost;
-  const est = expectedDamage(me, foe, attack, arena.weather);
+  const est = expectedDamage(me, foe, attack, weatherNow());
   return h('div.move', { class: attack.effect ? 'has-info' : '' },
     h('button.move-btn', {
       type: 'button',
@@ -531,7 +537,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   const newBattle = () => createBattle(
     { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id },
     { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id },
-    { mode, weather: arena.weather },
+    { mode, weather: weatherNow() },
   );
   battle = newBattle();
   const plates = battle.fighters.map((f, i) => plate(f, i, i === 0 ? 'Player 1' : mode === 'cpu' ? 'Computer' : 'Player 2'));
@@ -714,7 +720,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   const battle = createRealtime(
     { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id },
     { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id },
-    { mode, weather: arena.weather, arena: arena.environment, difficulty: arena.difficulty },
+    { mode, weather: weatherNow(), arena: arena.environment, difficulty: arena.difficulty },
   );
   const [f1, f2] = battle.fighters;
   const plates = [livePlate(f1, 0, 'Player 1'), livePlate(f2, 1, mode === 'cpu' ? `Computer · ${arena.difficulty}` : 'Player 2')];

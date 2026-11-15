@@ -11,7 +11,9 @@ import { joystick, readGamepad } from '../battle/controls.js';
 import { buildHabitats, planHabitats, solidAt } from './habitats.js';
 import { addLook, createLook, ease, stepLook } from './look.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
+import { createAmbience } from '../ambience.js';
 import { initSanctuaryUI, savedTrainer } from './sanctuaryUI.js';
+import { buildTrainer } from './trainer.js';
 import { createPlayer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
 
@@ -107,11 +109,14 @@ function start3d(root, cards, world3d) {
   const plates = h('div.sanc-plates');
   const prompt = h('button.sanc-prompt', { type: 'button', hidden: true });
   const touch = matchMedia('(pointer: coarse)').matches;
+  const sound = h('button.btn.small', { type: 'button' });
   const quality = h('select', { 'aria-label': 'Graphics quality' }, ['high', 'standard', 'basic'].map((q) => h('option', { value: q }, q[0].toUpperCase() + q.slice(1))));
   el.append(plates, prompt,
     h('h1.sanc-title', `Sanctuary · ${new Set(cards.map((c) => c.name)).size} Pokémon`),
     h('div.sanc-top',
       h('label.btn.small', h('span', 'Graphics '), quality),
+      sound,
+      h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/sanctuary/reef'; } }, '🌊 Reef'),
       h('button.btn.small', { type: 'button', onclick: () => ui.openTrainerModal() }, '👤 Trainer'),
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/'; } }, '✕ Leave')),
     h('p.sanc-help', touch ? 'Drag the stick to walk · drag the view to look · tap a Pokémon’s name to interact' : 'WASD walk · Shift sprint · Space jump, hold to glide · drag to look (double-click: mouse look) · E interact · 1–8 travel'));
@@ -162,34 +167,9 @@ function start3d(root, cards, world3d) {
   observer.observe(el);
   resize();
 
-  // ---- the trainer: an original little figure in the chosen colours ----
-  const avatar = new THREE.Group();
-  const mats = {
-    hat: new THREE.MeshStandardMaterial({ roughness: 0.8 }),
-    shirt: new THREE.MeshStandardMaterial({ roughness: 0.85 }),
-    skin: new THREE.MeshStandardMaterial({ roughness: 0.9 }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.9 }),
-    pack: new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.9 }),
-    glider: new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.7, side: THREE.DoubleSide }),
-  };
-  const part = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; avatar.add(m); return m; };
-  const legs = [part(new THREE.CapsuleGeometry(0.11, 0.42, 4, 8), mats.dark, -0.13, 0.36, 0), part(new THREE.CapsuleGeometry(0.11, 0.42, 4, 8), mats.dark, 0.13, 0.36, 0)];
-  part(new THREE.CapsuleGeometry(0.26, 0.42, 4, 10), mats.shirt, 0, 1.02, 0);
-  const arms = [part(new THREE.CapsuleGeometry(0.08, 0.4, 4, 8), mats.shirt, -0.36, 1.05, 0), part(new THREE.CapsuleGeometry(0.08, 0.4, 4, 8), mats.shirt, 0.36, 1.05, 0)];
-  part(new THREE.SphereGeometry(0.22, 16, 12), mats.skin, 0, 1.58, 0);
-  part(new THREE.CylinderGeometry(0.235, 0.235, 0.14, 16), mats.hat, 0, 1.74, 0);
-  part(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 12), mats.hat, 0, 1.68, 0.24).scale.set(1.2, 1, 1);
-  part(new THREE.BoxGeometry(0.36, 0.44, 0.18), mats.pack, 0, 1.05, -0.3);
-  const gliderGeo = new THREE.BufferGeometry();
-  gliderGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1.5, 0, -0.5, 1.5, 0, -0.5, 0, 0.15, 0.9], 3));
-  gliderGeo.computeVertexNormals();
-  const glider = new THREE.Mesh(gliderGeo, mats.glider);
-  glider.position.y = 2.25;
-  glider.castShadow = true;
-  glider.visible = false;
-  avatar.add(glider);
+  // ---- the trainer: an original little figure in the chosen colours (trainer.js) ----
+  const { avatar, legs, arms, glider, dress } = buildTrainer(THREE);
   scene.add(avatar);
-  const dress = (t) => { mats.hat.color.setHex(t.hat); mats.shirt.color.setHex(t.shirt); mats.skin.color.setHex(t.skin); };
   dress(savedTrainer());
 
   // ---- the zoo ----
@@ -295,7 +275,12 @@ function start3d(root, cards, world3d) {
   let distance = 6.5;
   const stick = { x: 0, y: 0 };
   let near = null;
-  const interact = () => { if (near && !paused()) ui.openRadial(near); };
+  // Swimming out to the middle of the lake: E dives down to the Reef.
+  let atDive = false;
+  const interact = () => {
+    if (atDive && !near && !paused()) { location.hash = '#/sanctuary/reef'; return; }
+    if (near && !paused()) ui.openRadial(near);
+  };
   const onKey = (e) => {
     if (e.target?.closest?.('input, select, textarea')) return;
     if (e.type === 'keydown') {
@@ -304,6 +289,7 @@ function start3d(root, cards, world3d) {
       if (e.code === 'Space' && !keys.has('Space')) jumpPressed = true;
       if (e.code === 'KeyE' && !e.repeat) interact();
       if (/^Digit[1-8]$/.test(e.code) && !e.repeat) travel(Number(e.code.slice(5)) - 1);
+      if (e.code === 'KeyM' && !e.repeat) { ambience.toggleMute(); showSound(); }
       if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       keys.add(e.code);
     } else {
@@ -393,6 +379,19 @@ function start3d(root, cards, world3d) {
   // ---- the loop ----
   const player = createPlayer({ x: 0, z: 4 });
   player.y = ground.heightAt(0, 4);
+  // Back from the Reef: come up in the middle of the lake.
+  try {
+    if (sessionStorage.getItem('pokedex.sanctuarySpawn') === 'lake') {
+      sessionStorage.removeItem('pokedex.sanctuarySpawn');
+      Object.assign(player, { x: LAKE.x, z: LAKE.z + 2, y: LAKE.level - 0.7, mode: 'swim' });
+      look.yaw = Math.atan2(LAKE.x, LAKE.z);
+    }
+  } catch { /* storage unavailable */ }
+  // Sound: wind, birdsong, and water near the lake (after the first click or key).
+  const ambience = createAmbience('meadow');
+  const showSound = () => { sound.textContent = ambience.muted ? '🔇 Sound' : '🔊 Sound'; };
+  sound.addEventListener('click', () => { ambience.toggleMute(); showSound(); });
+  showSound();
   let alive = true;
   let last = performance.now();
   let acc = 0;
@@ -495,8 +494,11 @@ function start3d(root, cards, world3d) {
       c.plate.style.opacity = String(alpha);
     }
     near = nearest(creatures, player);
-    prompt.hidden = !near || paused();
+    atDive = player.mode === 'swim' && Math.hypot(player.x - LAKE.x, player.z - LAKE.z) < LAKE.r * 0.6;
+    prompt.hidden = (!near && !atDive) || paused();
     if (near) prompt.textContent = `${touch ? 'Tap' : 'E'} · ${near.card.name}`;
+    else if (atDive) prompt.textContent = `${touch ? 'Tap' : 'E'} · Dive to the Reef 🌊`;
+    ambience.update({ nearWater: Math.max(0, 1 - Math.max(0, Math.hypot(player.x - LAKE.x, player.z - LAKE.z) - LAKE.r) / 14) });
     ui.updateStamina(player.stamina, player.exhausted);
     el.dataset.mode = player.mode;
     el.dataset.near = near?.card.name ?? '';
@@ -521,6 +523,7 @@ function start3d(root, cards, world3d) {
     window.removeEventListener('hashchange', leave);
     document.body.classList.remove('sanctuary-mode');
     habitats.dispose();
+    ambience.dispose();
     world.dispose();
     models.dispose();
     scene.traverse((o) => {

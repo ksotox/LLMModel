@@ -12,6 +12,7 @@
 // everything is made in code.
 
 import * as THREE from 'three';
+import { addCaustics } from '../reef/reef.js';
 
 /** Sky, fog and light for each stadium (display colours, like the meadow's palette). */
 export const STADIUM_LOOK = {
@@ -681,7 +682,8 @@ function beach({ fieldR, time, glow, add, keep, look, contact }) {
   }
   sandGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   sandGeo.computeVertexNormals();
-  const sand = new THREE.Mesh(sandGeo, std({ map: sandTex, vertexColors: true }));
+  // Rippling light (caustics, after Abyssal Garden) on the sand under the shallows.
+  const sand = new THREE.Mesh(sandGeo, addCaustics(std({ map: sandTex, vertexColors: true }), time, { strength: 0.9, mask: 'clamp((-0.4 - cw.y) / 0.7, 0.0, 1.0)' }));
   sand.receiveShadow = true;
   add(sand);
 

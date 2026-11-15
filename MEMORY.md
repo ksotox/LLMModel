@@ -92,18 +92,17 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
-- **PokéBattles:** `server/battle.js` (attacks/abilities/weakness/dexId from the cached raw card),
-  `server/models3d.js` (Pokémon 3D API list + .glb cache in data/models3d), `public/js/battle/`
-  (engine = rules + weather, pure + seeded; realtime = real-time sim + AI, `controls.js` input; scene = stage + summon; world = owner's Hi-Fi v4 meadow, High/Standard/
-  Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only; `surface.js` = normal maps, sky light, contact shadows).
+- **PokéBattles:** `server/battle.js` (card battle data), `server/models3d.js` (.glb cache in data/models3d), `js/battle/`:
+  engine (rules + weather) and realtime (sim + AI) pure; scene (stage); world (Hi-Fi v4 meadow); stadiums, weatherFx,
+  arenas (PokeBrawl ideas only); surface (normal maps, sky light, contact shadows).
   Models are Nintendo IP (fan project): never commit them.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
   owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids); `look.js`; Battle hands off via `pokedex.battleKeep`.
-- `battle/perf.js`: dynamic resolution + crash-safe start (`pokedex.3dLoad`), used by battles and the Sanctuary.
+- `battle/perf.js`: dynamic resolution + crash-safe start. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+  `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
-  drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**
-  wins: `server/cardDioramas.js` (27 delivered in `assets/card-effects`, imported only for the same id + name/card id;
-  new cards get a free in-browser one, `dioramaMaker.js`, made once per identity). No paid image API (owner's choice).
+  drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,
+  matched by id + name/card id; new cards: free in-browser `dioramaMaker.js`). No paid image API (owner's choice).
 - **Pre-grading (experimental):** `server/grading/` (`card_grading_reports`, photos in `data/uploads/grading/`)
   → optional Python `services/grading/app.py` (127.0.0.1:8765, MIT Viridian in gitignored `third_party/viridian`,
   pinned by `scripts/grading-setup.*`); `gradingReport.js` shows it. Label every result "Experimental CV estimate —

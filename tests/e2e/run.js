@@ -542,6 +542,8 @@ try {
   await page.locator('.bt-tile', { hasText: 'Linoone' }).click();
   await page.locator('.bt-slot .bt-ok').nth(1).waitFor();
   // The arena and the weather are picked before the battle (and remembered): a stadium, in the rain.
+  await page.getByLabel('Arena').selectOption({ label: 'The Reef' });
+  assert.ok(await page.getByLabel('Weather').isDisabled(), 'no weather under the sea');
   await page.getByLabel('Arena').selectOption({ label: 'League Stadium' });
   await page.getByLabel('Weather').selectOption({ label: 'Rain' });
   await page.locator('.bt-place-about', { hasText: 'A stone coliseum' }).waitFor();
@@ -696,6 +698,33 @@ try {
   await tap(13);
   await page.locator('.sanc-card h3', { hasText: who }).waitFor();
   await page.evaluate(() => { delete navigator.getGamepads; });
+  // The Reef: dive down (the 🌊 Reef button), swim, and come back up.
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: '🌊 Reef' }).click();
+  await page.locator('.sanc.reef canvas').waitFor({ timeout: 90000 }).catch(async (err) => {
+    throw new Error(`The Reef didn't open. Page: ${(await page.locator('#view').innerText()).slice(0, 400)} Errors: ${errors.join(' | ')}`, { cause: err });
+  });
+  await page.locator('.sanc-title', { hasText: /The Reef · \d+ Water Pokémon/ }).waitFor();
+  await page.waitForFunction(() => document.querySelector('.sanc.reef')?.reef, null, { timeout: 60000 });
+  const y0 = await sanc(() => document.querySelector('.sanc.reef').reef.swimmer.y);
+  await page.keyboard.down('KeyQ');
+  await page.keyboard.down('KeyW');
+  await page.waitForFunction((y) => document.querySelector('.sanc.reef').reef.swimmer.y < y - 1, y0, { timeout: 60000 });
+  await page.keyboard.up('KeyW');
+  await page.keyboard.up('KeyQ');
+  await shot('38-sanctuary-reef');
+  await page.getByRole('button', { name: '⬆ Surface' }).click();
+  await page.locator('.sanc:not(.reef) canvas').waitFor({ timeout: 90000 });
+  await page.waitForFunction(() => document.querySelector('.sanc')?.sanctuary?.player.mode === 'swim', null, { timeout: 60000 });
+  // Back in the lake: meet the Pokémon again and go to a battle with it.
+  await sanc(() => {
+    const { player, creatures } = document.querySelector('.sanc').sanctuary;
+    const c = creatures.find((x) => x.card.name === 'Voltorb') ?? creatures[0];
+    Object.assign(player, { x: c.x + 1.2, z: c.z, mode: 'walk', vx: 0, vz: 0 });
+  });
+  await page.locator('.sanc-prompt', { hasText: who }).waitFor({ timeout: 60000 });
+  await page.keyboard.press('KeyE');
+  await page.getByRole('menuitem', { name: 'Card' }).click();
   await page.locator('.sanc-card').getByRole('button', { name: '⚔ Battle' }).click();
   // Off to PokéBattles, with that Pokémon chosen already.
   await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();

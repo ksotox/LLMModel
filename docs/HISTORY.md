@@ -690,6 +690,16 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **From Abyssal Garden (MIT), compared with ours:** its smooth look (two low-pass stages, `look.js`), frame-rate-independent easing (camera follow), pointer lock, number keys to viewpoints (1–8: habitats), dynamic resolution and a crash-safe start (`battle/perf.js`, used by battles and the Sanctuary). Our stamina, glider, jump rules, gamepad, touch and fallbacks stay.
 - **Found by the walkthrough:** assigning a tree's read-only `position`; the Basic graphics' cheap material dropping `alphaTest` (leaf cards turned black); a screenshot-only tour leaving the trainer far from the Pokémon.
 
+## Phase 37: The Reef (after Abyssal Garden)
+
+- **Owner's ask:** take the concepts and scenery of github.com/Noniv/abyssal-garden (MIT, © 2026 Maksymilian Dendura) into our places, add an underwater Sanctuary, and adopt what its movement and other features do better.
+- **What it is:** a raw-WebGPU, all-procedural underwater world in one file. We use three.js, so ideas and some formulas were ported, not its pipeline.
+- **`reef/reef.js`:** the Reef in three.js: seabed (`reefHeight`), kelp columns of instanced leaf cards with sway and twinkling gold and green sparkles, light shafts, caustics (`addCaustics`, a shader patch also used on the beach shallows and the meadow lake floor), the surface seen from below, depth-tinted fog (cyan to deep blue), rock arches, floating boulders, a sunken ship, a stone whale tail, a purple grotto (magenta cover, coral fans, barrel sponges), manta rays (its `meshManta` profile, flapping in the vertex shader), fish schools (`stepSchool`: cohesion, avoiding the trainer; its `meshFish` shape), bubbles and specks. `reefLayout` (pure) keeps creature spots clear of obstacles.
+- **Sanctuary's Reef** (`#/sanctuary/reef`, `sanctuary/reefSanctuary.js`): dive from the lake (E in its middle, or 🌊 Reef). Water types live there (`reefResidents`), drifting in 3-D (`stepDrifter`). Swimming (`stepSwimmer`): its eased velocity, sub-steps with push-out and slide (no tunnelling), a surface ceiling, buoyancy, stamina for fast swimming. Surfacing returns to the lake. The trainer figure moved to `trainer.js`.
+- **Reef battle arena:** `reefWorld` in `world.js`; the weather is always clear (`weatherNow` in battles.js; the picker locks).
+- **Sound (`ambience.js`):** its Web Audio ambience ported for the Reef (MIT notice in the file), and our own meadow one (wind, birds, water near the lake); M mutes, remembered.
+- **Tests:** `tests/reef.test.js` (seabed, layout, schools, swimming, drifting, residents) and e2e steps (dive, swim, surface; Reef arena weather lock).
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
