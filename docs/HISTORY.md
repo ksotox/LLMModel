@@ -713,6 +713,8 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 ## Phase 39: Architecture overview
 - `docs/ARCHITECTURE.md`: a one-page picture of the system (diagrams, tech stack, what each part does, where data
   lives, key choices), linked from the README and AGENTS.md.
+- `docs/GAME_ARCHITECTURE.md`: the 3D games in depth (battles, Sanctuary, Reef, 3D models, graphics, movement,
+  input, saved state, tests) with recipes for common changes.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

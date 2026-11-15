@@ -131,5 +131,7 @@ sequenceDiagram
 - **Graphics that adapt.** The levels are High, Standard and Basic. Slow frames turn effects off, then lower the resolution, and a crashed load starts one level lower next time.
 - **Outside services are optional.** Every source has a fallback or a local copy. The app works offline with what it has already saved.
 
+The 3D games in depth: [GAME_ARCHITECTURE](GAME_ARCHITECTURE.md).
+
 More detail: [README](../README.md) (features and setup), [USER_GUIDE](USER_GUIDE.md) (how to use it),
 [SOURCES](SOURCES.md) (data sources and credits), [HISTORY](HISTORY.md) (how it was built).
