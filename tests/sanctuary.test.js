@@ -117,3 +117,101 @@ describe('Sanctuary: the zoo', () => {
     assert.equal(nearest([c], { x: 50, z: 50 }), null);
   });
 });
+
+describe('Sanctuary: habitats, animations and the gamepad', () => {
+  test('each habitat gets its own scenery, out of the water and off the plaza, the same every time', async () => {
+    const { planHabitats, solidAt } = await import('../public/js/sanctuary/habitats.js');
+    const lake = { x: 27, z: -21, shore: 10.5 };
+    const inWater = (x, z) => Math.hypot(x - lake.x, z - lake.z) < lake.shore;
+    const plan = planHabitats({ inWater, lake });
+    const kinds = (h) => new Set(plan.filter((p) => p.habitat === h).map((p) => p.kind));
+    assert.ok(kinds('woods').has('tree') && kinds('woods').has('fern'));
+    assert.ok(kinds('rocks').has('firePit') && kinds('rocks').has('redRock'));
+    assert.ok(kinds('ruins').has('ruin') && kinds('ruins').has('stoneRing'));
+    assert.ok(kinds('dusk').has('mushroom') && kinds('dusk').has('pine'));
+    assert.ok(kinds('shore').has('palm') && kinds('shore').has('boat') && kinds('shore').has('pier'));
+    assert.equal(plan.filter((p) => p.kind === 'sign').length, HABITATS.length - 1, 'a sign at every habitat but the meadow');
+    for (const p of plan) {
+      if (p.kind !== 'pier' && p.kind !== 'fireflies' && p.kind !== 'stoneRing') assert.ok(!inWater(p.x, p.z), `${p.kind} is on land`);
+      assert.ok(Math.hypot(p.x, p.z) > 8, `${p.kind} is off the plaza`);
+    }
+    assert.deepEqual(planHabitats({ inWater, lake }), plan);
+    const tree = plan.find((p) => p.kind === 'tree');
+    assert.ok(solidAt(plan, tree.x, tree.z), 'you can’t walk through a tree');
+    assert.ok(!solidAt(plan, 0, 0));
+  });
+
+  test('the trainer slides along solid things instead of walking through them', () => {
+    const wall = { heightAt: () => 0, waterAt: () => null, radius: 80, solid: (x) => x > 2 && x < 3 };
+    const p = run(createPlayer({ x: 0, z: 0 }), { ...none, x: 1, z: 0.5 }, 3, wall);
+    assert.ok(p.x < 2.01, 'stopped at it');
+    assert.ok(p.z > 2, 'and slid along it');
+  });
+
+  test('animations are picked by name: idle, walk and a happy one', async () => {
+    const { pickClips } = await import('../public/js/battle/modelLoader.js');
+    const clip = (name) => ({ name });
+    const all = ['Idle_Loop', 'Walk', 'Faint', 'Attack_1'].map(clip);
+    const picked = pickClips(all);
+    assert.deepEqual([picked.idle.name, picked.walk.name, picked.extra.name], ['Idle_Loop', 'Walk', 'Attack_1']);
+    assert.deepEqual(pickClips([clip('Take 001')]), { idle: { name: 'Take 001' }, walk: null, extra: null });
+    assert.deepEqual(pickClips([]), { idle: null, walk: null, extra: null });
+    assert.equal(pickClips([clip('ground_idle'), clip('Run')]).walk.name, 'Run');
+  });
+
+  test('the gamepad: sticks with a dead zone, buttons pressed once per press', async () => {
+    const { readGamepad } = await import('../public/js/battle/controls.js');
+    const pad = (axes, held) => [{ axes, buttons: Array.from({ length: 16 }, (_, i) => ({ pressed: held.includes(i), value: held.includes(i) ? 1 : 0 })) }];
+    const memory = {};
+    let g = readGamepad(0, memory, pad([0.1, -0.9, 0.5, 0], [0]));
+    assert.deepEqual([g.lx, g.ly, g.rx], [0, -0.9, 0.5]);
+    assert.ok(g.pressed.has(0) && g.held.has(0));
+    g = readGamepad(0, memory, pad([0, 0, 0, 0], [0, 2]));
+    assert.ok(!g.pressed.has(0), 'still held: not pressed again');
+    assert.ok(g.pressed.has(2));
+    assert.equal(readGamepad(1, memory, pad([0, 0, 0, 0], [])), null, 'no second pad');
+  });
+});
+
+describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
+  test('a turn reaches the camera gradually, the same at any frame rate, and the pitch stays in range', async () => {
+    const { addLook, createLook, ease, stepLook } = await import('../public/js/sanctuary/look.js');
+    const at = (fps) => {
+      const look = createLook({ yaw: 0 });
+      addLook(look, 1, 0);
+      const seen = [];
+      for (let i = 0; i < fps; i++) { stepLook(look, 1 / fps); if (i === Math.round(fps * 0.1) - 1) seen.push(look.yaw); } // (sampled after 0.1 s)
+      return { early: seen[0], end: look.yaw };
+    };
+    const a = at(30);
+    const b = at(144);
+    assert.ok(a.early > 0 && a.early < 0.9, 'not all at once');
+    assert.ok(Math.abs(a.end - 1) < 0.01 && Math.abs(b.end - 1) < 0.01, 'all of it in the end');
+    assert.ok(Math.abs(a.early - b.early) < 0.12, 'about the same at 30 and 144 fps');
+    const look = createLook();
+    addLook(look, 0, 10);
+    for (let i = 0; i < 120; i++) stepLook(look, 1 / 60);
+    assert.equal(look.pitch, look.max);
+    assert.ok(Math.abs(ease(1 / 60, 30) + ease(1 / 60, 30) * (1 - ease(1 / 60, 30)) - ease(2 / 60, 30)) < 1e-9, 'two small steps = one big one');
+  });
+
+  test('dynamic resolution: fewer pixels when slow (never below 60%), back up when there is room', async () => {
+    const { nextPixelRatio } = await import('../public/js/battle/perf.js');
+    assert.ok(nextPixelRatio(30, 2, 2) < 2);
+    assert.equal(nextPixelRatio(200, 1.3, 2), 1.2, 'never below 60% of the level');
+    assert.equal(nextPixelRatio(16, 1.5, 2), 1.5, 'fine: no change');
+    assert.ok(nextPixelRatio(8, 1.5, 2) > 1.5);
+    assert.equal(nextPixelRatio(8, 2, 2), 2, 'never above the level');
+  });
+
+  test('a crashed load starts one graphics level lower next time', async () => {
+    const { clearLoad, markLoad } = await import('../public/js/battle/perf.js');
+    const store = new Map();
+    const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+    assert.equal(markLoad('high', storage), 'high');
+    assert.equal(markLoad('high', storage), 'standard', 'the last load never finished');
+    clearLoad(storage);
+    assert.equal(markLoad('high', storage), 'high');
+    assert.equal(markLoad('basic', storage), 'basic', 'already the lowest');
+  });
+});

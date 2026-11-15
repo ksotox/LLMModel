@@ -3,7 +3,7 @@
 // from common game-movement ideas (movement modes, acceleration and braking, weaker steering in
 // the air, a short grace time after leaving an edge, a remembered jump press).
 //
-//   ground: { heightAt(x, z), waterAt(x, z) → the water's level there or null, radius }
+//   ground: { heightAt(x, z), waterAt(x, z) → the water's level there or null, radius, solid?(x, z) }
 //   input:  { x, z } direction in the world (length up to 1), sprint, jump (pressed this step), jumpHeld
 
 export const MOVE = {
@@ -81,6 +81,10 @@ export function stepPlayer(p, input, dt, ground) {
   const step = Math.hypot(nx - p.x, nz - p.z);
   if (p.mode === 'walk' && step > 1e-6 && (ground.heightAt(nx, nz) - floor) / step > MOVE.maxClimb) {
     nx = p.x; nz = p.z; p.vx = 0; p.vz = 0;
+  }
+  // Solid things (trees, rocks, ruins): slide along them instead of walking through.
+  if (ground.solid?.(nx, nz)) {
+    if (!ground.solid(nx, p.z)) { nz = p.z; p.vz = 0; } else if (!ground.solid(p.x, nz)) { nx = p.x; p.vx = 0; } else { nx = p.x; nz = p.z; p.vx = 0; p.vz = 0; }
   }
   const r = Math.hypot(nx, nz);
   if (ground.radius && r > ground.radius) { nx *= ground.radius / r; nz *= ground.radius / r; }

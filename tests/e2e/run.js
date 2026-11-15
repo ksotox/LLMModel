@@ -627,7 +627,10 @@ try {
 
   step('Sanctuary: walk your trainer among your Pokémon; follow, pet, card, and off to a battle');
   await page.getByRole('link', { name: 'Sanctuary' }).click();
-  await page.locator('.sanc canvas').waitFor({ timeout: 90000 });
+  await page.locator('.sanc canvas').waitFor({ timeout: 90000 }).catch(async (err) => {
+    // Say why: the page's own message and the browser's errors.
+    throw new Error(`The Sanctuary's 3D view didn't open. Page: ${(await page.locator('#view').innerText()).slice(0, 400)} Errors: ${errors.join(' | ')}`, { cause: err });
+  });
   await page.locator('.sanc-title', { hasText: /Sanctuary · \d+ Pokémon/ }).waitFor();
   assert.ok(await page.locator('.topbar').isHidden(), 'the menu bar is hidden in the Sanctuary');
   const sanc = (fn) => page.evaluate(fn);
@@ -641,6 +644,17 @@ try {
   await page.getByRole('button', { name: 'Ace Explorer' }).click();
   await page.getByRole('button', { name: 'Done' }).click();
   assert.equal(await sanc(() => localStorage.getItem('pokedex.trainer')), 'ace');
+  if (SHOTS) { // (screenshots only) a look at each habitat
+    for (const [name, x, z] of [['woods', -34, -8], ['rocks', 30, 24], ['shore', 18, -4], ['ruins', -13, -22], ['dusk', -32, 26], ['ridge', -4, -44], ['plain', 2, 34]]) {
+      await sanc(`(() => { const p = document.querySelector('.sanc').sanctuary.player; p.x = ${x} - Math.sign(${x} || 1) * 7; p.z = ${z} - Math.sign(${z} || 1) * 7; })()`);
+      await page.waitForTimeout(2500);
+      await shot(`37-sanctuary-${name}`);
+    }
+  }
+  // Keys 1–8 travel to a habitat (2: the woods).
+  await page.keyboard.press('Digit2');
+  await page.locator('.sanc-toast', { hasText: 'Woods' }).waitFor();
+  assert.ok(await sanc(() => { const p = document.querySelector('.sanc').sanctuary.player; return Math.hypot(p.x + 34, p.z + 8) < 16; }), 'now at the woods');
   // Walk up to a Pokémon (placed beside it here): E opens the wheel.
   const who = await sanc(() => {
     const { player, creatures } = document.querySelector('.sanc').sanctuary;
@@ -649,6 +663,8 @@ try {
     return c.card.name;
   });
   await page.locator('.sanc-prompt', { hasText: who }).waitFor({ timeout: 60000 });
+  // Each habitat has its own scenery and a sign.
+  assert.ok((await sanc(() => document.querySelector('.sanc').sanctuary.plan.filter((p) => p.kind === 'sign').length)) >= 6, 'a sign at each habitat');
   assert.ok(await page.locator('.stamina-ring').isHidden(), 'no stamina ring while it is full');
   await shot('36-sanctuary');
   await page.keyboard.press('KeyE');
@@ -662,6 +678,24 @@ try {
   await page.keyboard.press('KeyE');
   await page.getByRole('menuitem', { name: 'Card' }).click();
   await page.locator('.sanc-card h3', { hasText: who }).waitFor();
+  await page.locator('.sanc-card').getByRole('button', { name: 'Close' }).click();
+  // A gamepad works too: X meets the Pokémon, the D-pad (down) shows its card, B closes it.
+  await page.evaluate(() => {
+    const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+    window.__pad = { axes: [0, 0, 0, 0], buttons, connected: true, mapping: 'standard', index: 0 };
+    navigator.getGamepads = () => [window.__pad];
+  });
+  const tap = async (i) => {
+    await page.evaluate((b) => { window.__pad.buttons[b] = { pressed: true, value: 1 }; }, i);
+    await page.waitForTimeout(250);
+    await page.evaluate((b) => { window.__pad.buttons[b] = { pressed: false, value: 0 }; }, i);
+    await page.waitForTimeout(150);
+  };
+  await tap(2);
+  await page.locator('.radial-menu .radial-center', { hasText: who }).waitFor();
+  await tap(13);
+  await page.locator('.sanc-card h3', { hasText: who }).waitFor();
+  await page.evaluate(() => { delete navigator.getGamepads; });
   await page.locator('.sanc-card').getByRole('button', { name: '⚔ Battle' }).click();
   // Off to PokéBattles, with that Pokémon chosen already.
   await page.getByRole('heading', { name: 'PokéBattles' }).waitFor();
