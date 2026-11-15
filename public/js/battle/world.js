@@ -14,6 +14,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { buildStadium, lookFor, starField } from './stadiums.js';
 import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, skyEnvironment } from './surface.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
+import { addCaustics, buildReef } from '../reef/reef.js';
 
 const QUALITY_KEY = 'pokedex.battleGraphics';
 
@@ -802,10 +803,39 @@ function fieldLines(radius) {
   return mesh;
 }
 
+/** The Reef arena: the underwater world (reef/reef.js) round a sand field; always clear weather. */
+function reefWorld({ scene, renderer, camera, mode, quality }) {
+  const fieldR = mode === 'showcase' ? 4.6 : 6.2;
+  const reef = buildReef({ scene, renderer, mode: 'battle', fieldR });
+  let current = null;
+  let pixelTop = 1;
+  const setQuality = (q) => {
+    current = ['high', 'standard', 'basic'].includes(q) ? q : 'standard';
+    pixelTop = current === 'basic' ? 0.75 : Math.min(window.devicePixelRatio || 1, current === 'high' ? 2 : 1.5);
+    renderer.setPixelRatio(pixelTop);
+    reef.setQuality(current);
+  };
+  setQuality(quality);
+  return {
+    sun: reef.sun,
+    leaves: null,
+    environment: 'reef',
+    weather: 'clear',
+    get quality() { return current; },
+    get pixelTop() { return pixelTop; },
+    setQuality,
+    update(seconds) { reef.update(seconds, camera); },
+    render() { renderer.render(scene, camera); },
+    resize() {},
+    dispose() { reef.dispose(); },
+  };
+}
+
 /**
  * Build the world into `scene`. Returns { sun, update(seconds), setQuality(q), render(), resize(w,h), dispose() }.
  */
 export function buildWorld({ scene, renderer, camera, dark = false, mode = 'battle', quality = 'high', environment = 'meadow', weather = 'clear' }) {
+  if (environment === 'reef') return reefWorld({ scene, renderer, camera, mode, quality });
   const look = lookFor(environment, dark); // null: the meadow
   const wx = WEATHER_LOOK[weather] ?? WEATHER_LOOK.clear;
   const disposables = [];
@@ -906,6 +936,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   groundGeo.computeVertexNormals();
   paintTerrain(groundGeo, dark);
   const groundMat = new THREE.MeshStandardMaterial({ map: track(speckleTexture()), vertexColors: true, roughness: 0.95 });
+  // Rippling light (caustics) on the lake floor.
+  addCaustics(groundMat, time, { strength: 0.8, mask: `clamp((${LAKE.level.toFixed(2)} - 0.05 - cw.y) / 0.9, 0.0, 1.0)` });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   bigSurfaces.push(ground);
   ground.receiveShadow = true;

@@ -361,6 +361,7 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
   - **Night Stadium:** a packed stadium at night, with mown stripes, lit boards, a strip of pink light and a ring of floodlights.
   - **Floating Stadium:** a platform on a pillar over a deep pit, the crowd far below, a giant screen, and a city and mountains behind.
   - **League Stadium:** a stone coliseum on a cool, cloudy day, with flags, banners and a scoreboard tower.
+  - **The Reef:** under the sea, among kelp, light shafts, a sunken ship and manta rays. The weather is always clear there.
   - **Tropical Beach:** pale sand in a turquoise sea with foam on the shore, palms that sway and throw their shadows on the sand, a rowing boat, a pier and buoys. In dark mode it is a sunset over the sea.
 - **Weather** changes the picture and the battle:
   - **Clear:** no effect.
@@ -414,6 +415,13 @@ Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
 - **Trainer:** **👤 Trainer** changes your trainer's colours (three to choose from). Your choice is remembered.
 - **Graphics:** the same High, Standard and Basic settings as PokéBattles.
 - Without 3D graphics, the page lists your Pokémon by habitat instead, each with a **Battle** button.
+- **Sound:** wind, birdsong and the lake's water, made live by the app (no sound files). It starts with your first click or key; **M** or the 🔊 button turns it off (remembered).
+
+**The Reef (underwater):** swim to the middle of the lake and press **E** to dive, or use **🌊 Reef**.
+- Your **Water-type** Pokémon live here, among kelp forests with light shafts pouring down from the surface, rippling light on the sand, a sunken ship, a stone whale tail, rock arches and floating boulders, a purple grotto of coral and sponges, manta rays, fish schools and bubbles.
+- **Swimming:** WASD, **Space** or **E** up, **Ctrl** or **Q** down, **Shift** to swim fast (it uses stamina). You glide along rocks and the wreck instead of passing through. **F** meets a Pokémon (the same wheel as on land). Gamepad: A up, B down, RT fast, X meet.
+- **Back up:** hold up at the surface, or press **⬆ Surface**: you come up in the lake.
+- Its sound (a deep rumble, a slow drone, bubbles, chimes and distant whale calls) is after the open-source project Abyssal Garden.
 
 ---
 

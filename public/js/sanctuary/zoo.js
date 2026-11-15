@@ -129,3 +129,66 @@ export function nearest(creatures, player, reach = 3.2) {
   }
   return best;
 }
+
+/**
+ * A creature in the Reef: it hovers, drifts to nearby spots in open water (up and down too), or
+ * follows the trainer. `world`: { heightAt, top, blocked(x, y, z) }.
+ */
+export function stepDrifter(c, dt, player, rand, world) {
+  let goal = null;
+  let pace = CREATURE.walk;
+  if (c.state === 'follow') {
+    const d = Math.hypot(player.x - c.x, player.y - c.y, player.z - c.z);
+    if (d > CREATURE.keep) { goal = { x: player.x, y: player.y + 0.3, z: player.z }; pace = d > CREATURE.catchUp ? CREATURE.follow * 1.6 : CREATURE.follow; }
+  } else {
+    c.timer -= dt;
+    if (c.state === 'idle' && c.timer <= 0) {
+      const a = rand() * Math.PI * 2;
+      const d = 1 + rand() * CREATURE.roam;
+      const x = c.home.x + Math.cos(a) * d;
+      const z = c.home.z + Math.sin(a) * d;
+      const floor = world.heightAt(x, z) + 0.8;
+      c.target = { x, z, y: Math.min(world.top - 1, floor + rand() * 4) };
+      c.state = 'wander';
+      c.timer = 9;
+    } else if (c.state === 'wander') {
+      goal = c.target;
+      if (!goal || Math.hypot(goal.x - c.x, goal.y - c.y, goal.z - c.z) < 0.3 || c.timer <= 0) { c.state = 'idle'; c.timer = 1.5 + rand() * 4; goal = null; }
+    }
+  }
+  c.speed = 0;
+  if (goal) {
+    const dx = goal.x - c.x;
+    const dy = goal.y - c.y;
+    const dz = goal.z - c.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
+    const step = Math.min(d, pace * dt);
+    const nx = c.x + (dx / d) * step;
+    const ny = c.y + (dy / d) * step;
+    const nz = c.z + (dz / d) * step;
+    if (world.blocked?.(nx, ny, nz)) {
+      if (c.state === 'wander') { c.state = 'idle'; c.timer = 1; }
+    } else {
+      c.x = nx; c.y = ny; c.z = nz; c.speed = step / dt;
+      if (Math.hypot(dx, dz) > 0.05) {
+        const want = Math.atan2(dx, dz);
+        const turn = ((want - c.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        c.facing += turn * Math.min(1, dt * 6);
+      }
+    }
+  }
+  c.y = Math.min(world.top - 0.6, Math.max(world.heightAt(c.x, c.z) + 0.5, c.y));
+  c.hop = (c.hop + dt * 1.6) % (Math.PI * 2); // a gentle bob in the water
+  return c;
+}
+
+/** Water-type Pokémon live here: one of each. */
+export function reefResidents(cards) {
+  const seen = new Set();
+  return cards.filter((c) => {
+    const key = String(c.name ?? '').toLowerCase();
+    if (!key || seen.has(key) || habitatFor(c).id !== 'shore') return false;
+    seen.add(key);
+    return true;
+  });
+}
