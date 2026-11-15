@@ -130,6 +130,7 @@ flowchart LR
 - **Name matching:** `cleanName` strips suffixes (ex, V, VMAX, GX…) and prefixes (Mega, Alolan, Radiant…).
 - **Changing the form:** players can pick another form in the UI. The `3D form` select in `battles.js` uses `FORM_LABELS`.
 - **No model** (offline, or not in the list): the fighter appears as its card on the platform.
+- **Realistic look** (High/Standard): `loadModel(…, { realistic, types })` swaps each material for `realisticMaterial` (physical, surface by `surfaceKind`, relief normal map from the colour texture, rim light). Tune the surfaces in `SURFACE` in `modelLoader.js`.
 - **Animations** are found by clip name: regexes in `modelLoader.js`. For a model whose clips don't animate, widen those regexes.
 - **Rights:** models are Nintendo IP from a fan project. They are downloaded for personal use and are never committed.
 - **3D Pop-out** (`popoutRender.js`) reuses `loadModel` to draw one picture per model into `data/popout/`.

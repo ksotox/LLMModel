@@ -264,3 +264,15 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.equal(markLoad('basic', storage), 'basic', 'already the lowest');
   });
 });
+
+describe('realistic Pokémon materials', () => {
+  test('a surface is guessed from the card types and the texture', async () => {
+    const { surfaceKind } = await import('../public/js/battle/modelLoader.js');
+    assert.equal(surfaceKind({ types: ['Metal'] }), 'metal');
+    assert.equal(surfaceKind({ types: ['Water'] }), 'wet');
+    assert.equal(surfaceKind({ types: ['Fighting'] }), 'hard');
+    assert.equal(surfaceKind({ types: ['Fire'], sat: 0.3, lum: 0.5 }), 'fur', 'muted colours: fur');
+    assert.equal(surfaceKind({ types: ['Psychic'], sat: 0.7, lum: 0.6 }), 'skin', 'bright, saturated: skin');
+    assert.equal(surfaceKind(), 'fur');
+  });
+});

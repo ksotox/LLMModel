@@ -725,6 +725,13 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   rock, fading to the painted colours far out; photo stones, bark and beach sand; scanned rocks for the boulders;
   the sky HDRI lights the scene (sunset in dark mode). Basic and a missing set keep the procedural look.
 
+## Phase 41: Realistic Pokémon materials
+- `modelLoader.js` `realisticMaterial` (High/Standard): each material of a Pokémon 3D API model becomes a
+  `MeshPhysicalMaterial` lit by the scene and sky. `surfaceKind` guesses fur (sheen), skin (light clear coat), hard
+  (shell or rock), metal or wet from the card's types and the texture's colours; a normal map is made from the colour
+  texture when the model has none; a soft rim light. Basic keeps the models as they come. Used by battles, the
+  Sanctuary and the Reef; attack clips now fade in.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
