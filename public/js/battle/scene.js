@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { createModelLoader, loadModel } from './modelLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
+import { clearLoad, createPerf, markLoad } from './perf.js';
 
 export const TYPE_COLORS = {
   Grass: 0x4caf50, Fire: 0xff6d1f, Water: 0x2f8cff, Lightning: 0xffd21f, Psychic: 0xb44cff, Fighting: 0xd2691e,
@@ -213,7 +214,10 @@ export class BattleStage {
     this.#fitCamera(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight)); // before the world is built around it
 
     // The world: physical sky and sun, sky lighting, soft shadows, grass field, arena, trees, haze.
-    this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, environment, weather, quality: preferredQuality(this.renderer) });
+    this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, environment, weather, quality: markLoad(preferredQuality(this.renderer)) });
+    // Fewer pixels when frames are slow; and once it has drawn for a while, the load counts as safe.
+    this.perf = createPerf(this.renderer, () => this.world.pixelTop);
+    this.loadTimer = setTimeout(clearLoad, 12000);
     this.flash = new THREE.PointLight(0xffffff, 0, 6);
     this.scene.add(this.flash);
 
@@ -275,6 +279,8 @@ export class BattleStage {
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const now = performance.now();
+    this.perf.frame(now - (this.lastFrame ?? now));
+    this.lastFrame = now;
     this.beforeFrame?.(dt); // a real-time battle advances here, once per drawn frame
     for (const tw of [...this.tweens]) {
       const t = this.skipping ? 1 : Math.min(1, (now - tw.start) / tw.ms);
@@ -954,6 +960,8 @@ export class BattleStage {
   }
 
   dispose() {
+    clearTimeout(this.loadTimer);
+    clearLoad(); // left on purpose: not a crash
     this.renderer.setAnimationLoop(null);
     this.observer.disconnect();
     this.world.dispose();

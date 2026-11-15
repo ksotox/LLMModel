@@ -682,6 +682,14 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Tests:** `tests/sanctuary.test.js` (movement and zoo), and an e2e step through the whole flow.
 - **Not done:** separate biome scenery (the habitats are areas of the one meadow), creature animations beyond a hop, and a gamepad in the Sanctuary.
 
+## Phase 36: Sanctuary habitats, creature life, gamepad and smoother movement
+
+- **Habitats** (`sanctuary/habitats.js`): `planHabitats` (pure, tested) places each habitat's own props, off the water and the plaza; `buildHabitats` makes them (leaf-card grove, ferns, logs; red rocks, basalt, a flickering fire pit with a light; tall grass tufts and posts; ruins and a stone ring; crags and a cliff; dark pines, glowing mushrooms, fireflies; a sandy shore with palms, a boat, a pier, and foam in the lake shader) plus a painted sign each. The trainer slides round solid props (`ground.solid` in `player.js`); the camera pulls in instead of entering them.
+- **Creature life:** `pickClips` (modelLoader.js) picks idle / walk / happy clips by name; a mixer per near creature cross-fades by speed and plays the happy one when petted. Models without clips waddle and breathe.
+- **Gamepad:** `readGamepad` (controls.js, shared with battles): sticks, edge-triggered buttons; the wheel works with the D-pad.
+- **From Abyssal Garden (MIT), compared with ours:** its smooth look (two low-pass stages, `look.js`), frame-rate-independent easing (camera follow), pointer lock, number keys to viewpoints (1–8: habitats), dynamic resolution and a crash-safe start (`battle/perf.js`, used by battles and the Sanctuary). Our stamina, glider, jump rules, gamepad, touch and fallbacks stay.
+- **Found by the walkthrough:** assigning a tree's read-only `position`; the Basic graphics' cheap material dropping `alphaTest` (leaf cards turned black); a screenshot-only tour leaving the trainer far from the Pokémon.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

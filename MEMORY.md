@@ -18,11 +18,11 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 
 ## Run / test
 - Node **≥ 22.5** (uses built-in `node:sqlite`). `npm install`, `npm start` → http://localhost:3000.
-- `npm test`: unit/API tests (node:test). `npm run test:e2e`: Playwright browser walkthrough (`SCREENSHOTS=1`
-  refreshes `docs/screenshots/`). `npm run bench:scan`: scanner accuracy. All use local mocks; CI runs them on PRs.
+- `npm test` (node:test), `npm run test:e2e` (Playwright; `SCREENSHOTS=1` refreshes docs/screenshots: restore the
+  unrelated ones after), `npm run bench:scan`. All use local mocks; CI runs them on PRs.
 - **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (csc.exe) into `%LOCALAPPDATA%\Pokedex`; it runs
   `launcher.mjs` (self-updating): newest commit via `.git/info/refs`, codeload zip, swap `LLMModel-main` (keeps
-  `.previous`, moves `data/` + grading setup, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
+  `.previous`, moves `data/`, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
 - **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: auto-updates, nightly
   backups; `HOST=127.0.0.1` + `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop `remoteUrl` opens it;
   `cloud-move.ps1` copies `data\`. Not yet run on real Oracle/Tailscale.
@@ -64,7 +64,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **PokemonPriceTracker budget:** ≤ `POKEMONPRICETRACKER_DAILY_CREDITS` (100) a day; about 3 credits
   per card. 24h cache, a 30% reserve kept back from background use, 1-day backoff after errors. Don't
   add calls that bypass `PriceTrackerService`.
-- Trend colours: green `#16a34a` up, red `#dc2626` down, yellow `#eab308` within ±2%.
+- Trend colours: green up, red down, yellow within ±2% (`#16a34a`/`#dc2626`/`#eab308`).
 
 ## Gotchas
 - OpenCV.js 4.12 module is a *thenable*: wrap it as `{cv}` before resolving, or `await` hangs.
@@ -75,9 +75,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Updater data safety (keep): backup to `<app>.backups/` before each swap; a failed `data/` move undoes it; a `data/`
   left in `.previous` goes to `<app>.rescued-data-*`.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
-- `node:sqlite` warns as experimental; npm scripts pass `--disable-warning=ExperimentalWarning`.
-- PokemonPriceTracker docs show inconsistent layouts; `normalizeCard` deep-searches (unverified live).
-- The cloud sandbox reaches only GitHub and npm: the owner checks live sources with `npm run check:live`.
+- `node:sqlite` is experimental: npm scripts pass `--disable-warning=ExperimentalWarning`.
+- PokemonPriceTracker layouts vary; `normalizeCard` deep-searches (unverified live).
+- The sandbox reaches only GitHub and npm: the owner checks live sources (`npm run check:live`).
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
 ## Current state (2026-11-13)
@@ -98,7 +98,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Basic; `arenas.js`/`stadiums.js`/`weatherFx.js` = 3 stadiums + beach + weather; PokeBrawl ideas only; `surface.js` = normal maps, sky light, contact shadows).
   Models are Nintendo IP (fan project): never commit them.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
-  owner's `sanctuaryUI.js`; Battle hands off via sessionStorage `pokedex.battleKeep`.
+  owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids); `look.js`; Battle hands off via `pokedex.battleKeep`.
+- `battle/perf.js`: dynamic resolution + crash-safe start (`pokedex.3dLoad`), used by battles and the Sanctuary.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, kept in data/popout via `/api/popout/*`, over the CSS-tilted card). A copy's **diorama**
   wins: `server/cardDioramas.js` (27 delivered in `assets/card-effects`, imported only for the same id + name/card id;

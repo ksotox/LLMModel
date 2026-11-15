@@ -400,8 +400,10 @@ Pick Pokémon cards from your collection and watch them come out of their cards 
 Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
 
 - **Who is there:** one of each different Pokémon in your collection. Each lives where its card's type belongs: Water at the lake shore, Grass in the woods, Fire on the warm rocks, Lightning on the open plain, Psychic at the old ruins, Fighting and Metal on the stony ridge, Darkness, Dragon and Fairy in the shady hollow, and Colorless on the meadow round the plaza.
-- **How they look:** the nearest ones (up to 24) are shown as 3D models; the others stand as their cards until you come close.
-- **Moving:** WASD (or the arrows) to walk, **Shift** to sprint, **Space** to jump. Hold **Space** while falling to open your glider. Drag the view to look round, and use the mouse wheel to zoom. On a phone, use the joystick and the **Jump** and **Sprint** buttons.
+- **How they look:** the nearest ones (up to 24) are shown as 3D models, walking and idling with their own animations where the model has them (otherwise they hop, waddle and breathe); the others stand as their cards until you come close.
+- **The habitats** each have scenery of their own, and a sign: a grove with ferns and logs, warm red rocks round a fire pit, tall grass on the plain, old ruins and a stone ring, a stony ridge with a cliff, a shady hollow of dark pines with glowing mushrooms and fireflies, and a sandy lake shore with palms, a boat and a pier. You walk round trees, rocks and ruins.
+- **Moving:** WASD (or the arrows) to walk, **Shift** to sprint, **Space** to jump. Hold **Space** while falling to open your glider. Drag the view to look round (or double-click for mouse look; **Esc** lets go), and use the mouse wheel to zoom. **1–8** take you straight to a habitat. On a phone, use the joystick and the **Jump** and **Sprint** buttons.
+- **Gamepad:** left stick walk, right stick look, **A** jump (hold to glide), **B** or **RT** sprint, **X** meet a Pokémon, **Start** trainer, **Select** next habitat. On the wheel, the D-pad picks (up Follow, right Pet, down Card, left Battle) and **B** closes it.
 - **Stamina:** a ring appears when you sprint or glide. When it runs out (it turns red), you walk slowly and can't sprint or glide until it has partly refilled.
 - **Water:** you swim across the lake. Your Pokémon stay on land.
 - **Meeting a Pokémon:** walk up to it and press **E** (or tap its name at the bottom). A wheel opens:

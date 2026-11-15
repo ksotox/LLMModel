@@ -44,7 +44,7 @@ export function saveQuality(q) {
 
 // ---- small deterministic noise for textures and terrain ----
 
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -56,7 +56,7 @@ function rng(seed) {
 }
 
 /** A tiling canvas texture: a base colour with blotches and speckles of nearby tones. */
-function noiseTexture({ size = 512, base, tones, blotches = 900, specks = 9000, seed = 1, repeat = 1, anisotropy = 8 }) {
+export function noiseTexture({ size = 512, base, tones, blotches = 900, specks = 9000, seed = 1, repeat = 1, anisotropy = 8 }) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');
@@ -127,6 +127,8 @@ const smooth = (e0, e1, x) => {
 export const LAKE = { x: 27, z: -21, r: 10, level: -0.6 };
 const lakeDistance = (x, z) => Math.hypot(x - LAKE.x, z - LAKE.z);
 const inLake = (x, z, pad = 0) => lakeDistance(x, z) < LAKE.r * 1.3 + pad;
+/** The Sanctuary's lake shore: sand out to this far from the lake's middle. */
+export const SHORE_SAND = LAKE.r * 1.75;
 
 /**
  * The land, one surface from the arena to the peaks: flat around the arena, a softly uneven meadow,
@@ -273,6 +275,18 @@ function skyDome({ colors, sunDir }) {
 }
 
 /** The lake: rippling water that reflects the sky (more at grazing angles) with a glint of sun. */
+/** How far from the lake's middle the water meets the land (on average round the lake). */
+export function shoreRadius() {
+  let sum = 0;
+  for (let i = 0; i < 32; i++) {
+    const a = (i / 32) * Math.PI * 2;
+    let d = LAKE.r * 0.5;
+    while (d < LAKE.r * 1.6 && terrainHeight(LAKE.x + Math.cos(a) * d, LAKE.z + Math.sin(a) * d) < LAKE.level) d += 0.1;
+    sum += d;
+  }
+  return sum / 32;
+}
+
 function lake({ colors, sunDir }) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
@@ -286,6 +300,7 @@ function lake({ colors, sunDir }) {
       uZenith: { value: colors.zenith },
       uHorizon: { value: colors.horizon },
       uDeep: { value: colors.deep },
+      uLake: { value: new THREE.Vector3(LAKE.x, LAKE.z, shoreRadius()) },
     },
     vertexShader: `
       varying vec3 vW;
@@ -299,7 +314,7 @@ function lake({ colors, sunDir }) {
         #include <fog_vertex>
       }`,
     fragmentShader: `
-      uniform float uTime; uniform vec3 uSun, uSunCol, uZenith, uHorizon, uDeep;
+      uniform float uTime; uniform vec3 uSun, uSunCol, uZenith, uHorizon, uDeep, uLake;
       varying vec3 vW;
       #include <common>
       #include <fog_pars_fragment>
@@ -314,6 +329,10 @@ function lake({ colors, sunDir }) {
         float fr = 0.03 + 0.97 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
         vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.8, 0.0, 1.0));
         vec3 col = mix(uDeep, sky, fr) + uSunCol * pow(max(dot(R, uSun), 0.0), 220.0) * 2.5;
+        // Foam where the water laps the shore, washing in and out.
+        float edge = uLake.z - length(p - uLake.xy) + sin(uTime * 0.8 + atan(p.y - uLake.y, p.x - uLake.x) * 5.0) * 0.12;
+        float foam = smoothstep(0.55, 0.0, abs(edge - 0.25)) * (0.55 + 0.45 * nFbm3(p * 2.5 + uTime * 0.2));
+        col = mix(col, vec3(0.97), clamp(foam, 0.0, 1.0) * 0.85);
         gl_FragColor = vec4(col, 0.94);
         #include <fog_fragment>
       }`,
@@ -393,7 +412,7 @@ function stoneRing(radius, mat, seed) {
 }
 
 /** Old broken stone pillars and wall pieces standing in the grass. */
-function ruins(mat, seed, spots) {
+export function ruins(mat, seed, spots) {
   const group = new THREE.Group();
   const r = rng(seed);
   for (const [x, z] of spots) {
@@ -574,7 +593,7 @@ function mist(dark, tex, view) {
  * fixed camera (`view`) the blades go where it looks, densest close by and a little bigger far
  * away; otherwise they spread around the field.
  */
-function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7 }) {
+function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7, avoid = null }) {
   const blade = new THREE.PlaneGeometry(1, 1, 1, 5);
   blade.translate(0, 0.5, 0);
   const geo = new THREE.InstancedBufferGeometry();
@@ -589,7 +608,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7 
     const x = (r() * 2 - 1) * outer;
     const z = (r() * 2 - 1) * outer;
     const d = Math.hypot(x, z);
-    if (d < inner || d > outer) continue;
+    if (d < inner || d > outer || avoid?.(x, z)) continue;
     let dc = d - inner;
     if (view) {
       const dx = x - view.x;
@@ -699,7 +718,7 @@ function cloudPuffTexture() {
   return t;
 }
 
-function rockGeometry(r, seed, detail = 2) {
+export function rockGeometry(r, seed, detail = 2) {
   // Shared vertices, so the jitter keeps it in one piece and the shading is smooth (not faceted).
   const g = mergeVertices(new THREE.IcosahedronGeometry(1, detail));
   const pos = g.attributes.position;
@@ -716,7 +735,7 @@ function rockGeometry(r, seed, detail = 2) {
   return g;
 }
 
-function tree(seed, dark, leaves = null) {
+export function tree(seed, dark, leaves = null, kind = null) {
   const r = rng(seed);
   const group = new THREE.Group();
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.95 });
@@ -726,7 +745,7 @@ function tree(seed, dark, leaves = null) {
   trunk.castShadow = true;
   group.add(trunk);
   const greens = dark ? [0x2f4a26, 0x36552a, 0x2a4221] : [0x3f7d2f, 0x4a8c35, 0x356b29, 0x5a9a3c];
-  if (r() < 0.45) {
+  if (kind ? kind === 'pine' : r() < 0.45) {
     // Pine: stacked cones.
     for (let i = 0; i < 3; i++) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0 - i * 0.25, 1.3, 9), new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true }));
@@ -917,11 +936,11 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const rocks = new THREE.Group();
   const rr = rng(5);
   rocks.add(stoneRing(fieldR + 0.05, stoneMat, 9));
-  rocks.add(ruins(stoneMat, 13, mode === 'showcase'
+  if (mode !== 'sanctuary') rocks.add(ruins(stoneMat, 13, mode === 'showcase'
     ? [[-7, -9], [8, -11], [-12, -3]]
     : [[-11, -12], [10, -14], [-15, -4], [16, -6], [3, -19]]));
   // Boulders scattered in the grass.
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < (mode === 'sanctuary' ? 0 : 26); i++) {
     const a = rr() * Math.PI * 2;
     const d = fieldR + 3 + rr() * 22;
     if (inLake(Math.cos(a) * d, Math.sin(a) * d, 1)) continue;
@@ -964,7 +983,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(water.mesh);
 
   // Swaying grass around the field (fewer blades on "Standard", none on "Basic"), flowers, pollen.
-  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors });
+  // (In the Sanctuary, no grass on the lake shore's sand.)
+  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
   scene.add(grass.mesh);
   flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
@@ -984,11 +1004,13 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const weatherFx = buildWeather(weather, { scene, camera, dot: dotTex });
 
   let current = null;
+  let pixelTop = 1; // the level's own resolution (perf.js may draw fewer pixels when frames are slow)
   const setQuality = (q) => {
     current = ['high', 'standard', 'basic'].includes(q) ? q : 'standard';
     const high = current === 'high';
     const basic = current === 'basic';
-    renderer.setPixelRatio(basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5));
+    pixelTop = basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5);
+    renderer.setPixelRatio(pixelTop);
     sky.uniforms.uClouds.value = basic ? 0 : 1;
     if (mistBanks) mistBanks.visible = !basic;
     scene.environment = basic ? null : skyEnv.texture;
@@ -1009,7 +1031,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
         const full = (mesh.userData.full ??= mesh.material);
         mesh.userData.cheap ??= new THREE.MeshLambertMaterial({
           map: full.map, vertexColors: full.vertexColors, color: full.color, transparent: full.transparent,
-          depthWrite: full.depthWrite, side: full.side, flatShading: full.flatShading,
+          depthWrite: full.depthWrite, side: full.side, flatShading: full.flatShading, alphaTest: full.alphaTest, // (keeps leaf cut-outs)
         });
         if (full.onBeforeCompile && full.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) mesh.userData.cheap.onBeforeCompile = full.onBeforeCompile;
         mesh.material = basic ? mesh.userData.cheap : full;
@@ -1033,9 +1055,11 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   return {
     sun,
+    leaves, // the leaf-card material (it sways with the world's clock): for the Sanctuary's habitats
     environment: look ? environment : 'meadow',
     weather: WEATHER_LOOK[weather] ? weather : 'clear',
     get quality() { return current; },
+    get pixelTop() { return pixelTop; },
     setQuality,
     update(seconds) {
       const dt = Math.min(0.1, Math.max(0, seconds - (last ?? seconds)));

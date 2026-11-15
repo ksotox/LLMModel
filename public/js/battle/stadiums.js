@@ -82,7 +82,7 @@ function rng(seed) {
 }
 
 /** A painted canvas as a (repeating) texture. */
-function canvasTexture(w, h, draw, { repeat = [1, 1] } = {}) {
+export function canvasTexture(w, h, draw, { repeat = [1, 1] } = {}) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -96,7 +96,7 @@ function canvasTexture(w, h, draw, { repeat = [1, 1] } = {}) {
 }
 
 /** Grain: small darker and lighter specks over what is painted already. */
-function speckle(g, w, h, r, count, strength = 0.12) {
+export function speckle(g, w, h, r, count, strength = 0.12) {
   for (let i = 0; i < count; i++) {
     g.fillStyle = r() < 0.5 ? `rgba(0,0,0,${r() * strength})` : `rgba(255,255,255,${r() * strength})`;
     g.fillRect(r() * w, r() * h, 1 + r() * 3, 1 + r() * 3);
@@ -229,7 +229,7 @@ function crowd(seats, { seed = 7, spacing = 0.62, size = 0.36, fill = 0.86, gap 
 }
 
 /** Lamps: a bright box each, with a soft glow in front. */
-function lamps(points, { glow, color = 0xffffff, size = 0.5, halo = 3.2 }) {
+export function lamps(points, { glow, color = 0xffffff, size = 0.5, halo = 3.2 }) {
   const group = new THREE.Group();
   const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(size, size * 0.6, size), new THREE.MeshBasicMaterial({ color, fog: false }), points.length);
   const m = new THREE.Matrix4();
@@ -544,7 +544,7 @@ export function beachHeight(x, z, fieldR) {
 }
 
 /** A palm: a leaning, tapering trunk and a crown of drooping fronds that sway (uTime). */
-function palm({ height, lean, seed, trunkMat, frondMat, frondDepth }) {
+export function palm({ height, lean, seed, trunkMat, frondMat, frondDepth }) {
   const r = rng(seed);
   const group = new THREE.Group();
   const bend = new THREE.Vector3(Math.cos(lean) * height * 0.32, 0, Math.sin(lean) * height * 0.32);
@@ -585,6 +585,60 @@ function palm({ height, lean, seed, trunkMat, frondMat, frondDepth }) {
     group.add(frond);
   }
   return group;
+}
+
+/** The palms' materials: a ringed trunk and swaying, cut-out fronds (with leaf-shaped shadows). */
+export function palmMaterials({ time, keep }) {
+  const frondTex = keep(canvasTexture(256, 96, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const grad = g.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#2f6b2a');
+    grad.addColorStop(1, '#7fb04a');
+    // A solid leaf with a saw-toothed edge (thin lines would vanish at a distance), darker along the rib.
+    g.fillStyle = grad;
+    g.beginPath();
+    g.moveTo(0, h / 2);
+    const teeth = 22;
+    for (let i = 0; i <= teeth; i++) {
+      const x = (i / teeth) * (w - 4);
+      const half = (h / 2 - 2) * Math.sin(Math.PI * Math.min(1, 0.1 + (i / teeth) * 0.9)) ** 0.7;
+      g.lineTo(x, h / 2 - half);
+      g.lineTo(x + (w / teeth) * 0.55, h / 2 - half * 0.45);
+    }
+    g.lineTo(w, h / 2);
+    for (let i = teeth; i >= 0; i--) {
+      const x = (i / teeth) * (w - 4);
+      const half = (h / 2 - 2) * Math.sin(Math.PI * Math.min(1, 0.1 + (i / teeth) * 0.9)) ** 0.7;
+      g.lineTo(x + (w / teeth) * 0.55, h / 2 + half * 0.45);
+      g.lineTo(x, h / 2 + half);
+    }
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(30,70,28,0.7)';
+    g.lineWidth = 4;
+    g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w - 6, h / 2); g.stroke();
+  }));
+  frondTex.wrapS = frondTex.wrapT = THREE.ClampToEdgeWrapping;
+  const sway = (shader) => {
+    shader.uniforms.uTime = time;
+    shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace('#include <begin_vertex>',
+      `#include <begin_vertex>
+       float sw = sin(uTime * 1.3 + position.x * 0.9 + modelMatrix[3].x * 0.7) * 0.05 * position.x;
+       transformed.y += sw; transformed.z += sw * 0.6;`);
+  };
+  const frondMat = keep(new THREE.MeshStandardMaterial({ map: frondTex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.8 }));
+  frondMat.onBeforeCompile = sway;
+  const frondDepth = keep(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: frondTex, alphaTest: 0.4 }));
+  frondDepth.onBeforeCompile = sway;
+  const trunkTex = keep(canvasTexture(64, 256, (g, w, h) => {
+    const q = rng(137);
+    g.fillStyle = '#8a7358';
+    g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 10) { g.fillStyle = `rgba(60,46,32,${0.25 + q() * 0.25})`; g.fillRect(0, y, w, 3); }
+    speckle(g, w, h, q, 900, 0.14);
+  }));
+  const trunkMat = keep(new THREE.MeshStandardMaterial({ map: trunkTex, roughness: 0.9 }));
+  return { trunkMat, frondMat, frondDepth };
 }
 
 function beach({ fieldR, time, glow, add, keep, look, contact }) {
@@ -697,55 +751,7 @@ function beach({ fieldR, time, glow, add, keep, look, contact }) {
   add(water);
 
   // Palms, mostly on the sun's side so their shadows fall across the sand towards the camera.
-  const frondTex = keep(canvasTexture(256, 96, (g, w, h) => {
-    g.clearRect(0, 0, w, h);
-    const grad = g.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#2f6b2a');
-    grad.addColorStop(1, '#7fb04a');
-    // A solid leaf with a saw-toothed edge (thin lines would vanish at a distance), darker along the rib.
-    g.fillStyle = grad;
-    g.beginPath();
-    g.moveTo(0, h / 2);
-    const teeth = 22;
-    for (let i = 0; i <= teeth; i++) {
-      const x = (i / teeth) * (w - 4);
-      const half = (h / 2 - 2) * Math.sin(Math.PI * Math.min(1, 0.1 + (i / teeth) * 0.9)) ** 0.7;
-      g.lineTo(x, h / 2 - half);
-      g.lineTo(x + (w / teeth) * 0.55, h / 2 - half * 0.45);
-    }
-    g.lineTo(w, h / 2);
-    for (let i = teeth; i >= 0; i--) {
-      const x = (i / teeth) * (w - 4);
-      const half = (h / 2 - 2) * Math.sin(Math.PI * Math.min(1, 0.1 + (i / teeth) * 0.9)) ** 0.7;
-      g.lineTo(x + (w / teeth) * 0.55, h / 2 + half * 0.45);
-      g.lineTo(x, h / 2 + half);
-    }
-    g.closePath();
-    g.fill();
-    g.strokeStyle = 'rgba(30,70,28,0.7)';
-    g.lineWidth = 4;
-    g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w - 6, h / 2); g.stroke();
-  }));
-  frondTex.wrapS = frondTex.wrapT = THREE.ClampToEdgeWrapping;
-  const sway = (shader) => {
-    shader.uniforms.uTime = time;
-    shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace('#include <begin_vertex>',
-      `#include <begin_vertex>
-       float sw = sin(uTime * 1.3 + position.x * 0.9 + modelMatrix[3].x * 0.7) * 0.05 * position.x;
-       transformed.y += sw; transformed.z += sw * 0.6;`);
-  };
-  const frondMat = keep(new THREE.MeshStandardMaterial({ map: frondTex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.8 }));
-  frondMat.onBeforeCompile = sway;
-  const frondDepth = keep(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: frondTex, alphaTest: 0.4 }));
-  frondDepth.onBeforeCompile = sway;
-  const trunkTex = keep(canvasTexture(64, 256, (g, w, h) => {
-    const q = rng(137);
-    g.fillStyle = '#8a7358';
-    g.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y += 10) { g.fillStyle = `rgba(60,46,32,${0.25 + q() * 0.25})`; g.fillRect(0, y, w, 3); }
-    speckle(g, w, h, q, 900, 0.14);
-  }));
-  const trunkMat = std({ map: trunkTex, roughness: 0.9 });
+  const { trunkMat, frondMat, frondDepth } = palmMaterials({ time, keep });
   const sunA = Math.atan2(look.lightDir[2], look.lightDir[0]);
   const spots = [[sunA - 0.25, 8.6, 3.9], [sunA + 0.35, 9.8, 3.3], [sunA + 0.9, 10.6, 4.3], [sunA - 0.85, 10.8, 3.6], [sunA + 1.6, 11.6, 3.4], [sunA + 2.6, 11.2, 4.0], [sunA - 1.7, 12.2, 3.7]];
   spots.forEach(([a, rad, height], i) => {

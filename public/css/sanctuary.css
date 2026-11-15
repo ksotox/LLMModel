@@ -46,3 +46,4 @@ body.sanctuary-mode { overflow: hidden; }
 .sanc-flat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .sanc-flat-item { display: grid; gap: 4px; text-align: center; font-size: 0.8rem; }
 .sanc-flat-item img { width: 100%; border-radius: 8px; }
+.sanc-toast { position: absolute; z-index: 11; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: rgb(18 28 24 / 0.85); font-weight: 600; pointer-events: none; }

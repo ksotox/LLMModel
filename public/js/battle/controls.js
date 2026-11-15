@@ -22,6 +22,21 @@ const KEYS = [
 const PAD_MOVES = [4, 5, 6, 7]; // LB, RB, LT, RT
 const DEAD = 0.2;
 
+/**
+ * A gamepad's state (standard mapping): sticks with a dead zone, the buttons held, and those
+ * pressed since the last read (in `memory`, kept by the caller). Null when there is no such pad.
+ */
+export function readGamepad(index, memory, pads = globalThis.navigator?.getGamepads?.() ?? []) {
+  const pad = pads[index];
+  if (!pad) return null;
+  const held = new Set();
+  pad.buttons.forEach((b, i) => { if (b?.pressed || b?.value > 0.5) held.add(i); });
+  const pressed = new Set([...held].filter((i) => !memory.held?.has(i)));
+  memory.held = held;
+  const axis = (i) => (Math.abs(pad.axes[i] ?? 0) > DEAD ? pad.axes[i] : 0);
+  return { lx: axis(0), ly: axis(1), rx: axis(2), ry: axis(3), held, pressed };
+}
+
 /** Turn a side's forward/right input into a direction on the field, given where it and its rival stand. */
 export function toWorld({ forward = 0, right = 0 }, me, foe) {
   const dx = foe.x - me.x;
@@ -72,20 +87,11 @@ export function createControls(target = window, { players = 1 } = {}) {
 
   const padState = [{}, {}];
   const readPad = (side) => {
-    const pad = navigator.getGamepads?.()[side];
+    const pad = readGamepad(side, padState[side]);
     if (!pad) return null;
-    const was = padState[side];
-    const btn = (i) => Boolean(pad.buttons[i]?.pressed || pad.buttons[i]?.value > 0.5);
-    for (const [what, i] of [['jump', 0], ['dodge', 1]]) {
-      if (btn(i) && !was[what]) pressed[side].add(what);
-      was[what] = btn(i);
-    }
-    const [lx = 0, ly = 0] = pad.axes;
-    return {
-      right: Math.abs(lx) > DEAD ? lx : 0,
-      forward: Math.abs(ly) > DEAD ? -ly : 0,
-      use: PAD_MOVES.findIndex((i) => btn(i)),
-    };
+    if (pad.pressed.has(0)) pressed[side].add('jump');
+    if (pad.pressed.has(1)) pressed[side].add('dodge');
+    return { right: pad.lx, forward: -pad.ly, use: PAD_MOVES.findIndex((i) => pad.held.has(i)) };
   };
 
   return {

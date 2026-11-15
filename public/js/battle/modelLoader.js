@@ -58,3 +58,15 @@ export async function loadModel(loader, url, height, { shadows = true } = {}) {
     return null;
   }
 }
+
+/**
+ * A model's idle, walk and "extra" (a happy or attack move) animations, picked by their names;
+ * any can be null. With one clip only, it is the idle.
+ */
+export function pickClips(clips = []) {
+  const find = (re, skip = null) => clips.find((c) => re.test(c.name) && c !== skip) ?? null;
+  const idle = find(/idle|stand|wait|breath|loop/i);
+  const walk = find(/walk|run|move|locomot/i, idle);
+  const extra = find(/happy|joy|jump|cry|attack|special/i, idle);
+  return { idle: idle ?? (clips.length === 1 ? clips[0] : null), walk, extra: extra && extra !== walk ? extra : null };
+}
