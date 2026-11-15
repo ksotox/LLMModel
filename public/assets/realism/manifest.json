@@ -1,0 +1,125 @@
+{
+  "source": "Poly Haven (polyhaven.com)",
+  "licence": "CC0 1.0",
+  "fetched": "2026-11-15T10:37:29.958Z",
+  "assets": {
+    "sky-day": {
+      "id": "kloofendal_48d_partly_cloudy_puresky",
+      "type": "hdris",
+      "name": "Kloofendal 48d Partly Cloudy (Pure Sky)",
+      "page": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+      "files": [
+        "sky.hdr"
+      ],
+      "bytes": 1435119
+    },
+    "sky-sunset": {
+      "id": "venice_sunset",
+      "type": "hdris",
+      "name": "Venice Sunset",
+      "page": "https://polyhaven.com/a/venice_sunset",
+      "files": [
+        "sky.hdr"
+      ],
+      "bytes": 1440400
+    },
+    "grass": {
+      "id": "sparse_grass",
+      "type": "textures",
+      "name": "Sparse Grass",
+      "page": "https://polyhaven.com/a/sparse_grass",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 2859599
+    },
+    "soil": {
+      "id": "forest_ground_04",
+      "type": "textures",
+      "name": "Forest Ground 04",
+      "page": "https://polyhaven.com/a/forest_ground_04",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 3068218
+    },
+    "rock": {
+      "id": "rock_face",
+      "type": "textures",
+      "name": "Rock Face",
+      "page": "https://polyhaven.com/a/rock_face",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 2096949
+    },
+    "cliff": {
+      "id": "rock_06",
+      "type": "textures",
+      "name": "Rock 06",
+      "page": "https://polyhaven.com/a/rock_06",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 1833120
+    },
+    "sand": {
+      "id": "coast_sand_01",
+      "type": "textures",
+      "name": "Coast Sand 01",
+      "page": "https://polyhaven.com/a/coast_sand_01",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 2491332
+    },
+    "snow": {
+      "id": "snow_02",
+      "type": "textures",
+      "name": "Snow 02",
+      "page": "https://polyhaven.com/a/snow_02",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 1553444
+    },
+    "bark": {
+      "id": "pine_bark",
+      "type": "textures",
+      "name": "Pine Bark",
+      "page": "https://polyhaven.com/a/pine_bark",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 2522778
+    },
+    "rocks": {
+      "id": "rock_moss_set_01",
+      "type": "models",
+      "name": "Rock Moss Set 01",
+      "page": "https://polyhaven.com/a/rock_moss_set_01",
+      "files": [
+        "model.gltf",
+        "textures/rock_moss_set_01_nor_gl_1k.jpg",
+        "rock_moss_set_01.bin",
+        "textures/rock_moss_set_01_rough_1k.jpg",
+        "textures/rock_moss_set_01_diff_1k.jpg"
+      ],
+      "bytes": 1937065
+    }
+  }
+}
