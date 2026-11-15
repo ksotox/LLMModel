@@ -204,6 +204,55 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.equal(nextPixelRatio(8, 2, 2), 2, 'never above the level');
   });
 
+  test('slow frames turn the High passes off first, then lower the pixels', async () => {
+    const { perfStep } = await import('../public/js/battle/perf.js');
+    assert.deepEqual(perfStep(30, 2, 2, true), { ratio: 2, drop: true }, 'the passes go before any pixels');
+    const after = perfStep(30, 2, 2, false);
+    assert.equal(after.drop, false);
+    assert.ok(after.ratio < 2, 'then fewer pixels');
+    assert.deepEqual(perfStep(12, 2, 2, true), { ratio: 2, drop: false }, 'fast enough: all kept');
+  });
+
+  test('the High passes: only on High, and gone for good once dropped', async () => {
+    const { createEffects } = await import('../public/js/battle/postfx.js');
+    let plain = 0;
+    const fx = createEffects({ render: () => { plain++; } });
+    fx.setLevel('standard');
+    assert.equal(fx.on, false);
+    fx.render({}, {});
+    assert.equal(plain, 1, 'Standard draws straight to the screen');
+    fx.setLevel('high');
+    assert.equal(fx.on, true);
+    fx.drop();
+    assert.equal(fx.on, false);
+    fx.setLevel('high');
+    assert.equal(fx.on, false, 'not back on after a drop');
+    fx.render({}, {});
+    assert.equal(plain, 2);
+  });
+
+  test('needle cards lie round a pine\'s cones, sloping down', async () => {
+    const { skirtGeometry } = await import('../public/js/battle/surface.js');
+    const tiers = [[1, 1, 1.3], [1.6, 0.75, 1.3]];
+    const geo = skirtGeometry(tiers, 3, 9);
+    const pos = geo.attributes.position;
+    assert.equal(pos.count % 4, 0, 'quads');
+    assert.ok(pos.count / 4 >= 20, 'two rings a tier');
+    assert.equal(geo.index.count, (pos.count / 4) * 6);
+    for (let i = 0; i < pos.count; i++) {
+      const [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      assert.ok([x, y, z].every(Number.isFinite));
+      assert.ok(Math.hypot(x, z) < 1.6 && y > -0.1 && y < 2.4, 'close round the cones');
+    }
+    // Each card's top edge (v = 1) is higher than its bottom (it hangs down the slope).
+    const uv = geo.attributes.uv;
+    for (let q = 0; q < pos.count; q += 4) {
+      const top = [0, 1, 2, 3].filter((k) => uv.getY(q + k) === 1).map((k) => pos.getY(q + k));
+      const bottom = [0, 1, 2, 3].filter((k) => uv.getY(q + k) === 0).map((k) => pos.getY(q + k));
+      assert.ok(Math.min(...top) > Math.max(...bottom));
+    }
+  });
+
   test('a crashed load starts one graphics level lower next time', async () => {
     const { clearLoad, markLoad } = await import('../public/js/battle/perf.js');
     const store = new Map();

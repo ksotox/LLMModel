@@ -216,7 +216,7 @@ export class BattleStage {
     // The world: physical sky and sun, sky lighting, soft shadows, grass field, arena, trees, haze.
     this.world = buildWorld({ scene: this.scene, renderer: this.renderer, camera: this.camera, dark, mode, environment, weather, quality: markLoad(preferredQuality(this.renderer)) });
     // Fewer pixels when frames are slow; and once it has drawn for a while, the load counts as safe.
-    this.perf = createPerf(this.renderer, () => this.world.pixelTop);
+    this.perf = createPerf(this.renderer, () => this.world.pixelTop, this.world.effects);
     this.loadTimer = setTimeout(clearLoad, 12000);
     this.flash = new THREE.PointLight(0xffffff, 0, 6);
     this.scene.add(this.flash);

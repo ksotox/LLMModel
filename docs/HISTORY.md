@@ -700,6 +700,16 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - **Sound (`ambience.js`):** its Web Audio ambience ported for the Reef (MIT notice in the file), and our own meadow one (wind, birds, water near the lake); M mutes, remembered.
 - **Tests:** `tests/reef.test.js` (seabed, layout, schools, swimming, drifting, residents) and e2e steps (dive, swim, surface; Reef arena weather lock).
 
+## Phase 38: Realism on High
+- `battle/postfx.js`: on High, the scene is drawn into a texture that three.js treats like the screen (same tone
+  mapping and colours), then gets ambient occlusion from depth, bloom on the brightest things and goes to the screen.
+- Mirror water (`planarMirror`, after three.js's Reflector): the meadow lake and the beach sea reflect what stands
+  round them (grass left out); Standard and Basic keep the old sky-only water.
+- Needle cards on pines (`needleClusterTexture`, `skirtGeometry`) and leaf/needle cards over the far woods; matte, so
+  edge-on cards don't shine.
+- `perf.js`: slow frames turn these passes off first, then lower the resolution. Used by battles, the Sanctuary and the Reef.
+- Screenshots `39-realism-*`. The e2e switches the Sanctuary to High and checks for WebGL errors.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

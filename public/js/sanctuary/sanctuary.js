@@ -134,7 +134,7 @@ function start3d(root, cards, world3d) {
   const dark = document.documentElement.dataset.theme === 'dark'
     || (document.documentElement.dataset.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   const world = buildWorld({ scene, renderer, camera, dark, mode: 'sanctuary', quality: markLoad(preferredQuality(renderer)) });
-  const perf = createPerf(renderer, () => world.pixelTop);
+  const perf = createPerf(renderer, () => world.pixelTop, world.effects);
   const loadTimer = setTimeout(clearLoad, 12000);
   quality.value = world.quality;
   quality.addEventListener('change', () => { world.setQuality(quality.value); saveQuality(world.quality); resize(); });
@@ -534,5 +534,5 @@ function start3d(root, cards, world3d) {
   };
   window.addEventListener('hashchange', leave);
   // For the walkthrough test: where things are.
-  el.sanctuary = { player, creatures, plan, look, travel };
+  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects };
 }

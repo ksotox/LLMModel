@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { addCaustics } from '../reef/reef.js';
+import { MIRROR_GLSL } from './postfx.js';
 
 /** Sky, fog and light for each stadium (display colours, like the meadow's palette). */
 export const STADIUM_LOOK = {
@@ -642,7 +643,7 @@ export function palmMaterials({ time, keep }) {
   return { trunkMat, frondMat, frondDepth };
 }
 
-function beach({ fieldR, time, glow, add, keep, look, contact }) {
+function beach({ fieldR, time, glow, add, keep, look, contact, mirror }) {
   const std = (opts) => keep(new THREE.MeshStandardMaterial({ roughness: 0.95, ...opts }));
   const r = rng(131);
   // The sand: one mesh from the field out under the sea, paler where dry and darker where wet.
@@ -703,12 +704,15 @@ function beach({ fieldR, time, glow, add, keep, look, contact }) {
       uDeep: { value: new THREE.Color(...sky.deep) },
       uShallow: { value: new THREE.Color(0.20, 0.80, 0.74).lerp(new THREE.Color(...sky.horizon), look === STADIUM_LOOK.beach ? 0 : 0.45) },
       uDetail: { value: 1 },
+      ...(mirror?.uniforms ?? { uMirror: { value: null }, uMirrorMat: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 } }),
     },
     vertexShader: `varying vec3 vWorld;
-      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      ${MIRROR_GLSL.vertexDecl}
+      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; ${MIRROR_GLSL.vertex} gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `
       uniform float uTime, uDetail; uniform vec3 uSunDir, uHorizon, uZenith, uSunCol, uDeep, uShallow;
       varying vec3 vWorld;
+      ${MIRROR_GLSL.fragmentDecl}
       float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vn(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(mix(h2(i), h2(i + vec2(1, 0)), u.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), u.x), u.y); }
@@ -731,6 +735,7 @@ function beach({ fieldR, time, glow, add, keep, look, contact }) {
         float fres = 0.03 + 0.72 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
         vec3 R = reflect(-V, n);
         vec3 skyCol = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.55));
+        ${MIRROR_GLSL.mix('skyCol', 'n.xz * 0.03')}
         float s = max(dot(R, uSunDir), 0.0);
         vec3 glint = uSunCol * (pow(s, 260.0) * 2.4 + pow(s, 28.0) * 0.22);
         vec3 body = mix(uShallow, uDeep, smoothstep(0.05, 1.0, depth));
@@ -871,7 +876,7 @@ export function starField(count = 900) {
  * Build a stadium ("night", "floating" or "league") round a field of radius `fieldR`.
  * Returns { group, update(seconds), setQuality(q), dispose() }.
  */
-export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind], contact = () => {} }) {
+export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind], contact = () => {}, mirror = null }) {
   const group = new THREE.Group();
   const kept = [];
   const keep = (o) => { kept.push(o); return o; };
@@ -880,10 +885,11 @@ export function buildStadium(kind, { fieldR, look = STADIUM_LOOK[kind], contact 
   const add = (o) => { group.add(o); return o; };
   const make = { night: nightStadium, floating: floatingStadium, league: leagueStadium, beach }[kind];
   if (!make) throw new Error(`Unknown stadium: ${kind}`);
-  const parts = make({ fieldR, time, glow, add, keep, look, contact });
+  const parts = make({ fieldR, time, glow, add, keep, look, contact, mirror });
   let lively = true;
   return {
     group,
+    water: parts.water ?? null, // the sea (mirrored on High)
     update(seconds) {
       if (lively || parts.water) time.value = seconds; // the sea always moves
       parts.update?.(seconds);
