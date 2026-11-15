@@ -179,3 +179,32 @@ describe('surface depth', () => {
     assert.ok(n[4 + 0] < 128 && n[4 + 2] < 255, 'rising to the right: the normal tilts left');
   });
 });
+
+describe('HD scenery set (public/assets/realism)', () => {
+  test('every asset in the manifest is CC0, from Poly Haven, present and within the size cap', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const dir = path.resolve('public/assets/realism');
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+    assert.match(m.licence, /CC0/);
+    assert.match(m.source, /Poly Haven/);
+    let total = 0;
+    for (const [slot, a] of Object.entries(m.assets)) {
+      assert.match(a.page, /^https:\/\/polyhaven\.com\/a\//, slot);
+      for (const f of a.files) total += fs.statSync(path.join(dir, slot, f)).size;
+    }
+    assert.ok(total <= 40 * 1024 * 1024, 'the whole set stays under 40 MB');
+    for (const slot of ['grass', 'soil', 'sand', 'rock', 'snow']) assert.ok(m.assets[slot], `${slot} ground layer`);
+  });
+
+  test('ground layers: grass on flat meadow, sand by the lake, rock on slopes, snow up high', async () => {
+    const { groundWeights } = await import('../public/js/battle/assets.js');
+    const flat = groundWeights({ y: 0.5, ny: 1, n1: 0.3, n2: 0.5 });
+    assert.ok(flat.sand === 0 && flat.rock === 0 && flat.snow === 0 && flat.soil === 0, 'all grass');
+    assert.ok(groundWeights({ y: -0.8, ny: 1, lake: true }).sand > 0.9, 'lake shore sand');
+    assert.equal(groundWeights({ y: -0.8, ny: 1, lake: false }).sand, 0, 'no sand away from the lake');
+    assert.ok(groundWeights({ y: 3, ny: 0.5 }).rock > 0.9, 'steep slopes are rock');
+    assert.ok(groundWeights({ y: 70, ny: 0.95 }).snow > 0.9, 'snow on high, gentle ground');
+    assert.ok(groundWeights({ y: 70, ny: 0.3 }).snow < 0.1, 'no snow on cliffs');
+  });
+});
