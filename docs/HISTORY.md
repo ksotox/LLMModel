@@ -710,6 +710,10 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - `perf.js`: slow frames turn these passes off first, then lower the resolution. Used by battles, the Sanctuary and the Reef.
 - Screenshots `39-realism-*`. The e2e switches the Sanctuary to High and checks for WebGL errors.
 
+## Phase 39: Architecture overview
+- `docs/ARCHITECTURE.md`: a one-page picture of the system (diagrams, tech stack, what each part does, where data
+  lives, key choices), linked from the README and AGENTS.md.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

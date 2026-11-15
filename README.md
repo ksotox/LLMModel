@@ -2,6 +2,8 @@
 
 Catalog the Pokémon cards you pull and the packs, tins, kits and bundles they came from.
 
+*How it's built, on one page:* [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 - **Upload cards one at a time or in batches.** Add as many photos as you like. Each card in a photo is found automatically, **cut out along its own edges and straightened**, even when it's tilted, photographed at an angle or fills the whole photo. Only the card is kept, with transparent rounded corners, so no table or background shows. A photo of several cards (like [`docs/reference/three-cards.jpg`](docs/reference/three-cards.jpg)) becomes several cards. You can fine-tune any outline by dragging its corners in the crop editor.
 - **Cards are read automatically.** The app reads the **name**, **set code** and **number** printed on each card (e.g. `PAL 066/193`, or `MEP 060` on promos) and fills them in, then matches the official card, so normally there's nothing to type. You can still correct anything it gets wrong.
 - **Optionally record where each card came from.** Upload one or more photos of packs, tins, kits, bundles, Elite Trainer Boxes and so on (or add one without a photo), and link the cards to them.
