@@ -406,8 +406,8 @@ export class BattleStage {
   }
 
   /** A fighter's 3D model, normalised to `height` and standing on y = 0 (null if it can't load). */
-  #model(url, height) {
-    return loadModel(this.loader, url, height);
+  #model(url, height, types = []) {
+    return loadModel(this.loader, url, height, { realistic: this.world.quality !== 'basic', types });
   }
 
   /**
@@ -420,7 +420,7 @@ export class BattleStage {
     const pos = this.position(slot);
     const platform = this.#platform(pos, color);
     const height = this.mode === 'showcase' ? 1.2 : 1.05; // about the card's width, as in an AR card scanner
-    const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height)]);
+    const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height, info.types)]);
 
     const card = new THREE.Group();
     const CARD_W = this.cardW;
@@ -601,7 +601,7 @@ export class BattleStage {
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = false;
-    action.play();
+    action.fadeIn(0.15).play(); // eased in, not snapped
   }
 
   /** Screen position (px, relative to the host) of a point above a fighter, for floating text. */

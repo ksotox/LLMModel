@@ -156,7 +156,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     try {
       const entry = await getJson(`/api/battles/cards/${c.card.id}`);
       const url = entry.models?.forms?.find((f) => f.form === entry.models.default)?.url;
-      const model = alive ? await loadModel(models.loader, url, 1.0) : null;
+      const model = alive ? await loadModel(models.loader, url, 1.0, { realistic: level !== 'basic', types: ['Water'] }) : null;
       if (model && alive) {
         c.group.remove(c.stand);
         c.group.add(model.object);
