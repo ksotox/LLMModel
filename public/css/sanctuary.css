@@ -49,3 +49,13 @@ body.sanctuary-mode { overflow: hidden; }
 .sanc-toast { position: absolute; z-index: 11; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: rgb(18 28 24 / 0.85); font-weight: 600; pointer-events: none; }
 .sanc.reef { background: #0a2c4c; }
 .sanc-note { position: absolute; z-index: 10; left: 50%; top: 14%; transform: translateX(-50%); max-width: 90%; margin: 0; padding: 8px 16px; border-radius: 12px; background: rgb(10 34 56 / 0.85); text-align: center; }
+.sanctuary-modal .modal-card { max-height: 88vh; overflow: auto; }
+.sanctuary-modal h4 { margin: 10px 0 0; font-size: 0.85rem; opacity: 0.85; }
+.trainer-models { grid-template-columns: 1fr; gap: 6px; }
+.trainer-models:empty { display: none; }
+.trainer-model { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: stretch; }
+.trainer-model .trainer-swatch { justify-items: start; text-align: left; }
+.trainer-model small { opacity: 0.7; font-size: 0.68rem; }
+.trainer-remove { background: rgb(255 255 255 / 0.08); color: #fff; border: 0; border-radius: 10px; width: 34px; cursor: pointer; font-size: 1.1rem; }
+.trainer-hint, .trainer-note { font-size: 0.72rem; opacity: 0.8; margin: 8px 0; }
+.trainer-note:empty { display: none; }

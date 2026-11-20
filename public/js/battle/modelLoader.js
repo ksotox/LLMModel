@@ -183,3 +183,28 @@ export function realisticMaterial(m, types = []) {
   m.dispose();
   return p;
 }
+
+/**
+ * Life for a model that has a skeleton but no animation clips: slow breathing through its spine and
+ * neck bones and a gentle look about with the head. Returns { update(t) }, or null with no bones.
+ */
+export function breathing(root) {
+  const bones = [];
+  root.traverse((o) => { if (o.isBone && /spine|chest|body|torso|neck|head/i.test(o.name)) bones.push(o); });
+  if (!bones.length) return null;
+  const rest = bones.map((b) => b.quaternion.clone());
+  const turn = new THREE.Quaternion();
+  const X = new THREE.Vector3(1, 0, 0);
+  const Y = new THREE.Vector3(0, 1, 0);
+  const seed = Math.random() * 10;
+  return {
+    update(t) {
+      bones.forEach((b, i) => {
+        const head = /neck|head/i.test(b.name);
+        b.quaternion.copy(rest[i]);
+        b.quaternion.multiply(turn.setFromAxisAngle(X, Math.sin(t * 1.6 + seed) * (head ? 0.04 : 0.025)));
+        if (head) b.quaternion.multiply(turn.setFromAxisAngle(Y, Math.sin(t * 0.45 + seed) * 0.18));
+      });
+    },
+  };
+}

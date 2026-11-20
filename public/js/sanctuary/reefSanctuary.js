@@ -12,7 +12,7 @@ import { createEffects } from '../battle/postfx.js';
 import { createAmbience } from '../ambience.js';
 import { addLook, createLook, ease, stepLook } from './look.js';
 import { createSwimmer, stepSwimmer } from './player.js';
-import { initSanctuaryUI, savedTrainer } from './sanctuaryUI.js';
+import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { buildTrainer } from './trainer.js';
 import { createCreature, habitatFor, nearest, reefResidents, stepDrifter } from './zoo.js';
 
@@ -122,12 +122,15 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   showSound();
 
   const world = { heightAt: reef.heightAt, top: REEF.top, radius: REEF.radius - 2, obstacles: reef.layout.obstacles };
-  const { avatar, legs, arms, dress } = buildTrainer(THREE);
+  const trainer = buildTrainer(THREE);
+  const { avatar, legs, arms, dress } = trainer;
   scene.add(avatar);
   dress(savedTrainer());
 
   // The residents, at the reef's open-water spots; cards until their 3D models load.
   const models = createModelLoader();
+  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: level !== 'basic' }).catch(() => null);
+  wearModel(savedTrainerModel());
   const textures = new THREE.TextureLoader();
   const cardGeo = new THREE.PlaneGeometry(0.72, 1.0);
   cardGeo.translate(0, 0.5, 0);
@@ -196,7 +199,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     c.petted = 0.8;
   };
   const ui = initSanctuaryUI(el, {
-    onSelectTrainer: dress,
+    onSelectTrainer: (preset, model) => { dress(preset); wearModel(model?.id ?? null); },
     onRadialAction: (action, c) => {
       if (action === 'follow') { c.state = c.state === 'follow' ? 'idle' : 'follow'; c.timer = 1; c.plate.classList.toggle('following', c.state === 'follow'); }
       else if (action === 'pet') hearts(c);
@@ -309,6 +312,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     legs[1].rotation.x = -kick * 0.6;
     arms[0].rotation.x = -2.6 + Math.sin(t * 2.2) * 0.5;
     arms[1].rotation.x = -2.6 - Math.sin(t * 2.2) * 0.5;
+    trainer.play('swim', swimmer.moving, dt, t); // the owner's model, if one is chosen
     reef.sun.position.set(swimmer.x + 8, 30, swimmer.z - 6);
     reef.sun.target.position.set(swimmer.x, 0, swimmer.z);
 
