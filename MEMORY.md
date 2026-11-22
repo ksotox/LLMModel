@@ -92,12 +92,12 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
-- **PokéBattles:** `server/battle.js` (card battle data), `server/models3d.js` (.glb cache in data/models3d), `js/battle/`:
-  engine (rules + weather) and realtime (sim + AI) pure; scene (stage); world (Hi-Fi v4 meadow); stadiums, weatherFx,
-  arenas (PokeBrawl ideas only); surface (normal maps, sky light, contact shadows).
+- **PokéBattles** (`js/battle/`): `engine` and `realtime` are pure. Real-time has dodge jumps, air dashes, cast
+  cues and Fire rushes. `scene`, `world`, `stadiums`, `weatherFx`, `arenas` and `surface` render the game.
+  `server/battle.js` serves card rules. `server/models3d.js` caches GLBs under `data/models3d`.
   Models are Nintendo IP (fan project): never commit them.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
-  owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids); `look.js`; Battle hands off via `pokedex.battleKeep`.
+  owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids and the climbable basalt ledge); `look.js`; Battle hands off via `pokedex.battleKeep`.
 - `battle/perf.js`: dynamic resolution + crash-safe start; drops `postfx.js` first. High/Std: `hdScenery.js` (Poly Haven CC0), `realisticMaterial`. Trainers: own .glb via `/api/trainers` (data/, never committed), `rig.js` poses; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model

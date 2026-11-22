@@ -3,7 +3,7 @@
 // from common game-movement ideas (movement modes, acceleration and braking, weaker steering in
 // the air, a short grace time after leaving an edge, a remembered jump press).
 //
-//   ground: { heightAt(x, z), waterAt(x, z) → the water's level there or null, radius, solid?(x, z) }
+//   ground: { heightAt(x, z), waterAt(x, z) → the water's level there or null, radius, solid?(x, z), ledge? }
 //   input:  { x, z } direction in the world (length up to 1), sprint, jump (pressed this step), jumpHeld
 
 export const MOVE = {
@@ -14,21 +14,53 @@ export const MOVE = {
   maxClimb: 1.15, // rise per unit walked that still counts as walkable
   swimDepth: 0.7, // deeper water than this is swum, not waded
   staminaMax: 100, sprintDrain: 15, glideDrain: 11, regen: 24, regenDelay: 0.6, recovered: 30,
+  mantleTime: 0.26, mantleReach: 0.65,
 };
 
 export function createPlayer({ x = 0, z = 4 } = {}) {
-  return { x, y: 0, z, vx: 0, vy: 0, vz: 0, facing: Math.PI, mode: 'walk', stamina: MOVE.staminaMax, exhausted: false, rest: 0, coyote: 0, buffer: 0, moving: 0 };
+  return { x, y: 0, z, vx: 0, vy: 0, vz: 0, facing: Math.PI, mode: 'walk', stamina: MOVE.staminaMax, exhausted: false, rest: 0, coyote: 0, buffer: 0, moving: 0, mantle: null };
 }
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const LEDGE_PAD = 0.23;
+
+function supportAt(ground, x, z, y) {
+  const floor = ground.heightAt(x, z);
+  const ledge = ground.ledge;
+  return ledge && y >= ledge.top - 0.02 && ledge.contains(x, z) ? Math.max(floor, ledge.top) : floor;
+}
+
+function stepMantle(p, dt, ground) {
+  const m = p.mantle;
+  m.t = Math.min(1, m.t + dt / MOVE.mantleTime);
+  const rise = clamp01(m.t / 0.6);
+  const across = clamp01((m.t - 0.6) / 0.4);
+  const ease = (a) => a * a * (3 - 2 * a);
+  const x = m.x0 + (m.x - m.x0) * ease(across);
+  const z = m.z0 + (m.z - m.z0) * ease(across);
+  if (ground.solid?.(x, z)) {
+    p.mantle = null;
+    p.mode = 'fall';
+    return p;
+  }
+  p.x = x;
+  p.z = z;
+  p.y = m.y0 + (m.y - m.y0) * ease(rise);
+  if (m.t >= 1) {
+    p.mantle = null;
+    p.mode = 'walk';
+  }
+  return p;
+}
 
 /** Advance the trainer by `dt` seconds. Changes and returns `p`. */
 export function stepPlayer(p, input, dt, ground) {
+  if (p.mantle) return stepMantle(p, dt, ground);
   const len = Math.hypot(input.x, input.z);
   const ix = len > 1 ? input.x / len : input.x;
   const iz = len > 1 ? input.z / len : input.z;
   const wants = Math.min(1, len);
-  const floor = ground.heightAt(p.x, p.z);
+  const floor = supportAt(ground, p.x, p.z, p.y);
   const water = ground.waterAt?.(p.x, p.z) ?? null;
   const swimming = water != null && water - floor > MOVE.swimDepth && p.y <= water - MOVE.swimDepth + 0.25;
   const onGround = !swimming && p.y <= floor + 0.02 && p.vy <= 0;
@@ -36,6 +68,18 @@ export function stepPlayer(p, input, dt, ground) {
   // Mode.
   p.buffer = input.jump ? MOVE.jumpBuffer : Math.max(0, p.buffer - dt);
   p.coyote = onGround || swimming ? MOVE.coyote : Math.max(0, p.coyote - dt);
+  const ledge = ground.ledge;
+  if (ledge && !swimming && (p.buffer > 0 || input.jumpHeld) && wants > 0.15) {
+    const rise = ledge.top - p.y;
+    const toward = (ledge.x - p.x) * ix + (ledge.z - p.z) * iz;
+    const reach = MOVE.mantleReach / wants;
+    const atFace = !ledge.contains(p.x, p.z) && ledge.contains(p.x + ix * reach, p.z + iz * reach, LEDGE_PAD);
+    if (rise >= 0.16 && rise <= 1.2 && toward > 0 && atFace && !ground.solid?.(ledge.x, ledge.z)) {
+      p.mantle = { x0: p.x, y0: p.y, z0: p.z, x: ledge.x, y: ledge.top, z: ledge.z, t: 0 };
+      Object.assign(p, { mode: 'mantle', vx: 0, vy: 0, vz: 0, moving: 0, buffer: 0, coyote: 0, facing: Math.atan2(ledge.x - p.x, ledge.z - p.z) });
+      return stepMantle(p, dt, ground);
+    }
+  }
   if (swimming) p.mode = 'swim';
   else if (onGround) p.mode = 'walk';
   else if (p.mode !== 'glide') p.mode = 'fall';
@@ -79,12 +123,13 @@ export function stepPlayer(p, input, dt, ground) {
   let nx = p.x + p.vx * dt;
   let nz = p.z + p.vz * dt;
   const step = Math.hypot(nx - p.x, nz - p.z);
-  if (p.mode === 'walk' && step > 1e-6 && (ground.heightAt(nx, nz) - floor) / step > MOVE.maxClimb) {
+  if (p.mode === 'walk' && step > 1e-6 && (supportAt(ground, nx, nz, p.y) - floor) / step > MOVE.maxClimb) {
     nx = p.x; nz = p.z; p.vx = 0; p.vz = 0;
   }
   // Solid things (trees, rocks, ruins): slide along them instead of walking through.
-  if (ground.solid?.(nx, nz)) {
-    if (!ground.solid(nx, p.z)) { nz = p.z; p.vz = 0; } else if (!ground.solid(p.x, nz)) { nx = p.x; p.vx = 0; } else { nx = p.x; nz = p.z; p.vx = 0; p.vz = 0; }
+  const blocks = (x, z) => ground.solid?.(x, z) || (ledge && p.y < ledge.top - 0.02 && ledge.contains(x, z, LEDGE_PAD));
+  if (blocks(nx, nz)) {
+    if (!blocks(nx, p.z)) { nz = p.z; p.vz = 0; } else if (!blocks(p.x, nz)) { nx = p.x; p.vx = 0; } else { nx = p.x; nz = p.z; p.vx = 0; p.vz = 0; }
   }
   const r = Math.hypot(nx, nz);
   if (ground.radius && r > ground.radius) { nx *= ground.radius / r; nz *= ground.radius / r; }
@@ -92,7 +137,7 @@ export function stepPlayer(p, input, dt, ground) {
   p.z = nz;
 
   // Height.
-  const here = ground.heightAt(p.x, p.z);
+  const here = supportAt(ground, p.x, p.z, p.y);
   const level = ground.waterAt?.(p.x, p.z) ?? null;
   if (p.mode === 'swim' && level != null && p.vy <= 0) {
     p.y = Math.max(here, level - MOVE.swimDepth);

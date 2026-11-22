@@ -25,6 +25,15 @@ const DODGE_SPEED = 8;
 const DODGE_INVULNERABLE = 0.2;
 const DODGE_RECOVERY = 0.18; // a moment you can be punished in
 const DODGE_REFILL = 1.4; // seconds per charge, starting a while after the last dodge
+const DODGE_JUMP_START = 0.08;
+const DODGE_JUMP_END = 0.22;
+const DODGE_JUMP_BUFFER = 0.10;
+const DODGE_JUMP_SPEED = 4.2;
+const AIR_DASH_TIME = 0.14;
+const AIR_DASH_RECOVERY = 0.12;
+const AIR_DASH_SPEED = 6.5;
+const RUSH_TIME = 0.28;
+const RUSH_SPEED = 7;
 const STUN = 0.36;
 const COMBO_WINDOW = 1.3;
 const COMBO_MAX = 5; // the fifth hit in a row knocks down (then a moment of invulnerability)
@@ -72,17 +81,18 @@ export function moveSpecs(data) {
     const symbols = costOf(a);
     const base = a.damage?.base ?? 0;
     const kind = base > 0 ? (ranged ? 'projectile' : 'melee') : /heal/i.test(a.effect ?? '') ? 'heal' : 'charge';
+    const rush = base > 0 && types[0] === 'Fire' && /^(flame charge|flame wheel)$/i.test(a.name?.trim() ?? '');
     return {
       name: a.name,
-      kind,
+      kind: rush ? 'rush' : kind,
       type: types[0],
       damage: base,
       shots: a.damage?.mod === 'x' ? 3 : 1, // "20×": three shots in a fan
       bonus: a.damage?.mod === '+' ? 1.5 : 1, // "30+": half again on average
       energy: Math.min(ENERGY_MAX, symbols * ENERGY_PER_SYMBOL),
-      cooldown: 0.6 + symbols * 0.5,
-      startup: 0.12 + symbols * 0.05,
-      recovery: 0.22,
+      cooldown: rush ? Math.max(3, 0.6 + symbols * 0.5) : 0.6 + symbols * 0.5,
+      startup: rush ? Math.max(0.18, 0.12 + symbols * 0.05) : 0.12 + symbols * 0.05,
+      recovery: rush ? 0.3 : 0.22,
     };
   });
   const ability = data?.abilities?.[0];
@@ -118,6 +128,9 @@ function makeSide(data, side, start) {
     dodges: DODGE_CHARGES,
     dodgeT: 0,
     dodgeDir: [0, 0],
+    dodgeJumpBuffer: 0,
+    airDashing: false,
+    airDashUsed: false,
     sinceDodge: 99,
     refill: 0,
     invulnerable: 0,
@@ -164,6 +177,18 @@ export const idle = () => ({ move: { x: 0, z: 0 }, jump: false, dodge: false, us
 const len = (x, z) => Math.hypot(x, z);
 const canAct = (f) => !f.out && f.hp > 0 && f.stun <= 0 && f.down <= 0 && f.dodgeT <= 0 && !f.action;
 
+export function dodgeJumpReady(f) {
+  const elapsed = DODGE_TIME + DODGE_RECOVERY - f.dodgeT;
+  return f.dodgeT > DODGE_RECOVERY && elapsed >= DODGE_JUMP_START && elapsed <= DODGE_JUMP_END
+    && !f.airDashing && f.y <= 0.001 && f.dodges > 0 && f.stun <= 0 && f.down <= 0 && f.hp > 0;
+}
+
+function spendDodge(f) {
+  f.dodges--;
+  f.sinceDodge = 0;
+  f.refill = 0;
+}
+
 /**
  * Damage of one hit: the printed damage scaled for real time, with the power-up, the weather and the
  * card's weakness (×2, or +N scaled) and resistance (−N scaled); snow guards Water types a little.
@@ -198,7 +223,12 @@ function damage(state, attacker, target, move, x, z, events) {
   const push = 2.6 + (weakness ? 1 : 0);
   target.vx = ((target.x - x) / away) * push;
   target.vz = ((target.z - z) / away) * push;
+  if (target.action) events.push({ type: 'castCancel', side: target.side });
   target.action = null;
+  target.dodgeJumpBuffer = 0;
+  // An exposed air dash or dodge recovery can be stopped by a hit.
+  target.dodgeT = 0;
+  target.airDashing = false;
   if (target.combo >= COMBO_MAX) {
     target.down = DOWN_TIME;
     target.combo = 0;
@@ -229,7 +259,8 @@ function fire(state, f, foe, move, index, events) {
     events.push({ type: 'charge', side: f.side });
     return;
   }
-  events.push({ type: 'move', side: f.side, index, name: move.name, kind: move.kind, moveType: move.type });
+  events.push({ type: 'move', side: f.side, index, name: move.name, kind: move.kind, moveType: move.type, x: f.x, y: f.y, z: f.z });
+  if (move.kind === 'rush') return;
   if (move.kind === 'melee') {
     const dx = foe.x - f.x;
     const dz = foe.z - f.z;
@@ -277,29 +308,59 @@ function stepFighter(state, f, foe, intent, dt, events) {
   }
   if (f.out || f.hp <= 0) return;
 
-  // Face the rival (lock-on, as with a gamepad's lock-on).
+  const action = f.action;
+  const actionMove = action ? f.moves[action.index] : null;
+  const rushing = actionMove?.kind === 'rush' && action.fired && action.t < actionMove.startup + RUSH_TIME;
+  // Keep looking at the rival except during a committed forward rush.
   const target = Math.atan2(foe.x - f.x, foe.z - f.z);
-  let turn = ((target - f.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-  f.facing += turn * Math.min(1, dt * 12);
+  if (!rushing) {
+    const turn = ((target - f.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    f.facing += turn * Math.min(1, dt * 12);
+  }
+
+  const groundDodge = !f.airDashing && f.dodgeT > DODGE_RECOVERY;
+  f.dodgeJumpBuffer = groundDodge && intent?.jump ? DODGE_JUMP_BUFFER : Math.max(0, f.dodgeJumpBuffer - dt);
+  const dodgeJump = f.dodgeJumpBuffer > 0 && dodgeJumpReady(f);
+  if (dodgeJump) {
+    spendDodge(f);
+    f.dodgeJumpBuffer = 0;
+    f.dodgeT = 0;
+    f.invulnerable = 0;
+    f.vx = f.dodgeDir[0] * DODGE_SPEED * 0.8;
+    f.vz = f.dodgeDir[1] * DODGE_SPEED * 0.8;
+    f.vy = DODGE_JUMP_SPEED;
+    events.push({ type: 'dodgeJump', side: f.side });
+  }
 
   // Start something new.
-  if (canAct(f) && intent) {
-    if (intent.dodge && f.dodges > 0 && f.y <= 0.001) {
+  if (!dodgeJump && canAct(f) && intent) {
+    const airborne = f.y > 0.001;
+    if (intent.dodge && f.dodges > 0 && (!airborne || !f.airDashUsed)) {
       const m = len(intent.move.x, intent.move.z);
       // A dodge goes where you're steering, or sideways if you're not.
       f.dodgeDir = m > 0.2 ? [intent.move.x / m, intent.move.z / m] : [Math.cos(target), -Math.sin(target)];
-      f.dodgeT = DODGE_TIME + DODGE_RECOVERY;
-      f.invulnerable = DODGE_INVULNERABLE;
-      f.dodges--;
-      f.sinceDodge = 0;
-      f.refill = 0;
-      events.push({ type: 'dodge', side: f.side });
+      f.dodgeJumpBuffer = 0;
+      f.airDashing = airborne;
+      spendDodge(f);
+      if (airborne) {
+        f.airDashUsed = true;
+        f.dodgeT = AIR_DASH_TIME + AIR_DASH_RECOVERY;
+        f.vx = f.dodgeDir[0] * AIR_DASH_SPEED * 0.8 + f.vx * 0.2;
+        f.vz = f.dodgeDir[1] * AIR_DASH_SPEED * 0.8 + f.vz * 0.2;
+        events.push({ type: 'airDash', side: f.side });
+      } else {
+        f.dodgeT = DODGE_TIME + DODGE_RECOVERY;
+        if (intent.jump) f.dodgeJumpBuffer = DODGE_JUMP_BUFFER;
+        f.invulnerable = DODGE_INVULNERABLE;
+        events.push({ type: 'dodge', side: f.side });
+      }
     } else if (intent.use != null) {
       const move = f.moves[intent.use];
       if (move && f.cooldowns[intent.use] <= 0 && f.energy >= move.energy && !(move.once && f.usedOnce.includes(intent.use))) {
         f.energy -= move.energy;
         f.cooldowns[intent.use] = move.cooldown;
         f.action = { index: intent.use, t: 0, fired: false };
+        events.push({ type: 'castStart', side: f.side, moveType: move.type });
       }
     } else if (intent.jump && f.y <= 0.001) {
       f.vy = JUMP_SPEED;
@@ -307,15 +368,23 @@ function stepFighter(state, f, foe, intent, dt, events) {
     }
   }
 
+  const beforeX = f.x;
+  const beforeZ = f.z;
   // Move.
   let ax = 0;
   let az = 0;
   if (f.dodgeT > 0) {
-    const dashing = f.dodgeT > DODGE_RECOVERY;
+    const dashing = f.dodgeT > (f.airDashing ? AIR_DASH_RECOVERY : DODGE_RECOVERY);
     f.dodgeT = Math.max(0, f.dodgeT - dt);
-    if (dashing) { ax = f.dodgeDir[0] * DODGE_SPEED; az = f.dodgeDir[1] * DODGE_SPEED; }
-    f.vx = ax;
-    f.vz = az;
+    if (!f.airDashing || !dashing) {
+      if (dashing) { ax = f.dodgeDir[0] * DODGE_SPEED; az = f.dodgeDir[1] * DODGE_SPEED; }
+      f.vx = ax;
+      f.vz = az;
+    }
+    if (f.dodgeT === 0) f.airDashing = false;
+  } else if (rushing) {
+    f.vx = action.rushX * RUSH_SPEED;
+    f.vz = action.rushZ * RUSH_SPEED;
   } else if (f.stun > 0 || f.down > 0) {
     f.vx *= 0.88; // knocked back, sliding to a stop
     f.vz *= 0.88;
@@ -325,7 +394,7 @@ function stepFighter(state, f, foe, intent, dt, events) {
     const slow = f.action ? 0.35 : 1; // moving while attacking is slow
     const tx = (intent?.move.x ?? 0) * k * SPEED * slow;
     const tz = (intent?.move.z ?? 0) * k * SPEED * slow;
-    const grip = f.y > 0.001 ? 4 : 14; // little control in the air
+    const grip = f.y > 0.001 || f.vy > 0 ? 4 : 14; // little control in the air
     f.vx += (tx - f.vx) * Math.min(1, grip * dt);
     f.vz += (tz - f.vz) * Math.min(1, grip * dt);
   }
@@ -334,7 +403,7 @@ function stepFighter(state, f, foe, intent, dt, events) {
   if (f.y > 0 || f.vy > 0) {
     f.vy -= GRAVITY * dt;
     f.y = Math.max(0, f.y + f.vy * dt);
-    if (f.y === 0) f.vy = 0;
+    if (f.y === 0) { f.vy = 0; f.airDashUsed = false; }
   }
 
   // An action: wind up, then the move goes off, then a short recovery.
@@ -354,9 +423,14 @@ function stepFighter(state, f, foe, intent, dt, events) {
     }
     if (!f.action.fired && f.action.t >= move.startup) {
       f.action.fired = true;
+      events.push({ type: 'castRelease', side: f.side });
+      if (move.kind === 'rush') {
+        f.action.rushX = Math.sin(f.facing);
+        f.action.rushZ = Math.cos(f.facing);
+      }
       fire(state, f, foe, move, f.action.index, events);
     }
-    if (f.action.t >= move.startup + move.recovery) f.action = null;
+    if (f.action.t >= move.startup + (move.kind === 'rush' ? RUSH_TIME : 0) + move.recovery) f.action = null;
   }
 
   // The field's edge: a wall, or (Floating Stadium) a fall.
@@ -370,6 +444,17 @@ function stepFighter(state, f, foe, intent, dt, events) {
       f.out = true;
       f.hp = 0;
       events.push({ type: 'ringout', side: f.side }, { type: 'ko', side: f.side });
+    }
+  }
+  if (rushing && !f.out && !action.rushHit && Math.abs(foe.y - f.y) < 1.2) {
+    const dx = f.x - beforeX;
+    const dz = f.z - beforeZ;
+    const along = Math.max(0, Math.min(1, ((foe.x - beforeX) * dx + (foe.z - beforeZ) * dz) / (dx * dx + dz * dz || 1)));
+    const x = beforeX + dx * along;
+    const z = beforeZ + dz * along;
+    if (len(foe.x - x, foe.z - z) <= BODY_RADIUS * 2 + 0.1) {
+      action.rushHit = true;
+      damage(state, f, foe, actionMove, beforeX, beforeZ, events);
     }
   }
 }
@@ -501,7 +586,7 @@ export function aiIntent(state, side) {
   const open = seen.dodgeT > 0 && seen.dodgeT < DODGE_RECOVERY + 0.02;
   // 3. Pick a move it can use now, if it feels like attacking.
   const usable = me.moves.map((m, i) => ({ m, i })).filter(({ m, i }) => me.cooldowns[i] <= 0 && me.energy >= m.energy && !(m.once && me.usedOnce.includes(i)));
-  const inRange = usable.filter(({ m }) => (m.kind === 'melee' ? d < LUNGE_RANGE : m.kind === 'projectile' ? d < 7.5 : true));
+  const inRange = usable.filter(({ m }) => (m.kind === 'melee' || m.kind === 'rush' ? d < LUNGE_RANGE : m.kind === 'projectile' ? d < 7.5 : true));
   const hurtSelf = me.hp < me.maxHp * 0.5;
   const pick = inRange.find(({ m }) => m.kind === 'boost' && foe.hp > foe.maxHp * 0.4)
     ?? inRange.find(({ m }) => m.kind === 'heal' && hurtSelf)

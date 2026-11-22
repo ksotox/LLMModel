@@ -8,7 +8,7 @@
 
 import { clear, h } from './../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
-import { buildHabitats, planHabitats, solidAt } from './habitats.js';
+import { addTraversalLedge, buildHabitats, planHabitats, solidAt } from './habitats.js';
 import { addLook, createLook, ease, stepLook } from './look.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
 import { createAmbience } from '../ambience.js';
@@ -120,7 +120,7 @@ function start3d(root, cards, world3d) {
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/sanctuary/reef'; } }, '🌊 Reef'),
       h('button.btn.small', { type: 'button', onclick: () => ui.openTrainerModal() }, '👤 Trainer'),
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/'; } }, '✕ Leave')),
-    h('p.sanc-help', touch ? 'Drag the stick to walk · drag the view to look · tap a Pokémon’s name to interact' : 'WASD walk · Shift sprint · Space jump, hold to glide · drag to look (double-click: mouse look) · E interact · 1–8 travel'));
+    h('p.sanc-help', touch ? 'Drag to move or look · hold Jump toward the basalt ledge to climb · tap a Pokémon’s name to interact' : 'WASD walk · Shift sprint · Space jump, hold to climb or glide · drag to look · E interact · 1–8 travel'));
   clear(root, el);
   document.body.classList.add('sanctuary-mode');
 
@@ -148,6 +148,8 @@ function start3d(root, cards, world3d) {
   // Each habitat's own scenery (habitats.js); you walk round its trees, rocks and ruins.
   const lake = { x: LAKE.x, z: LAKE.z, level: LAKE.level, shore: worldKit.shoreRadius() };
   const plan = planHabitats({ inWater, lake });
+  ground.ledge = addTraversalLedge(plan, terrainHeight);
+  const walkingPlan = plan.filter((p) => !p.ledge);
   const sway = { value: 0 };
   const habitats = buildHabitats(scene, plan, {
     THREE, heightAt: terrainHeight, lake, dark, leaves: world.leaves, time: sway, shoreSand: worldKit.SHORE_SAND,
@@ -156,7 +158,7 @@ function start3d(root, cards, world3d) {
     ...(() => { const m = stadiumKit.palmMaterials({ time: sway, keep: (o) => o }); return { palmTrunk: m.trunkMat, palmFrond: m.frondMat, palmFrondDepth: m.frondDepth }; })(),
     contactShadows: surfaceKit.contactShadows, contactTexture: surfaceKit.contactTexture, addSurfaceDepth: surfaceKit.addSurfaceDepth,
   });
-  ground.solid = (x, z) => solidAt(plan, x, z);
+  ground.solid = (x, z) => solidAt(walkingPlan, x, z);
   const resize = () => {
     const w = Math.max(1, el.clientWidth);
     const hgt = Math.max(1, el.clientHeight);
@@ -326,7 +328,7 @@ function start3d(root, cards, world3d) {
     const to = stops[i];
     if (!to || paused()) return;
     stop = i;
-    Object.assign(player, { x: to.x, z: to.z, y: terrainHeight(to.x, to.z), vx: 0, vz: 0, vy: 0, mode: 'walk' });
+    Object.assign(player, { x: to.x, z: to.z, y: terrainHeight(to.x, to.z), vx: 0, vz: 0, vy: 0, mode: 'walk', mantle: null, coyote: 0, buffer: 0 });
     look.yaw = Math.atan2(-to.x, -to.z); // looking on into the habitat (away from the plaza)
     toast(`→ ${to.name}`);
   };
@@ -436,11 +438,12 @@ function start3d(root, cards, world3d) {
     const stride = player.mode === 'walk' ? Math.sin(t * (6 + player.moving)) * Math.min(1, player.moving / 4) : 0;
     legs[0].rotation.x = stride * 0.7;
     legs[1].rotation.x = -stride * 0.7;
-    arms[0].rotation.x = player.mode === 'glide' ? Math.PI : -stride * 0.6;
-    arms[1].rotation.x = player.mode === 'glide' ? Math.PI : stride * 0.6;
+    const reach = player.mode === 'mantle' ? -1.8 : player.mode === 'glide' ? Math.PI : null;
+    arms[0].rotation.x = reach ?? -stride * 0.6;
+    arms[1].rotation.x = reach ?? stride * 0.6;
     glider.visible = player.mode === 'glide';
     trainer.play(trainerState(player), player.moving, dt, t); // the owner's model, if one is chosen
-    avatar.rotation.x = player.mode === 'glide' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
+    avatar.rotation.x = player.mode === 'glide' || player.mode === 'mantle' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
     world.sun.target.position.set(player.x, player.y, player.z); // the sharp shadows stay round the trainer
     world.sun.position.copy(world.sun.target.position).addScaledVector(sunDir, 30);
 

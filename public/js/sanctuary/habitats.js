@@ -88,6 +88,28 @@ export function solidAt(plan, x, z, pad = 0.35) {
   return false;
 }
 
+/** Give one basalt slab the same dimensions in the scene and in the trainer's collider. */
+export function addTraversalLedge(plan, heightAt) {
+  const prop = plan.find((p) => p.kind === 'slab');
+  if (!prop) return null;
+  const { x, z, turn, size } = prop;
+  const floor = heightAt(x, z);
+  const width = 1.6 * size;
+  const depth = 1.0 * size;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  prop.ledge = {
+    x, z, width, depth, bottom: floor - 0.25, top: floor + 0.85,
+    contains(px, pz, pad = 0) {
+      const dx = px - x;
+      const dz = pz - z;
+      return Math.abs(dx * cos - dz * sin) <= width / 2 + pad
+        && Math.abs(dx * sin + dz * cos) <= depth / 2 + pad;
+    },
+  };
+  return prop.ledge;
+}
+
 // ---------------------------------------------------------------------------
 // Making it (three.js)
 
@@ -215,9 +237,16 @@ export function buildHabitats(scene, plan, kit) {
         break;
       }
       case 'slab': {
-        const slab = new THREE.Mesh(new THREE.BoxGeometry(1.6 * p.size, 0.35, 1.0 * p.size), basalt);
+        const tiltX = (r() - 0.5) * 0.2;
+        const tiltZ = (r() - 0.5) * 0.2;
+        const ledge = p.ledge;
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(1.6 * p.size, ledge ? ledge.top - ledge.bottom : 0.35, 1.0 * p.size), basalt);
         slab.position.copy(at(p, 0.12));
-        slab.rotation.set((r() - 0.5) * 0.2, p.turn, (r() - 0.5) * 0.2);
+        slab.rotation.set(tiltX, p.turn, tiltZ);
+        if (ledge) {
+          slab.position.y = (ledge.top + ledge.bottom) / 2;
+          slab.rotation.set(0, p.turn, 0);
+        }
         add(shade(slab), p, 1.1);
         break;
       }

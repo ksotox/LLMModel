@@ -11,7 +11,7 @@
 // engine's events one after another.
 
 import * as THREE from 'three';
-import { breathing, createModelLoader, loadModel } from './modelLoader.js';
+import { breathing, createModelLoader, loadModel, pickClips } from './modelLoader.js';
 import { createMoveFx } from './moveFx.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
@@ -488,6 +488,8 @@ export class BattleStage {
   removeFighter(slot) {
     const s = this.slots[slot];
     if (!s) return;
+    s.windup?.geometry.dispose();
+    s.windup?.material.dispose();
     this.scene.remove(s.platform, s.card, s.body, s.ball?.group);
     this.slots[slot] = null;
   }
@@ -602,12 +604,13 @@ export class BattleStage {
     await this.tween(350, (t) => { ball.lid.rotation.x = -1.9 * (1 - t); });
   }
 
-  #playClip(s, clip) {
+  #playClip(s, clip, fade = 0.15) {
     const action = s.mixer.clipAction(clip);
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = false;
-    action.fadeIn(0.15).play(); // eased in, not snapped
+    action.fadeIn(fade).play();
+    return action;
   }
 
   /** Screen position (px, relative to the host) of a point above a fighter, for floating text. */
@@ -729,12 +732,26 @@ export class BattleStage {
       s.live = true;
       this.scene.remove(s.platform, s.card, s.ball?.group);
       s.lift = 0.02;
+      if (s.mixer) {
+        s.mixer.stopAllAction();
+        const { idle, walk } = pickClips(s.model.clips);
+        s.liveIdle = idle ? s.mixer.clipAction(idle) : null;
+        s.liveWalk = walk ? s.mixer.clipAction(walk) : null;
+        s.liveAttack = s.model.clips.find((clip) => /attack|shoot|strike|special|cast|move[_ -]?\d/i.test(clip.name)
+          && clip !== idle && clip !== walk) ?? null;
+      }
+      s.windup = new THREE.Mesh(new THREE.RingGeometry(0.47, 0.58, 32),
+        new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+      s.windup.rotation.x = -Math.PI / 2;
+      s.windup.position.y = 0.08;
+      s.windup.visible = false;
+      s.body.add(s.windup);
     }
     this.liveFx = { shots: new Map(), zone: null };
   }
 
-  /** Where a fighter is now: { x, y, z, facing, down }. */
-  setPose(slot, { x, y = 0, z, facing = 0, down = false }) {
+  /** Position and movement from the real-time simulation. */
+  setPose(slot, { x, y = 0, z, facing = 0, down = false, speed = 0, dt = 1 / 60 }) {
     const s = this.slots[slot];
     if (!s?.live || s.fainted) return;
     s.base.set(x, 0, z);
@@ -743,7 +760,16 @@ export class BattleStage {
     s.poseY = y;
     s.body.rotation.y = facing;
     this.moveFx.track(slot, x, y, z, facing);
-    s.body.rotation.z += ((down ? 1.25 * (slot ? 1 : -1) : 0) - s.body.rotation.z) * 0.3;
+    const blend = 1 - Math.exp(-dt * 16);
+    s.body.rotation.z += ((down ? 1.25 * (slot ? 1 : -1) : 0) - s.body.rotation.z) * blend;
+    s.body.rotation.x += ((s.windup?.visible && !s.liveAttack ? -0.16 : 0) - s.body.rotation.x) * blend;
+    const gait = down || s.liveCastAction?.isRunning() ? null : (y < 0.05 && speed > 0.35 ? s.liveWalk : s.liveIdle) ?? s.liveIdle;
+    if (gait !== s.liveGait) {
+      s.liveGait?.fadeOut(0.1);
+      gait?.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.1).play();
+      s.liveGait = gait;
+    }
+    if (gait && gait === s.liveWalk) gait.setEffectiveTimeScale(Math.max(0.65, Math.min(2, speed / 2.5)));
   }
 
   /** The chase camera: behind fighter `me`, looking past it at `foe` (smoothed). */
@@ -762,16 +788,34 @@ export class BattleStage {
     this.camLook.lerp(goalLook, k);
   }
 
-  /** A move goes off: its animation, and a type-coloured flash in front for a close-up strike. */
-  liveMove(slot, { kind, type }) {
+  liveCastStart(slot, moveType) {
+    const s = this.slots[slot];
+    if (!s?.live || s.fainted) return;
+    s.windup.material.color.set(typeColor(moveType));
+    s.windup.visible = true;
+    if (s.liveAttack) s.liveCastAction = this.#playClip(s, s.liveAttack, 0.07);
+  }
+
+  liveCastEnd(slot, interrupted) {
+    const s = this.slots[slot];
+    if (!s?.windup) return;
+    s.windup.visible = false;
+    if (interrupted) {
+      s.liveCastAction?.fadeOut(0.08);
+      s.liveCastAction = null;
+    }
+  }
+
+  /** Impact visuals start at the move's simulation release. */
+  liveMove(slot, { kind, moveType, x, y, z }) {
     const s = this.slots[slot];
     if (!s?.live) return;
-    if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
-    const color = typeColor(type ?? s.info.types?.[0]);
+    const color = typeColor(moveType ?? s.info.types?.[0]);
     const f = s.body.rotation.y;
-    const at = new THREE.Vector3(s.base.x + Math.sin(f) * 0.8, 0.7, s.base.z + Math.cos(f) * 0.8);
-    this.#burst(at, color, kind === 'melee' ? { count: 30, speed: 2.2, life: 0.35, size: 0.08 } : { count: 14, speed: 1, life: 0.25, size: 0.06 });
-    if (kind === 'melee') this.moveFx.speedLines(s.base.x, s.base.z, f, color);
+    const at = new THREE.Vector3(x + Math.sin(f) * 0.8, y + 0.7, z + Math.cos(f) * 0.8);
+    const close = kind === 'melee' || kind === 'rush';
+    this.#burst(at, color, close ? { count: 30, speed: 2.2, life: 0.35, size: 0.08 } : { count: 14, speed: 1, life: 0.25, size: 0.06 });
+    if (close) this.moveFx.speedLines(x, z, f, color);
   }
 
   /** The projectiles in flight, by id: glowing orbs in their type's colour; gone ones are removed. */
@@ -810,7 +854,7 @@ export class BattleStage {
   /** A dodge: a quick white puff where it started. */
   dodgeFx(slot) {
     const s = this.slots[slot];
-    if (s) this.#burst(s.base.clone().setY(0.4), 0xffffff, { count: 18, speed: 1.4, life: 0.3, size: 0.07 });
+    if (s) this.#burst(s.base.clone().setY((s.poseY ?? 0) + 0.4), 0xffffff, { count: 18, speed: 1.4, life: 0.3, size: 0.07 });
     if (s) this.moveFx.dash(slot, s.body, typeColor(s.info.types?.[0]));
   }
 
@@ -969,6 +1013,10 @@ export class BattleStage {
   }
 
   dispose() {
+    for (const s of this.slots) {
+      s?.windup?.geometry.dispose();
+      s?.windup?.material.dispose();
+    }
     this.moveFx?.dispose();
     clearTimeout(this.loadTimer);
     clearLoad(); // left on purpose: not a crash
