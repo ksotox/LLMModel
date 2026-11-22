@@ -17,3 +17,7 @@
 .scan-camera:not(.active) { aspect-ratio: 16/7; }
 .scan-idle { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #cbd5e1; text-align: center; }
 .scan-idle[hidden] { display: none; }
+/* Quick add: a card-shaped guide in the middle of the view. */
+.scan-guide { display: none; position: absolute; left: 50%; top: 50%; height: 82%; aspect-ratio: 63 / 88; transform: translate(-50%, -50%); border: 3px dashed rgb(255 255 255 / 0.7); border-radius: 14px; pointer-events: none; }
+.scan-camera.quick.active .scan-guide { display: block; }
+.scan-modes { gap: 16px; flex-wrap: wrap; }

@@ -744,6 +744,14 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   rings, afterimages and a streak on a dodge, speed lines on a lunge; fewer on Standard, none on Basic. (The
   Deadlock GameTracking repo the owner linked is Valve's datamined game files: nothing from it is used.)
 
+## Phase 43: Live quick-add scanning
+- `scanner.js` quick add (one card at a time, after card-scanner apps such as mtgscan.org): the biggest card in view,
+  a card-shaped guide, 250 ms frames; readings repeat until `agreedMatch` (scan/core.js, tested) agrees (one high
+  reading, or two agreeing; never against the artwork), then the card is added with a chime and the scanner waits for
+  the next one (showing it again adds a copy). "📷 Scan with the camera" on Add cards opens it.
+- `recognize.js`: an uncertain reading is retried from a cut at the camera frame's full resolution (up to 2000 px),
+  like the pre-grader's high-resolution flattening. Benchmark unchanged (its photos are small).
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

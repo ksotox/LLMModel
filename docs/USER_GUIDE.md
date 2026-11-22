@@ -76,7 +76,7 @@ The red bar at the top has four buttons:
 | **Sets** | How complete each expansion is, with every card you own and still need |
 | **Pre-grade** | An experimental condition check of a card from a front and back photo |
 | **PokéBattles** | Your Pokémon cards come to life in 3D: try their moves, or battle two of them |
-| **Scan deck** | Scan many cards at once with the camera (or deck photos), check each one, then save them |
+| **Scan deck** | Scan many cards at once with the camera (or deck photos), check each one, then save them. **One card at a time (quick add)**, also opened by **📷 Scan with the camera** on Add cards: hold cards up one by one inside the frame; each is read live (several times if needed, until the readings agree), added with a chime and ticked as checked; show the same card again for another copy |
 | **Search** | Any Pokémon card, including ones you don't own yet |
 | **+ Add** | Add cards from photos (or packs) |
 

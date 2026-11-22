@@ -10,6 +10,18 @@ export async function recognizeCut(cut, img, quad, cancelled = () => false) {
   let result = await api.identify(readings);
   let canvas = cut.canvas;
   const attempts = [{ confidence: result.confidence, readings, orientation: 0, grow: .004 }];
+  // The set code and number are tiny: read them again from a cut at the photo's full resolution
+  // (a 4K camera frame often has twice the detail of the saved cut-out).
+  const side = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const sourceWidth = (side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2;
+  if (score(result) < 3 && !cancelled() && sourceWidth > cut.canvas.width * 1.15) {
+    const width = Math.min(2000, Math.round(sourceWidth));
+    const sharp = await warpCard(img, quad, { width });
+    const sharpText = await readCardText(sharp);
+    const retry = await api.identify(sharpText);
+    attempts.push({ confidence: retry.confidence, readings: sharpText, orientation: 0, grow: .004, width });
+    if (score(retry) > score(result)) { result = retry; readings = sharpText; }
+  }
   for (const grow of [.008, 0]) {
     if (score(result) >= 3 || cancelled()) break;
     const retryCanvas = await warpCard(img, quad, { grow, width: cut.canvas.width });
