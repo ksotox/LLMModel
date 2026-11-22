@@ -786,6 +786,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     h('section.panel',
       h('h2.step', h('span.step-num', '2'), 'Card photos'),
       dropZone({ label: 'Drop card photos here', hint: 'Single cards or several cards per photo. JPEG, PNG or iPhone HEIC.', onFiles: addPhotos }),
+      h('p.muted', 'Or ', h('a.btn.small', { href: '#/scan?quick' }, '📷 Scan with the camera'), ' — hold cards up one at a time; each is read live and added when sure.'),
       progressEl,
       batchSummary,
       sourceList),

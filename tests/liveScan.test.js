@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import { hashPixels, hashDistance, rankImages, imageEvidence, repeatOf, recognitionStatus, validationReport } from '../public/js/scan/core.js';
 import { normalizeStamp } from '../public/js/printing.js';
 import { openDb } from '../server/db.js';
@@ -47,4 +47,17 @@ test('multiple stamps have a stable inventory identity and empty selection means
   assert.equal(normalizeStamp('staff+pokemon-center+staff'), 'pokemon-center+staff');
   assert.equal(normalizeStamp(''), 'none');
   assert.equal(normalizeStamp('unrecognized'), null);
+});
+
+describe('live scanning: agreeing on a card across readings', () => {
+  test('one high reading, or two that agree; never one the artwork contradicts', async () => {
+    const { agreedMatch } = await import('../public/js/scan/core.js');
+    assert.deepEqual(agreedMatch([]), { tcgId: null, votes: 0, confirmed: false });
+    assert.equal(agreedMatch([{ tcgId: 'sv2-66', confidence: 'high' }]).confirmed, true);
+    assert.equal(agreedMatch([{ tcgId: 'sv2-66', confidence: 'medium' }]).confirmed, false, 'one medium reading waits for another');
+    assert.equal(agreedMatch([{ tcgId: 'sv2-66', confidence: 'medium' }, { tcgId: 'sv2-66', confidence: 'medium' }]).confirmed, true);
+    assert.equal(agreedMatch([{ tcgId: 'sv2-66', confidence: 'medium' }, { tcgId: 'sv2-67', confidence: 'medium' }]).confirmed, false, 'a tie is not agreement');
+    assert.equal(agreedMatch([{ tcgId: 'sv2-66', confidence: 'high', evidence: 'supports', bestId: 'sv3-10' }]).confirmed, false, 'the artwork says otherwise');
+    assert.equal(agreedMatch([{ tcgId: null, confidence: 'low' }, { tcgId: 'sv2-66', confidence: 'low' }]).confirmed, false, 'low readings do not count');
+  });
 });

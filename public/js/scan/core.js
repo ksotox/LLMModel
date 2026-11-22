@@ -35,3 +35,23 @@ export function validationReport(entries) {
     results: entries.map(({ id, predictedId, expectedId, confidence, image, elapsedMs, readings, attempts, match, quantity, variant, foil_pattern, texture, stamp, edition, quality }) => ({ id, predictedId, expectedId, confidence, image, elapsedMs, readings, attempts, quantity, variant, foil_pattern, texture, stamp, edition, quality, finalId: match?.tcgId ?? null })),
   };
 }
+
+/**
+ * Several readings of the same card (live scanning reads it on more than one frame): the match they
+ * agree on, and whether that is enough to trust it. One high-confidence reading whose artwork doesn't
+ * point elsewhere is enough; otherwise two readings must agree on the same card. A card the artwork
+ * clearly contradicts is never confirmed. Pure, for the tests.
+ * `readings`: [{ tcgId, confidence: 'high'|'medium'|'low', evidence?, bestId? }].
+ * Returns { tcgId, votes, confirmed }.
+ */
+export function agreedMatch(readings) {
+  const votes = new Map();
+  for (const r of readings) if (r?.tcgId && r.confidence !== 'low') votes.set(r.tcgId, (votes.get(r.tcgId) ?? 0) + 1);
+  const [tcgId, count] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  if (!tcgId) return { tcgId: null, votes: 0, confirmed: false };
+  const mine = readings.filter((r) => r?.tcgId === tcgId);
+  const contradicted = mine.some((r) => r.evidence === 'supports' && r.bestId && r.bestId !== tcgId);
+  const strong = mine.some((r) => r.confidence === 'high');
+  const rival = [...votes.values()].filter((v) => v === count).length > 1;
+  return { tcgId, votes: count, confirmed: !contradicted && !rival && (strong || count >= 2) };
+}

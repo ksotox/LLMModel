@@ -5,10 +5,26 @@ import { loadImage, cutCard, canvasToBlob } from './images.js';
 import { recognizeCut } from './scan/recognize.js';
 import { printingFields, PRINTING_DEFAULTS } from './printing.js';
 import { artworkHash, compareArtwork } from './scan/matching.js';
-import { repeatOf, recognitionStatus, validationReport } from './scan/core.js';
+import { agreedMatch, hashDistance, repeatOf, recognitionStatus, validationReport } from './scan/core.js';
 import { sessionStore } from './scan/storage.js';
 
 const pendingSaves = new Map();
+const QUICK_KEY = 'pokedex.quickScan';
+
+/** A short, soft two-note chime: a card was added. */
+function chime() {
+  try {
+    const ac = chime.ac ??= new AudioContext();
+    const t = ac.currentTime;
+    for (const [f, at] of [[880, 0], [1320, 0.09]]) {
+      const o = new OscillatorNode(ac, { frequency: f, type: 'sine' });
+      const g = new GainNode(ac, { gain: 0 });
+      o.connect(g).connect(ac.destination);
+      g.gain.setValueAtTime(0, t + at); g.gain.linearRampToValueAtTime(0.12, t + at + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + at + 0.25);
+      o.start(t + at); o.stop(t + at + 0.3);
+    }
+  } catch { /* no sound */ }
+}
 // Photo upload also works on ordinary HTTP, where randomUUID may be unavailable.
 const scanId = () => globalThis.crypto.randomUUID?.() ?? [...globalThis.crypto.getRandomValues(new Uint8Array(16))].map((v) => v.toString(16).padStart(2, '0')).join('');
 
@@ -21,11 +37,19 @@ export async function renderScanner(root, meta, navigate) {
   }
   let entries = [], stream = null, active = false, busy = false, disposed = false, timer, generation = 0, saving = false;
   let previous = [], stableSince = 0, repeatCount = 0;
+  // Quick add (one card at a time, like a card-scanner app): readings of the card in view until they
+  // agree, then it is added with a chime and the scanner waits for the next card.
+  let pending = null; // { hash, readings: [], result, image, ... }
+  let lock = null; // the artwork hash of the card just added (ignored until it leaves the view)
+  let gone = 0; // frames in a row with no card (a blink of the detector doesn't count as leaving)
+  const quick = h('input', { type: 'checkbox', checked: (() => { try { return location.hash.includes('quick') || localStorage.getItem(QUICK_KEY) === '1'; } catch { return false; } })(),
+    onchange: () => { try { localStorage.setItem(QUICK_KEY, quick.checked ? '1' : '0'); } catch { /* */ } camera.classList.toggle('quick', quick.checked); pending = null; lock = null; } });
+  const autoCheck = h('input', { type: 'checkbox', checked: true });
   const urls = new Set();
   const video = h('video', { autoplay: true, muted: true, playsInline: true, 'aria-label': 'Live card camera' });
   const overlay = h('canvas.scan-overlay', { 'aria-hidden': 'true' });
   const idle = h('div.scan-idle', 'Camera paused · Start camera or upload photos');
-  const camera = h('div.scan-camera', video, overlay, idle);
+  const camera = h('div.scan-camera', video, overlay, idle, h('div.scan-guide', { 'aria-hidden': 'true' }));
   const message = h('p.muted', { role: 'status' }, 'Lay cards flat with space between them. Start with 5–10 visible cards and move slowly.');
   const counter = h('strong');
   const tray = h('div.scan-tray');
@@ -104,12 +128,18 @@ export async function renderScanner(root, meta, navigate) {
     finally {
       if (img) URL.revokeObjectURL(img.objectUrl);
       busy = false; controls();
-      if (active && version === generation) timer = setTimeout(tick, 500);
+      if (active && version === generation) timer = setTimeout(tick, quick.checked ? 250 : 500);
     }
   }
   async function scanImage(img, version, live) {
-    const quads = await findCards(img);
+    let quads = await findCards(img);
     if (disposed || version !== generation) return;
+    if (live && quick.checked) {
+      if (!quads.length) { if (++gone >= 3) { lock = null; pending = null; } message.textContent = 'Hold a card inside the frame.'; overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height); return; }
+      const area = (q) => Math.abs((q[1].x - q[0].x) * (q[3].y - q[0].y) - (q[1].y - q[0].y) * (q[3].x - q[0].x));
+      gone = 0;
+      quads = [quads.reduce((a, b) => (area(b) > area(a) ? b : a))]; // the card held up, not the ones behind it
+    }
     if (!quads.length) { message.textContent = 'No card outlines found. Move closer, leave space, or use Add cards to adjust a photo manually.'; previous = []; stableSince = 0; return; }
     // Require two nearby observations and at least half a second at rest before OCR.
     const centers = quads.map((q) => ({ x: q.reduce((s, p) => s + p.x, 0) / 4, y: q.reduce((s, p) => s + p.y, 0) / 4 }));
@@ -120,6 +150,7 @@ export async function renderScanner(root, meta, navigate) {
       draw(quads, [], img);
       if (!steady || Date.now() - stableSince < 500) return;
     }
+    if (live && quick.checked) { await quickRead(img, quads[0], version); return; }
     const states = [];
     for (const [i, quad] of quads.entries()) {
       if (disposed || version !== generation || entries.length >= 300) break;
@@ -150,6 +181,49 @@ export async function renderScanner(root, meta, navigate) {
     }
     if (live) draw(quads, states, img);
     message.textContent = entries.length >= 300 ? 'Session limit reached (300 distinct scans). Save or clear this session to continue.' : `Scan retained. ${repeatCount} repeated sightings ignored. Verify the card and finish before saving; add physical copies explicitly.`;
+  }
+  /** Quick add: read the card in view; add it once its readings agree, then wait for the next card. */
+  async function quickRead(img, quad, version) {
+    const cut = await cutCard(img, quad, 'scan-card');
+    if (disposed || version !== generation) return;
+    const hash = artworkHash(cut.canvas);
+    if (lock && hashDistance(hash, lock) <= 12) { draw([quad], [true], img); message.textContent = 'Added. Show the next card.'; return; }
+    if (cut.quality.problems.length) { draw([quad], [], img); message.textContent = `Hold still, closer or out of the glare: ${cut.quality.problems.join(', ')}.`; return; }
+    if (!pending || hashDistance(pending.hash, hash) > 12) pending = { hash, readings: [] };
+    draw([quad], [], img);
+    message.textContent = pending.readings.length ? `Checking the match (reading ${pending.readings.length + 1})…` : 'Reading the card…';
+    const started = performance.now();
+    let recognized;
+    let image;
+    try {
+      recognized = await recognizeCut(cut, img, quad, () => disposed || version !== generation);
+      image = await compareArtwork(artworkHash(recognized.canvas), recognized.result.candidates);
+    } catch (err) { message.textContent = `Couldn't read it: ${err.message}`; return; }
+    if (disposed || version !== generation || !pending) return;
+    const { result } = recognized;
+    pending.readings.push({ tcgId: result.match?.tcgId ?? null, confidence: result.confidence, evidence: image.evidence, bestId: image.bestId });
+    pending.last = { recognized, image, cut };
+    const verdict = agreedMatch(pending.readings);
+    if (!verdict.confirmed && pending.readings.length < 3) return; // read it again on the next frame
+    const { recognized: rec, image: img2 } = pending.last;
+    const match = verdict.tcgId ? (rec.result.candidates.find((c) => c.tcgId === verdict.tcgId) ?? rec.result.match) : rec.result.match;
+    const same = repeatOf(entries, hash, match);
+    lock = hash;
+    pending = null;
+    if (same && !same.saved && same.quantity < 60) {
+      same.quantity++; same.reviewed = same.reviewed && verdict.confirmed; chime();
+      message.textContent = `Another ${same.match?.name ?? 'copy'}: ${same.quantity} copies. Show the next card.`;
+      await persist(); renderTray(); return;
+    }
+    const confirmed = verdict.confirmed && Boolean(match);
+    entries.push({ id: scanId(), hash, blob: rec.blob, quality: cut.quality, readings: rec.readings, attempts: rec.attempts, match: match ?? null, candidates: rec.result.candidates,
+      predictedId: match?.tcgId ?? null, expectedId: '', confidence: rec.result.confidence, image: img2,
+      status: confirmed ? `confirmed by ${verdict.votes} reading${verdict.votes === 1 ? '' : 's'}` : recognitionStatus(rec.result, img2),
+      elapsedMs: Math.round(performance.now() - started), variant: 'normal', ...PRINTING_DEFAULTS, quantity: 1, reviewed: confirmed && autoCheck.checked, saved: false });
+    if (confirmed) chime();
+    draw([quad], [confirmed], img);
+    message.textContent = confirmed ? `Added ${match.name} (${match.setCode ?? ''} ${match.number ?? ''}). Show the next card.` : 'Not sure about this one: it is in the list to check. Show the next card.';
+    await persist(); renderTray();
   }
   function changed(entry) { entry.reviewed = false; persist(); controls(); }
   function renderTray() {
@@ -211,6 +285,7 @@ export async function renderScanner(root, meta, navigate) {
   } }, 'Clear session');
   clear(root, h('div.page-head', h('h1', 'Scan a deck'), h('p.muted', 'Scan visible cards as you move across the table. Cards hidden in a stack cannot be read.')),
     h('section.panel', h('div.actions', h('label', 'Deck size ', target), counter),
+      h('div.actions.scan-modes', h('label', quick, ' One card at a time (quick add)'), h('label', autoCheck, ' Tick matches that agree as checked')),
       camera, h('div.actions', start, pause, torch), message,
       h('label.field', h('span', 'Upload deck photos'), upload)),
     h('section.panel', h('h2', 'Review your scan'), h('p.muted', 'Similar cards are held as one scan. Use + Copy for identical copies, or Separate printing for a copy with a different finish.'),
@@ -222,6 +297,7 @@ export async function renderScanner(root, meta, navigate) {
         clearSession), tray));
   target.addEventListener('change', () => { target.value = Math.max(1, Math.min(1000, Number(target.value) || 60)); persist(); renderTray(); });
   try { const stored = await sessionStore(userKey); entries = stored?.entries ?? []; target.value = stored?.target ?? 60; } catch { message.textContent = 'Session recovery unavailable in this browser. Keep the page open until saving.'; }
+  camera.classList.toggle('quick', quick.checked);
   renderTray();
   const dispose = () => { if (disposed) return; disposed = true; stopCamera(); for (const url of urls) URL.revokeObjectURL(url); observer.disconnect(); window.removeEventListener('pagehide', dispose); document.removeEventListener('visibilitychange', hidden); };
   const hidden = () => { if (document.hidden) stopCamera(); };

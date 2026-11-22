@@ -827,6 +827,15 @@ try {
   const broken = await page.$$eval('.card-tile img', (imgs) => imgs.filter((i) => i.complete && i.naturalWidth === 0).length);
   assert.equal(broken, 0, 'all card images load');
 
+  step('camera scanning from Add cards opens the live scanner in quick-add mode');
+  await page.goto(`${base}/#/add`);
+  await page.getByRole('link', { name: '📷 Scan with the camera' }).click();
+  await page.getByRole('heading', { name: 'Scan a deck' }).waitFor();
+  assert.equal(await page.getByLabel('One card at a time (quick add)').isChecked(), true, 'quick add is on');
+  assert.ok(await page.locator('.scan-camera.quick').count(), 'with the card guide');
+  await page.getByLabel('One card at a time (quick add)').uncheck(); // (and remembered: back to deck scanning)
+  assert.equal(await page.evaluate(() => localStorage.getItem('pokedex.quickScan')), '0');
+
   step('scanner tests (owner): mark the cards in your own photo, save it for the benchmark, delete it');
   await page.goto(`${base}/#/profile`);
   await page.getByRole('link', { name: 'Open scanner tests' }).click();
