@@ -646,6 +646,19 @@ try {
   // The trainer is chosen in a small dialog, and remembered.
   await page.getByRole('button', { name: '👤 Trainer' }).click();
   await page.getByRole('button', { name: 'Ace Explorer' }).click();
+  // Your own trainer model (.glb): added in the chooser, listed with its credit, then removed again.
+  {
+    const json = JSON.stringify({ asset: { version: '2.0', extras: { title: 'Test Hiker', author: 'e2e', license: 'CC0' } }, scenes: [{ nodes: [] }], scene: 0 }).padEnd(120, ' ');
+    const glbBytes = Buffer.alloc(20 + json.length);
+    glbBytes.write('glTF', 0, 'ascii'); glbBytes.writeUInt32LE(2, 4); glbBytes.writeUInt32LE(glbBytes.length, 8);
+    glbBytes.writeUInt32LE(json.length, 12); glbBytes.write('JSON', 16, 'ascii'); glbBytes.write(json, 20);
+    await page.getByLabel('Trainer model file').setInputFiles({ name: 'hiker.glb', mimeType: 'model/gltf-binary', buffer: glbBytes });
+    await page.locator('.trainer-model', { hasText: 'Test Hiker' }).waitFor();
+    assert.match(await page.locator('.trainer-model', { hasText: 'Test Hiker' }).innerText(), /e2e/, 'its credit is shown');
+    await page.getByRole('button', { name: 'Remove Test Hiker' }).click();
+    await page.locator('.trainer-model', { hasText: 'Test Hiker' }).waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Ace Explorer' }).click();
+  }
   await page.getByRole('button', { name: 'Done' }).click();
   assert.equal(await sanc(() => localStorage.getItem('pokedex.trainer')), 'ace');
   // High graphics: occlusion, bloom and mirror water draw without WebGL errors; then back again.

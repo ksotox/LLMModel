@@ -732,6 +732,18 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   texture when the model has none; a soft rim light. Basic keeps the models as they come. Used by battles, the
   Sanctuary and the Reef; attack clips now fade in.
 
+## Phase 42: Your own trainer models, skeleton animation, battle movement effects
+- **Trainer models** (`server/trainers.js`, `/api/trainers`): upload a .glb in the trainer chooser; kept per
+  person in `data/trainers/<user>/` (never in the repository: a model may show a character someone else owns), with
+  the credit it carries (title, author, licence, source from glTF `asset.extras`) shown under its name.
+- **Skeleton animation in code** (`sanctuary/rig.js`, `trainer.js` `rigDriver`): bones found by name (game rigs,
+  Mixamo, Blender), arms brought down from a T/A-pose, and idle / walk / run / jump / fall / glide / swim poses
+  turned about the character's own axes (whatever the rig's bone axes). A model with clips uses them; one without a
+  skeleton bobs and leans. Pokémon with a skeleton but no clips breathe and look about (`breathing`).
+- **Battle movement effects** (`battle/moveFx.js`, our own): running dust (sand, bubbles in the Reef), landing
+  rings, afterimages and a streak on a dodge, speed lines on a lunge; fewer on Standard, none on Basic. (The
+  Deadlock GameTracking repo the owner linked is Valve's datamined game files: nothing from it is used.)
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

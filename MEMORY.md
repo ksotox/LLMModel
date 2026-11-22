@@ -98,7 +98,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   Models are Nintendo IP (fan project): never commit them.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
   owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids); `look.js`; Battle hands off via `pokedex.battleKeep`.
-- `battle/perf.js`: dynamic resolution + crash-safe start; drops `postfx.js` (High: AO, bloom, mirror water) first. `hdScenery.js` + `assets.js`: Poly Haven CC0 set in `public/assets/realism`; `realisticMaterial` for models (High/Standard). **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+- `battle/perf.js`: dynamic resolution + crash-safe start; drops `postfx.js` first. High/Std: `hdScenery.js` (Poly Haven CC0), `realisticMaterial`. Trainers: own .glb via `/api/trainers` (data/, never committed), `rig.js` poses; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,
@@ -108,7 +108,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   pinned by `scripts/grading-setup.*`); `gradingReport.js` shows it. Label every result "Experimental CV estimate —
   not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). The launcher starts it if set up.
-- Open gaps: the table in `docs/ROADMAP.md`. Users read `docs/USER_GUIDE.md`.
+- Open gaps: `docs/ROADMAP.md`; design: `docs/GAME_ARCHITECTURE.md`.
 - Owner to run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`.
 - Pull-rate tables: Scarlet & Violet and Mega Evolution eras only.
 - Forgotten owner password: no reset flow (delete `users`/`sessions` rows to rerun setup).

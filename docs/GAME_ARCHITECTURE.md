@@ -104,6 +104,7 @@ sequenceDiagram
 | `battle/controls.js` | Key maps for players 1 and 2, `readGamepad` (dead zone, edge-triggered buttons), touch joystick |
 
 ### Recipes
+- **Movement effects** (dust, landing rings, afterimages, speed lines): `battle/moveFx.js`, called from `setPose`, `dodgeFx` and `liveMove` in `scene.js`.
 - **New attack effect:** add it in `scene.js` (`#projectile`, `#burst`, `#sparkles`). `TYPE_COLORS` picks the colour by type.
 - **Balance real-time:** change the constants at the top of `realtime.js` (`SPEED`, `ENERGY_*`, `DODGE_CHARGES`, `DIFFICULTY`). Then run `node --test tests/realtime.test.js`.
 - **New rule in turn-based:** add it to `engine.js` (pure) with a test in `tests/battleEngine.test.js`. The UI picks the events up from `act()`.
@@ -144,7 +145,9 @@ flowchart LR
 | `sanctuary/zoo.js` | `HABITATS` (8: id, types, centre, radius), `habitatFor(card)`, `layoutHabitats`, `stepCreature` (wander, follow, idle, look at the trainer) |
 | `sanctuary/habitats.js` | `planHabitats` (pure: where props go), `solidAt` (collision), `buildHabitats` (three.js props and signs) |
 | `sanctuary/look.js` | Mouse and stick look, with two-stage smoothing; `ease(dt, rate) = 1 - exp(-dt·rate)` (frame-rate independent) |
-| `sanctuary/trainer.js` | The trainer figure (`buildTrainer`) |
+| `sanctuary/trainer.js` | The trainer: the built-in figure (`buildTrainer`), or an uploaded .glb (`load(url)`), animated by its clips or by `rigDriver` (bones turned about the character's own axes) |
+| `sanctuary/rig.js` | Pure: `findRig` (bones by name), `trainerState(player)`, `gait(state, phase)` angles. New pose: add a case to `gait` |
+| `server/trainers.js` | `/api/trainers`: upload, list, serve, delete a person's own .glb trainer models (data/trainers, never committed) |
 | `sanctuary/sanctuaryUI.js` | The owner's module: the radial wheel (Follow / Pet / Card / Battle), the trainer chooser (`pokedex.trainer`) and the stamina ring |
 
 ### Movement model (shared idea for land and water)

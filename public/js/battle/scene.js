@@ -11,7 +11,8 @@
 // engine's events one after another.
 
 import * as THREE from 'three';
-import { createModelLoader, loadModel } from './modelLoader.js';
+import { breathing, createModelLoader, loadModel } from './modelLoader.js';
+import { createMoveFx } from './moveFx.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
 import { clearLoad, createPerf, markLoad } from './perf.js';
@@ -222,6 +223,8 @@ export class BattleStage {
     this.scene.add(this.flash);
 
     this.dot = softCircleTexture();
+    // Real-time battles: dust, landing rings, afterimages and speed lines (moveFx.js).
+    this.moveFx = createMoveFx({ scene: this.scene, dot: this.dot, environment: this.world.environment, quality: () => this.world.quality });
     this.backTexture = cardBackTexture();
     this.textureLoader = new THREE.TextureLoader();
     const models = createModelLoader();
@@ -291,9 +294,11 @@ export class BattleStage {
       }
     }
     for (const fx of [...this.effects]) if (fx.update(dt) === false) { this.scene.remove(fx.object); fx.dispose?.(); this.effects.delete(fx); }
+    this.moveFx?.update(dt);
     for (const s of this.slots) {
       if (!s) continue;
       s.mixer?.update(dt);
+      s.breath?.update(now / 1000);
       if (s.ready && !s.fainted) {
         const t = now / 1000 + s.phase;
         s.body.position.y = s.lift + (s.poseY ?? 0) + Math.sin(t * 2.2) * 0.035;
@@ -466,13 +471,14 @@ export class BattleStage {
     body.visible = false;
     this.scene.add(body);
     const mixer = model?.clips.length ? new THREE.AnimationMixer(model.object.children[0]) : null;
+    const breath = model && !mixer ? breathing(model.object) : null; // a skeleton without clips still breathes
     const ball = this.#pokeBall(this.mode === 'showcase' ? 0.15 : 0.13);
     ball.group.position.copy(pos).add(new THREE.Vector3(CARD_W * 0.22, 0, CARD_H * 0.3));
     ball.group.visible = false;
     this.scene.add(ball.group);
 
     this.slots[slot] = {
-      slot, info, color, pos, base, platform, card, faceMat, backMat, body, model, mixer, ball,
+      slot, info, color, pos, base, platform, card, faceMat, backMat, body, model, mixer, breath, ball,
       height: model?.height ?? CARD_H * 1.25 * 1.25,
       lift: 0, scale: 1, phase: slot * 1.7, ready: false, fainted: false, aura: null,
     };
@@ -736,6 +742,7 @@ export class BattleStage {
     s.body.position.z = z;
     s.poseY = y;
     s.body.rotation.y = facing;
+    this.moveFx.track(slot, x, y, z, facing);
     s.body.rotation.z += ((down ? 1.25 * (slot ? 1 : -1) : 0) - s.body.rotation.z) * 0.3;
   }
 
@@ -764,6 +771,7 @@ export class BattleStage {
     const f = s.body.rotation.y;
     const at = new THREE.Vector3(s.base.x + Math.sin(f) * 0.8, 0.7, s.base.z + Math.cos(f) * 0.8);
     this.#burst(at, color, kind === 'melee' ? { count: 30, speed: 2.2, life: 0.35, size: 0.08 } : { count: 14, speed: 1, life: 0.25, size: 0.06 });
+    if (kind === 'melee') this.moveFx.speedLines(s.base.x, s.base.z, f, color);
   }
 
   /** The projectiles in flight, by id: glowing orbs in their type's colour; gone ones are removed. */
@@ -803,6 +811,7 @@ export class BattleStage {
   dodgeFx(slot) {
     const s = this.slots[slot];
     if (s) this.#burst(s.base.clone().setY(0.4), 0xffffff, { count: 18, speed: 1.4, life: 0.3, size: 0.07 });
+    if (s) this.moveFx.dash(slot, s.body, typeColor(s.info.types?.[0]));
   }
 
   /** The edge of the field when it closes in (League Stadium): a glowing ring on the ground. */
@@ -960,6 +969,7 @@ export class BattleStage {
   }
 
   dispose() {
+    this.moveFx?.dispose();
     clearTimeout(this.loadTimer);
     clearLoad(); // left on purpose: not a crash
     this.renderer.setAnimationLoop(null);

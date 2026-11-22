@@ -15,6 +15,7 @@ import { createAuth, hashPassword, checkPassword, publicUser, validateProfile } 
 import { CONDITIONS, openDb, PACK_KINDS, STATUSES, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
 import { createGradingRouter, initializeGradingTable, sweepGradingOrphans } from './grading/router.js';
+import { createTrainersRouter } from './trainers.js';
 import { SET_CODES } from './setCodes.js';
 import { allSets, setChecklist, userSets } from './sets.js';
 import { battleData, isPokemonCard } from './battle.js';
@@ -381,6 +382,7 @@ export function createApp({
   app.use(express.json({ limit: '1mb' }));
   // Experimental pre-grading through the local Viridian service (127.0.0.1 only; see server/grading).
   app.use('/api/grading', createGradingRouter({ store, dataDir }));
+  app.use('/api/trainers', createTrainersRouter({ dataDir })); // the Sanctuary's own trainer models (kept private)
   app.use('/media/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', immutable: true }));
   app.use('/media/official', express.static(dirs.official, { maxAge: '30d' }));
   for (const [url, dir] of Object.entries(VENDOR)) app.use(url, express.static(dir, { maxAge: '30d' }));

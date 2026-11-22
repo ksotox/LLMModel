@@ -12,7 +12,8 @@ import { buildHabitats, planHabitats, solidAt } from './habitats.js';
 import { addLook, createLook, ease, stepLook } from './look.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
 import { createAmbience } from '../ambience.js';
-import { initSanctuaryUI, savedTrainer } from './sanctuaryUI.js';
+import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
+import { trainerState } from './rig.js';
 import { buildTrainer } from './trainer.js';
 import { createPlayer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
@@ -101,7 +102,7 @@ export async function renderSanctuary(root) {
 }
 
 function start3d(root, cards, world3d) {
-  const [THREE, worldKit, { createModelLoader, loadModel, pickClips }, stadiumKit, surfaceKit] = world3d;
+  const [THREE, worldKit, { createModelLoader, loadModel, pickClips, breathing }, stadiumKit, surfaceKit] = world3d;
   const { buildWorld, preferredQuality, saveQuality, terrainHeight, LAKE } = worldKit;
 
   // ---- the page ----
@@ -168,13 +169,17 @@ function start3d(root, cards, world3d) {
   resize();
 
   // ---- the trainer: an original little figure in the chosen colours (trainer.js) ----
-  const { avatar, legs, arms, glider, dress } = buildTrainer(THREE);
+  const trainer = buildTrainer(THREE);
+  const { avatar, legs, arms, glider, dress } = trainer;
   scene.add(avatar);
   dress(savedTrainer());
 
   // ---- the zoo ----
   const spots = layoutHabitats(cards, { blocked: (x, z) => inWater(x, z) || solidAt(plan, x, z, 0.9) || Math.hypot(x, z) > WORLD_RADIUS - 4 });
   const models = createModelLoader();
+  // A trainer model of the owner's own (uploaded in the chooser), animated on its skeleton.
+  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: world.quality !== 'basic' }).catch(() => null);
+  wearModel(savedTrainerModel());
   const textures = new THREE.TextureLoader();
   const cardGeo = new THREE.PlaneGeometry(0.72, 1.0);
   cardGeo.translate(0, 0.62, 0);
@@ -216,7 +221,7 @@ function start3d(root, cards, world3d) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.actions = Object.fromEntries(Object.entries(clips).filter(([, clip]) => clip).map(([k, clip]) => [k, c.mixer.clipAction(clip)]));
           c.playing = null;
-        }
+        } else c.breath = breathing(model.object); // a skeleton without clips still breathes
         loaded++;
       }
     } catch { /* it stays a card */ } finally {
@@ -258,7 +263,7 @@ function start3d(root, cards, world3d) {
     }
   };
   const ui = initSanctuaryUI(el, {
-    onSelectTrainer: dress,
+    onSelectTrainer: (preset, model) => { dress(preset); wearModel(model?.id ?? null); },
     onRadialAction: (action, c) => {
       if (action === 'follow') { c.state = c.state === 'follow' ? 'idle' : 'follow'; c.timer = 1; c.plate.classList.toggle('following', c.state === 'follow'); }
       else if (action === 'pet') hearts(c);
@@ -434,6 +439,7 @@ function start3d(root, cards, world3d) {
     arms[0].rotation.x = player.mode === 'glide' ? Math.PI : -stride * 0.6;
     arms[1].rotation.x = player.mode === 'glide' ? Math.PI : stride * 0.6;
     glider.visible = player.mode === 'glide';
+    trainer.play(trainerState(player), player.moving, dt, t); // the owner's model, if one is chosen
     avatar.rotation.x = player.mode === 'glide' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
     world.sun.target.position.set(player.x, player.y, player.z); // the sharp shadows stay round the trainer
     world.sun.position.copy(world.sun.target.position).addScaledVector(sunDir, 30);
@@ -466,6 +472,7 @@ function start3d(root, cards, world3d) {
       const bob = animated ? (c.y - terrainHeight(c.x, c.z)) * 0.25 : c.y - terrainHeight(c.x, c.z);
       c.group.position.set(c.x, terrainHeight(c.x, c.z) + bob + (c.petted ? Math.abs(Math.sin(c.petted * 10)) * 0.35 : 0), c.z);
       c.group.rotation.y = c.model ? c.facing : Math.atan2(camera.position.x - c.x, camera.position.z - c.z); // a card faces you
+      if (c.breath && d < 30) c.breath.update(t);
       if (c.model && !c.mixer) {
         c.group.rotation.z = c.speed > 0.1 ? Math.sin(t * 9 + c.id) * 0.08 : 0;
         c.group.scale.set(1, 1 + (c.speed > 0.1 ? 0 : Math.sin(t * 2 + c.id) * 0.025), 1);
