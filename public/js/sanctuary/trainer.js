@@ -2,6 +2,7 @@
 // of the chosen preset, with a glider for long falls. Shared by the meadow and the Reef.
 
 import { findRig, gait, isHumanRig } from './rig.js';
+import { MOVE } from './player.js';
 
 /**
  * Build it with `THREE`. Returns { avatar, legs, arms, glider, dress(preset), load(url, opts), play(state,
@@ -54,11 +55,21 @@ export function buildTrainer(THREE) {
     const loaded = await loadModel(loader, url, 1.75, { realistic });
     if (!loaded) return null;
     const object = loaded.object;
-    const clips = pickClips(loaded.clips ?? []);
+    const all = loaded.clips ?? [];
+    const clips = pickClips(all);
+    const extraClips = {
+      run: /sprint|run/i, jump: /jump|take.?off/i, fall: /fall|airborne/i,
+      mantle: /mantle|climb|vault/i, glide: /glide/i, swim: /swim/i,
+    };
+    for (const [state, pattern] of Object.entries(extraClips)) {
+      const clip = all.find((c) => pattern.test(c.name) && !/idle/i.test(c.name));
+      if (clip && clip === clips.idle) clips.idle = null;
+      clips[state] = clip;
+    }
     const next = { object, mixer: null, actions: {}, driver: null, rigged: false };
-    if (clips.idle || clips.walk) {
+    if (Object.entries(clips).some(([key, clip]) => key !== 'extra' && clip)) {
       next.mixer = new THREE.AnimationMixer(object.children[0]);
-      for (const [k, clip] of Object.entries(clips)) if (clip) next.actions[k] = next.mixer.clipAction(clip);
+      for (const [k, clip] of Object.entries(clips)) if (k !== 'extra' && clip) next.actions[k] = next.mixer.clipAction(clip);
     } else {
       next.driver = rigDriver(THREE, object);
     }
@@ -69,16 +80,28 @@ export function buildTrainer(THREE) {
     return { rigged: next.rigged };
   };
   /**
-   * Animate for this frame. `state`: idle, walk, run, jump, fall, glide or swim (rig.js trainerState);
+   * Animate the movement state selected by rig.js trainerState.
    * `speed`: metres a second; `dt`: seconds; `t`: the clock. Returns false when there's no model.
    */
   const play = (state, speed, dt, t) => {
     if (!model) return false;
     phase += dt * (state === 'run' ? 9 : state === 'swim' ? 3 : 2.2 + speed * 1.2);
     if (model.mixer) {
-      const want = (['walk', 'run', 'swim'].includes(state) && (model.actions.walk ?? model.actions.idle)) || model.actions.idle || model.actions.walk;
-      if (want !== playing) { want.reset().fadeIn(0.2).play(); playing?.fadeOut(0.2); playing = want; }
-      if (want === model.actions.walk) want.timeScale = Math.max(0.6, Math.min(2.2, speed / 2.5));
+      const moving = ['walk', 'run', 'swim'].includes(state);
+      const named = model.actions[state];
+      const want = named ?? (moving ? model.actions.walk : model.actions.idle) ?? model.actions.idle ?? model.actions.walk;
+      if ((want ?? null) !== playing) {
+        playing?.fadeOut(0.15);
+        if (want) {
+          const oneShot = named === want && (state === 'jump' || state === 'mantle');
+          want.reset().setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
+          want.clampWhenFinished = oneShot;
+          want.fadeIn(state === 'mantle' ? 0.08 : 0.15).play();
+        }
+        playing = want ?? null;
+      }
+      if (want && (want === model.actions.walk || want === model.actions.run)) want.setEffectiveTimeScale(Math.max(0.6, Math.min(2.2, speed / 2.5)));
+      if (want && state === 'mantle' && want === named) want.setEffectiveTimeScale(want.getClip().duration / MOVE.mantleTime);
       model.mixer.update(dt);
     } else if (model.driver) {
       const g = gait(state, phase, Math.min(1, speed / 4), t);

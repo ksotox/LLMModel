@@ -275,7 +275,9 @@ describe('desktop app: optional pre-grading service', () => {
     const child = await startGrading({ appDir: dir, gradingPort: port, log });
     assert.ok(child);
     const until = Date.now() + 5000;
-    while (!fs.existsSync(path.join(dir, 'started.txt')) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    // Wait for what it wrote, not just the file: the shell creates it before writing the line.
+    const started = () => { try { return fs.readFileSync(path.join(dir, 'started.txt'), 'utf8').trim(); } catch { return ''; } };
+    while (!started() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
     assert.equal(fs.readFileSync(path.join(dir, 'started.txt'), 'utf8').trim(), `-m uvicorn services.grading.app:app --host 127.0.0.1 --port ${port}`);
     await stopGrading(child);
     assert.ok(child.exitCode != null || child.signalCode != null, 'stopped');

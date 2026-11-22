@@ -58,6 +58,29 @@ describe('Sanctuary: the trainer’s movement', () => {
     assert.ok(glide.stamina < MOVE.staminaMax);
   });
 
+  test('the trainer mantles onto the authored slab and stands on its visible top', async () => {
+    const { addTraversalLedge } = await import('../public/js/sanctuary/habitats.js');
+    const plan = [{ kind: 'slab', x: 0, z: 0, turn: 0, size: 1 }];
+    const ledge = addTraversalLedge(plan, flat.heightAt);
+    const ground = { ...flat, ledge };
+    const p = createPlayer({ x: 0, z: 0.9 });
+    const toward = { ...none, z: -1, jumpHeld: true };
+    assert.equal(stepPlayer(p, toward, 1 / 60, ground).mode, 'mantle');
+    run(p, toward, MOVE.mantleTime, ground);
+    assert.equal(p.mode, 'walk');
+    assert.equal(p.y, ledge.top);
+    run(p, none, 0.2, ground);
+    assert.equal(p.y, ledge.top);
+    run(p, { ...none, x: 1 }, 0.8, ground);
+    assert.equal(p.y, 0);
+
+    const blocked = createPlayer({ x: 0, z: 0.9 });
+    const obstructed = { ...ground, solid: (x, z) => Math.hypot(x, z) < 0.3 };
+    run(blocked, toward, 0.5, obstructed);
+    assert.equal(blocked.mode, 'walk');
+    assert.ok(blocked.z >= 0.5, 'a blocked landing keeps the trainer at the foot of the slab');
+  });
+
   test('follows the ground, can’t climb a wall, swims in deep water, and stays inside the world', () => {
     const hill = { heightAt: (x) => Math.max(0, x) * 0.5, waterAt: () => null, radius: 80 };
     const p = run(createPlayer({ x: -1, z: 0 }), { ...none, x: 1 }, 2, hill);

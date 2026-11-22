@@ -614,6 +614,7 @@ try {
   await page.getByRole('button', { name: 'Skip intro ⏭' }).click();
   await page.locator('.rt-move', { hasText: 'Lightning Ball' }).waitFor({ timeout: 90000 });
   assert.match(await page.locator('.rt-clock').textContent(), /^\d:\d\d$/);
+  assert.match(await page.locator('.rt-dodges').getAttribute('title'), /jump when the pips brighten/);
   // Keep attacking (Q, E) and step aside now and then, until the battle ends.
   await page.keyboard.down('KeyA');
   for (let i = 0; i < 2400 && !(await page.locator('.bt-result').count()); i++) {
@@ -639,6 +640,7 @@ try {
   assert.ok(await page.locator('.topbar').isHidden(), 'the menu bar is hidden in the Sanctuary');
   const sanc = (fn) => page.evaluate(fn);
   await page.waitForFunction(() => document.querySelector('.sanc')?.sanctuary?.creatures.length > 0, null, { timeout: 90000 });
+  assert.equal(await sanc(() => document.querySelector('.sanc').sanctuary.plan.filter((p) => p.ledge).length), 1, 'the explorable habitat includes a mantle ledge');
   const z0 = await sanc(() => document.querySelector('.sanc').sanctuary.player.z);
   await page.keyboard.down('KeyW');
   await page.waitForFunction((z) => Math.abs(document.querySelector('.sanc').sanctuary.player.z - z) > 1, z0, { timeout: 60000 });

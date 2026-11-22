@@ -6,7 +6,7 @@
 
 import { DIFFICULTIES, ENVIRONMENTS, environmentName, saveArena, savedArena, STYLES, weatherName, WEATHERS } from './battle/arenas.js';
 import { createControls, joystick, toWorld } from './battle/controls.js';
-import { createRealtime, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
+import { createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
 
@@ -697,6 +697,10 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   a.el.classList.add('realtime');
   clear(root, a.el);
   const stage = await makeStage(a.host, 'battle');
+  if (!stage.goLive) {
+    stage.dispose();
+    return startBattle(root, picks, mode, onBack, onNewOpponent);
+  }
   let controls = null;
   const leave = cleanupOnLeave(stage, a);
   const cleanup = () => { stage.beforeFrame = null; controls?.dispose(); leave(); };
@@ -733,12 +737,13 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   controls = createControls(a.host, { players: mode === 'pvp' ? 2 : 1 });
   const touch = matchMedia('(pointer: coarse)').matches;
   const clock = h('span.rt-clock');
-  const dodges = h('span.rt-dodges', { title: 'Dodges' });
+  const dodges = battle.fighters.slice(0, mode === 'pvp' ? 2 : 1).map((f) =>
+    h('span.rt-dodges', { title: `Player ${f.side + 1}: Dodge, then jump when the pips brighten` }));
   const moveBtns = (side) => battle.fighters[side].moves.map((m, i) => {
     const btn = h('button.move-btn.rt-move', {
       type: 'button',
       style: { '--move': typeHex(m.type) },
-      title: m.kind === 'boost' ? 'Powers up your attacks by 50% for 10 seconds, once' : m.kind === 'heal' ? 'Heals you' : m.kind === 'charge' ? 'Refills your energy' : `${m.kind === 'melee' ? 'Close-up' : 'Ranged'} attack`,
+      title: m.kind === 'boost' ? 'Powers up your attacks by 50% for 10 seconds, once' : m.kind === 'heal' ? 'Heals you' : m.kind === 'charge' ? 'Refills your energy' : m.kind === 'rush' ? 'Rushes forward and hits on contact' : `${m.kind === 'melee' ? 'Close-up' : 'Ranged'} attack`,
       onpointerdown: (e) => { e.preventDefault(); controls.hold(side, i, true); },
       onpointerup: () => controls.hold(side, i, false),
       onpointerleave: () => controls.hold(side, i, false),
@@ -753,7 +758,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   const theirs = mode === 'pvp' ? moveBtns(1) : [];
   const tap = (side, what, label) => h('button.btn.rt-act', { type: 'button', onpointerdown: (e) => { e.preventDefault(); controls.press(side, what); } }, label);
   clear(a.controls,
-    h('div.rt-bar', clock, dodges, h('span.rt-help.muted', touch ? 'Drag the stick to move' : mode === 'pvp' ? 'P1: WASD · Space jump · Shift dodge   P2: arrows · K jump · L dodge' : 'WASD move · Space jump · Shift dodge · Q E right-click F moves')),
+    h('div.rt-bar', clock, dodges, h('span.rt-help.muted', touch ? 'Drag to move · Dodge then Jump to chain' : mode === 'pvp' ? 'P1: WASD · Shift then Space     P2: arrows · L then K' : 'WASD move · Shift then Space to dodge-jump · Q E right-click F moves')),
     h('div.move-grid.rt-grid', mine),
     theirs.length ? h('div.move-grid.rt-grid.p2', theirs) : '',
     touch ? h('div.rt-touch', tap(0, 'jump', 'Jump'), tap(0, 'dodge', 'Dodge')) : '');
@@ -764,13 +769,15 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   let ended = false;
   const name = (side) => battle.fighters[side].name;
   const handle = (e) => {
-    if (e.type === 'move') stage.liveMove(e.side, e);
+    if (e.type === 'castStart') stage.liveCastStart(e.side, e.moveType);
+    else if (e.type === 'castRelease' || e.type === 'castCancel') stage.liveCastEnd(e.side, e.type === 'castCancel');
+    else if (e.type === 'move') stage.liveMove(e.side, e);
     else if (e.type === 'hit') {
       stage.hit(e.side, { amount: e.amount, weakness: e.weakness });
       if (e.down) say(a.message, `${name(e.side)} was knocked down!`, { hold: 0 });
       else if (e.weakness) say(a.message, `It hit ${name(e.side)}’s weakness!`, { hold: 0 });
     } else if (e.type === 'burst') stage.burstAt(e.x, e.z, e.moveType, e.fizzle);
-    else if (e.type === 'dodge') stage.dodgeFx(e.side);
+    else if (e.type === 'dodge' || e.type === 'dodgeJump' || e.type === 'airDash') stage.dodgeFx(e.side);
     else if (e.type === 'evade') stage.float(e.side, 'Dodged!', 'miss');
     else if (e.type === 'boost') { stage.boost(e.side, true); say(a.message, `${name(e.side)} is powered up for 10 seconds!`, { hold: 0 }); }
     else if (e.type === 'heal') stage.heal(e.side, e.amount);
@@ -779,7 +786,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
     else if (e.type === 'ringout') say(a.message, `${name(e.side)} fell off the stadium!`, { hold: 0 });
     else if (e.type === 'zone') say(a.message, 'The field is closing in!', { hold: 0 });
     else if (e.type === 'ko') { say(a.message, `${name(e.side)} fainted!`, { hold: 0 }); stage.faint(e.side); }
-    else if (e.type === 'end') { ended = true; setTimeout(() => showResult(e), 1300); }
+    else if (e.type === 'end') { ended = true; stage.liveCastEnd(0, true); stage.liveCastEnd(1, true); setTimeout(() => showResult(e), 1300); }
   };
   stage.beforeFrame = (dt) => {
     if (ended) return;
@@ -794,14 +801,19 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
       });
       for (const e of stepRealtime(battle, intents)) handle(e);
     }
-    for (const f of battle.fighters) stage.setPose(f.side, { x: f.x, y: f.out ? -2 : f.y, z: f.z, facing: f.facing, down: f.down > 0 });
+    for (const f of battle.fighters) stage.setPose(f.side, { x: f.x, y: f.out ? -2 : f.y, z: f.z,
+      facing: f.facing, down: f.down > 0, speed: Math.hypot(f.vx, f.vz), dt });
     stage.follow(f1, f2);
     stage.syncShots(battle.projectiles);
     if (battle.rules.shrink) stage.setZone(battle.zone);
     plates.forEach((p) => p.update());
     const left = Math.max(0, TIME_LIMIT - battle.t);
     clock.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-    dodges.textContent = '●'.repeat(f1.dodges) + '○'.repeat(2 - f1.dodges);
+    for (const [side, pips] of dodges.entries()) {
+      const f = battle.fighters[side];
+      pips.textContent = '●'.repeat(f.dodges) + '○'.repeat(2 - f.dodges);
+      pips.classList.toggle('rt-dodges-ready', dodgeJumpReady(f));
+    }
     const cools = (btns, f) => btns.forEach((btn, i) => {
       const m = f.moves[i];
       const wait = m.once && f.usedOnce.includes(i) ? 1 : f.cooldowns[i] / m.cooldown;

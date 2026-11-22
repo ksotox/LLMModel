@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { aiIntent, ARENA_RULES, createRealtime, hitAmount, idle, moveSpecs, STEP, step, TIME_LIMIT } from '../public/js/battle/realtime.js';
+import { aiIntent, ARENA_RULES, createRealtime, dodgeJumpReady, hitAmount, idle, moveSpecs, STEP, step, TIME_LIMIT } from '../public/js/battle/realtime.js';
 
 const atk = (name, base, cost = 1, mod = null, effect = '') => ({ name, cost: Array(cost).fill('Colorless'), damage: { base, mod }, effect });
 const voltorb = { name: 'Voltorb', battle: { hp: 70, types: ['Lightning'], attacks: [atk('Rollout', 10, 1), atk('Lightning Ball', 30, 2)], weaknesses: [{ type: 'Fighting', mult: 2 }] } };
@@ -34,6 +34,73 @@ describe('real-time PokéBattles', () => {
       return [s.winner, s.t.toFixed(3), s.fighters.map((f) => f.hp).join('/')];
     };
     assert.deepEqual(play(), play());
+  });
+
+  test('a dodge jump retains momentum, spends the second charge only in the window and ends invulnerability', () => {
+    const go = { ...idle(), move: { x: 0, z: 1 } };
+    const s = createRealtime(voltorb, linoone, { mode: 'pvp' });
+    const [f] = s.fighters;
+    step(s, [{ ...go, dodge: true }, idle()]);
+    assert.equal(dodgeJumpReady(f), false);
+    step(s, [{ ...go, jump: true }, idle()]);
+    assert.equal(f.dodges, 1, 'an early jump is buffered');
+    const events = run(s, [go, idle()], 0.12);
+    assert.equal(events.filter((e) => e.type === 'dodgeJump').length, 1);
+    assert.equal(f.dodges, 0);
+    assert.equal(f.invulnerable, 0);
+    assert.ok(f.y > 0 && f.vz > 4);
+
+    for (const [charges, delay] of [[1, 0.14], [2, 0.24]]) {
+      const other = createRealtime(voltorb, linoone, { mode: 'pvp' });
+      other.fighters[0].dodges = charges;
+      step(other, [{ ...go, dodge: true }, idle()]);
+      run(other, [go, idle()], delay);
+      assert.equal(dodgeJumpReady(other.fighters[0]), false);
+      assert.ok(!step(other, [{ ...go, jump: true }, idle()]).some((e) => e.type === 'dodgeJump'));
+      assert.equal(other.fighters[0].dodges, charges - 1);
+    }
+  });
+
+  test('an air dash spends a charge, leaves the fighter exposed, and resets on landing', () => {
+    const s = createRealtime(voltorb, linoone, { mode: 'pvp' });
+    const [f] = s.fighters;
+    step(s, [{ ...idle(), jump: true }, idle()]);
+    const dash = [{ ...idle(), dodge: true, move: { x: 0, z: 1 } }, idle()];
+    assert.ok(step(s, dash).some((e) => e.type === 'airDash'));
+    assert.equal(f.dodges, 1);
+    assert.equal(f.invulnerable, 0);
+    run(s, still(), 0.28);
+    assert.ok(f.y > 0);
+    assert.ok(!step(s, dash).some((e) => e.type === 'airDash'));
+    run(s, still(), 0.5);
+    assert.equal(f.airDashUsed, false);
+    step(s, [{ ...idle(), jump: true }, idle()]);
+    assert.ok(step(s, dash).some((e) => e.type === 'airDash'));
+  });
+
+  test('Flame Charge winds up, travels, and deals one contact hit; interruptions cancel the wind-up', () => {
+    const fire = { name: 'Fire fighter', battle: { hp: 90, types: ['Fire'], attacks: [atk('Flame Charge', 50)] } };
+    const s = createRealtime(fire, linoone, { mode: 'pvp' });
+    const [f, foe] = s.fighters;
+    Object.assign(f, { x: 0, z: 0, facing: 0 });
+    Object.assign(foe, { x: 0, z: 2.5, facing: Math.PI });
+    assert.equal(f.moves[0].kind, 'rush');
+    const start = step(s, [{ ...idle(), use: 0 }, idle()]);
+    assert.ok(start.some((e) => e.type === 'castStart'));
+    assert.ok(!start.some((e) => e.type === 'castRelease'));
+    const events = run(s, still(), 1);
+    assert.equal(events.filter((e) => e.type === 'castRelease').length, 1);
+    assert.equal(events.filter((e) => e.type === 'hit').length, 1);
+    assert.ok(f.z > 1.5 && foe.hp < foe.maxHp);
+    assert.equal(s.projectiles.length, 0);
+
+    const stopped = createRealtime(fire, linoone, { mode: 'pvp' });
+    Object.assign(stopped.fighters[0], { x: 0, z: 0, facing: 0 });
+    Object.assign(stopped.fighters[1], { x: 0, z: 1.1, facing: Math.PI });
+    step(stopped, [{ ...idle(), use: 0 }, { ...idle(), use: 3 }]);
+    const interrupted = run(stopped, still(), 0.5);
+    assert.ok(interrupted.some((e) => e.type === 'castCancel' && e.side === 0));
+    assert.ok(!interrupted.some((e) => e.type === 'castRelease' && e.side === 0));
   });
 
   test('the computer finishes a battle on every difficulty and arena, with sane positions', () => {

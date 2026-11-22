@@ -238,6 +238,7 @@ body.battle-mode .topbar { display: none; }
 .rt-bar { display: flex; align-items: center; gap: 12px; pointer-events: auto; color: var(--glass-ink); font-size: 0.85rem; }
 .rt-clock { font-variant-numeric: tabular-nums; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-line); }
 .rt-dodges { letter-spacing: 2px; color: #7dd3fc; }
+.rt-dodges-ready { color: #fff; text-shadow: 0 0 8px #38bdf8; text-decoration: underline; }
 .rt-help { font-size: 0.75rem; color: var(--glass-dim); }
 .rt-energy { flex: 1; height: 6px; margin-right: 10px; max-width: 120px; border-radius: 3px; background: rgb(255 255 255 / 0.15); overflow: hidden; }
 .rt-energy-fill { display: block; height: 100%; width: 0; background: #facc15; }

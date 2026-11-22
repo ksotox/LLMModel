@@ -752,6 +752,9 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - `recognize.js`: an uncertain reading is retried from a cut at the camera frame's full resolution (up to 2000 px),
   like the pre-grader's high-resolution flattening. Benchmark unchanged (its photos are small).
 
+## Phase 44: Battle momentum and Sanctuary mantling
+- Added real-time dodge jumps and air dashes, cast wind-up cues, Fire contact rushes, and a climbable Sanctuary basalt slab with matching collision and animation.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

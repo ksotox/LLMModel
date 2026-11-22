@@ -52,6 +52,7 @@ export const isHumanRig = (rig) => Boolean(rig.thighL && rig.thighR && rig.armL 
 /** The trainer's animation state from the Sanctuary's player (or the Reef's swimmer). */
 export function trainerState(p) {
   if (!p) return 'idle';
+  if (p.mode === 'mantle') return 'mantle';
   if (p.mode === 'swim') return 'swim';
   if (p.mode === 'glide') return 'glide';
   if (p.mode === 'fall') return p.vy > 0.5 ? 'jump' : 'fall';
@@ -72,6 +73,10 @@ export function gait(state, phase, speed = 1, t = 0) {
   const breathe = Math.sin(t * 1.7) * 0.03;
   const pose = { lean: 0, hipsBob: 0, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0, armR: 0, forearmL: 0.15, forearmR: 0.15, armOutL: 0, armOutR: 0, head: 0 };
   switch (state) {
+    case 'mantle':
+      Object.assign(pose, { lean: 0.35, thighL: 0.95, thighR: 0.55, kneeL: 1.2, kneeR: 0.8,
+        armL: 1.9, armR: 1.9, forearmL: 0.7, forearmR: 0.7 });
+      break;
     case 'walk':
     case 'run': {
       const run = state === 'run';

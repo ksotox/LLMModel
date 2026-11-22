@@ -94,6 +94,7 @@ OpenCV.js, Tesseract.js, heic2any, onnxruntime-web and the OCR models are served
 
 ## Documentation and references used while building
 
+- **Deadlock movement reference.** [SteamTracking schema listings](https://github.com/SteamTracking/GameTracking-Deadlock) and [documented movement](https://deadlock.wiki/Movement) informed dodge-jump timing cues, air dash and mantling. The game code, motion and effects in the app were written for its own controllers and models.
 - **TCGdex:** docs at [tcgdex.dev](https://tcgdex.dev) ([card reference](https://tcgdex.dev/reference/card), [filtering, sorting and pagination](https://tcgdex.dev/rest/filtering-sorting-pagination)). Its server code at [github.com/tcgdex/cards-database](https://github.com/tcgdex/cards-database) was used to confirm:
   - the set and card endpoint fields, and the query parser and filter (`server/src/libs/QueryEngine/parsers.ts`: a plain value means "contains", `eq:` an exact match; `/cards?set=` matches the set's id or name);
   - the TCGplayer (via tcgcsv) and Cardmarket price providers;
