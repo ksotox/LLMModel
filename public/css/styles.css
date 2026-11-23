@@ -759,6 +759,9 @@ body.signed-out .nav, body.signed-out .account { display: none; }
 .form { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
 .form > .btn:not(.block) { align-self: flex-start; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; }
+/* A sentence-long setting in a panel (Profile) wraps instead of running off a phone screen. */
+section.panel > .check { white-space: normal; align-items: flex-start; }
+section.panel > .check input { margin-top: 3px; }
 .check input { width: auto; margin: 0; accent-color: var(--accent); }
 @media (max-width: 720px) { .account-name { display: none; } .account-button { padding: 4px; } }
 

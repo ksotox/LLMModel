@@ -164,6 +164,20 @@ export function nearNumber(a, b) {
 }
 
 /**
+ * Whether a match on the number alone could be a misread, so the user should check it (pure):
+ *   • the same card name in the same set with a number one digit away (30th Celebration has
+ *     Pikachu 040/128 and 049/128: "049" read as "040" would pick the wrong one);
+ *   • neither the set code nor the set total read agrees with the match and the name is a common
+ *     one (three or more printings), so a number from a noisy read ("7") could fit any printing.
+ */
+export function ambiguousNumber(card, others, { setConfirmed = true } = {}) {
+  const sameName = others.filter((o) => nameSimilarity(o.name, card.name) >= 0.9);
+  const sameSet = (o) => (card.setCode && o.setCode === card.setCode) || (card.setName && o.setName === card.setName);
+  if (sameName.some((o) => sameSet(o) && nearNumber(o.number, card.number))) return true;
+  return !setConfirmed && sameName.length >= 2;
+}
+
+/**
  * Identify a card from OCR readings: { names: [...], lines: [...] }.
  * Returns { match, candidates, read, confidence } where confidence is 'high', 'medium' or 'low'.
  */
@@ -220,6 +234,9 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
 
   const best = scored[0];
   if (!best) return { match: null, candidates: [], read, confidence: 'low' };
+  // Of the names read, report the one the best candidate confirms ("Pikachu", not the noise read
+  // before it), even when no single printing can be picked.
+  if ((best.sim ?? 0) >= 0.8) read.name = guesses.reduce((a, g) => (nameSimilarity(g, best.card.name) > nameSimilarity(a, best.card.name) ? g : a));
   const runnerUp = scored[1];
   const clearWinner = !runnerUp || best.score - runnerUp.score >= 1;
   // The name is the best cross-check: a name that clearly disagrees blocks an automatic match.
@@ -230,6 +247,17 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
   if (clearWinner && nameAgrees && best.numberOk && !japaneseUnchecked && (best.setOk || best.totalOk || (best.sim ?? 0) >= 0.75)) confidence = 'high';
   else if (clearWinner && (best.sim ?? 0) >= 0.8 && (best.setOk || best.totalOk || best.numberOk)) confidence = 'medium';
   else if (clearWinner && best.sim == null && best.numberOk && best.setOk) confidence = 'medium';
+  if (confidence === 'high') {
+    // The search may have stopped at the one card the number pointed to: look up the same name's
+    // other printings (in the matched card's own set, or anywhere when it has no code) before
+    // trusting it. A set code "read" from noise that the match doesn't share confirms nothing.
+    let others = scored.slice(1).map((x) => x.card);
+    try {
+      const siblings = await catalog.search(best.card.setCode ? { name: best.card.name, setCode: best.card.setCode } : { name: best.card.name });
+      others = [...others, ...siblings.filter((c) => c.tcgId !== best.card.tcgId && !others.some((o) => o.tcgId === c.tcgId))];
+    } catch { /* offline: judge with what was found */ }
+    if (ambiguousNumber(best.card, others, { setConfirmed: best.setOk || best.totalOk })) confidence = 'medium';
+  }
   return {
     match: confidence === 'low' ? null : best.card,
     candidates: scored.slice(0, 12).map((s) => s.card),

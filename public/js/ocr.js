@@ -117,10 +117,11 @@ function area(card, [x0, y0, x1, y1], { scale = 2, invert = false, binary = fals
 }
 
 /**
- * The set line, found by its text inside a search window at the bottom left (fractions of the
- * card), instead of a fixed band: returns its area [x0, y0, x1, y1] as fractions.
+ * A line of print found by its text inside a search window ([x0, y0, x1, y1], fractions of the card)
+ * instead of a fixed band: the `lineH`-tall band (share of the card's height) with the most text,
+ * preferring one near `expectedY`. Returns its area [x0, y0, x1, y1] as fractions.
  */
-function locateSetLine(card, [x0, y0, x1, y1] = SET_SEARCH) {
+function locateLine(card, [x0, y0, x1, y1], lineH, expectedY) {
   const W = Math.max(1, Math.round((x1 - x0) * card.width));
   const H = Math.max(1, Math.round((y1 - y0) * card.height));
   const c = document.createElement('canvas');
@@ -131,17 +132,20 @@ function locateSetLine(card, [x0, y0, x1, y1] = SET_SEARCH) {
   const d = ctx.getImageData(0, 0, W, H).data;
   const gray = new Float32Array(W * H);
   for (let i = 0; i < gray.length; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-  const lineH = (SET_LINE[3] - SET_LINE[1]) * card.height;
-  const expected = (((SET_LINE[1] + SET_LINE[3]) / 2) - y0) * card.height;
-  const [top, bottom] = textBand(gray, W, H, { lineH, expected });
+  const [top, bottom] = textBand(gray, W, H, { lineH: lineH * card.height, expected: (expectedY - y0) * card.height });
   return [x0, y0 + top / card.height, x1, y0 + bottom / card.height];
 }
+const locateSetLine = (card) => locateLine(card, SET_SEARCH, SET_LINE[3] - SET_LINE[1], (SET_LINE[1] + SET_LINE[3]) / 2);
 
 const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const SET_LINE = [0, 0.935, 0.42, 0.968];
 const CODE_BOX = [0, 0.935, 0.25, 0.968];
 const SET_SEARCH = [0, 0.905, 0.42, 0.99]; // where the set line can be, give or take the cut
 const NAME_LINE = [0.13, 0.02, 0.74, 0.095];
+// Old-layout (Base-set style) cards, also reprinted in the Classic Collections: the name starts at
+// the left edge under a small "Basic Pokémon", and the number ("58/102") is at the bottom right.
+const OLD_NAME_SEARCH = [0.08, 0.035, 0.62, 0.155];
+const NUMBER_RIGHT_SEARCH = [0.72, 0.905, 0.94, 0.975];
 const NAME_TIGHT = [0.15, 0.025, 0.6, 0.09];
 const TRAINER_NAME = [0.04, 0.085, 0.74, 0.135]; // Trainer and Energy cards print the name lower
 
@@ -171,11 +175,15 @@ async function readCardTextNow(card) {
     await read(area(card, CODE_BOX, { scale: 3, invert: true }), `${UPPER} `),
     await read(area(card, CODE_BOX, { scale: 3, invert: true, binary: true }), `${UPPER} `),
   ];
+  // Only a whole "58/102" from the bottom right counts: stray digits there are holo sparkle.
+  const oldNumber = await read(area(card, locateLine(card, NUMBER_RIGHT_SEARCH, 0.02, 0.937), { scale: 4 }), '0123456789/ ');
+  if (/\d+\s*\/\s*\d+/.test(oldNumber)) lines.push(oldNumber);
   const names = [
     await read(area(card, NAME_LINE, { scale: 1.5 })),
     await read(area(card, NAME_LINE, { scale: 2.5, binary: true })),
     await read(area(card, NAME_TIGHT, { scale: 2 })),
     await read(area(card, TRAINER_NAME, { scale: 1.5 })),
+    await read(area(card, locateLine(card, OLD_NAME_SEARCH, 0.04, 0.1), { scale: 2 })),
   ];
   // A Japanese card: read its name with the Japanese model too (the English readings are noise).
   if (looksJapanese(lines)) {

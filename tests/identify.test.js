@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { findNumber, findSetCode, identifyCard, nameCandidates, nearNumber, nameSimilarity } from '../server/identify.js';
+import { ambiguousNumber, findNumber, findSetCode, identifyCard, nameCandidates, nearNumber, nameSimilarity } from '../server/identify.js';
 import { mockCatalog, startMockSources } from './helpers/mock-sources.js';
 
 // These are the real OCR readings the in-browser reader produced for the reference photos.
@@ -126,5 +126,43 @@ describe('identifying the card', () => {
     const result = await identifyCard(catalog, { names: ['~~ ::'], lines: ['A B'] });
     assert.equal(result.match, null);
     assert.equal(result.confidence, 'low');
+  });
+});
+
+describe('a number-only match that could be a misread waits for review', () => {
+  const pika = (number, setCode = '30C', setName = '30th Celebration') => ({ name: 'Pikachu', number, setCode, setName });
+  test('the same card name one digit away in the same set (049 read as 040)', () => {
+    assert.equal(ambiguousNumber(pika('040'), [pika('049'), pika('032')]), true);
+    assert.equal(ambiguousNumber(pika('040'), [pika('032'), pika('023')]), false, 'no near sibling');
+    assert.equal(ambiguousNumber(pika('040'), [pika('049', 'MCD', "McDonald's")]), false, 'a near number in another set is a different card');
+    assert.equal(ambiguousNumber({ name: 'Voltorb', number: '066', setCode: 'PAL' }, [{ name: 'Pawmot', number: '065', setCode: 'PAL' }]), false, 'a different name');
+  });
+  test('no set confirmed (code or total) and a common name', () => {
+    const others = [pika('25', 'BS', 'Base'), pika('58', 'BS2', 'Base Set 2')];
+    assert.equal(ambiguousNumber(pika('7', 'MCD', "McDonald's"), others, { setConfirmed: false }), true);
+    assert.equal(ambiguousNumber(pika('7', 'MCD', "McDonald's"), others, { setConfirmed: true }), false, 'with the set confirmed, the number decides');
+    assert.equal(ambiguousNumber({ name: 'Moltres', number: '12' }, [{ name: 'Zapdos', number: '16' }], { setConfirmed: false }), false, 'a rare name');
+  });
+
+  // The owner's photos: noise read as a set code ("LES 040/120" → RCL, "W7/38" → DRI) must not
+  // vouch for a Pikachu found by its number alone.
+  const PIKACHUS = [
+    ...['032', '040', '049'].map((n) => ({ tcgId: `30c-${n}`, name: 'Pikachu', number: n, setCode: '30C', setName: '30th Celebration', setTotal: 128 })),
+    { tcgId: 'mcd22-7', name: 'Pikachu', number: '7', setCode: null, setName: "McDonald's Collection 2022", setTotal: 15 },
+  ];
+  const pad = (n) => String(n ?? '').split('/')[0].replace(/^0+/, '');
+  const fake = { search: async ({ name, setCode, number }) => PIKACHUS.filter((c) => (!name || c.name === name)
+    && (!setCode || c.setCode === setCode) && (!number || pad(c.number) === pad(number))) };
+  test('a wrongly read set code does not make a number-only match certain', async () => {
+    const a = await identifyCard(fake, { names: ['#52" Pikachu'], lines: ['LES 040/120 W17730', 'UES 040/120 7730'] });
+    assert.equal(a.match?.tcgId, '30c-040');
+    assert.equal(a.confidence, 'medium', 'Pikachu 049 sits one digit away in the same set');
+    const b = await identifyCard(fake, { names: ['= Pikachu'], lines: ['dr BE err 123 W7/38', 'fr 28K wn 123s 7/8'] });
+    assert.equal(b.confidence === 'high', false, 'a lone "7" fits any of the Pikachus');
+  });
+  test('reports the name the catalog confirms, not noise read before it', async () => {
+    const r = await identifyCard(fake, { names: ['A ; 3 i', 'SAA FERRER', '{Pikachu 40', 'Pikachu'], lines: ['wm ra sm 7'] });
+    assert.equal(r.read.name, 'Pikachu');
+    assert.ok(r.candidates.every((c) => c.name === 'Pikachu'));
   });
 });
