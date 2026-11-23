@@ -104,7 +104,13 @@ export function moveSpecs(data) {
 function makeSide(data, side, start) {
   const hp = Math.max(10, Number(data?.battle?.hp) || 60);
   const battle = data?.battle ?? {};
+  // Its body (creature/body.js battleBody): size on the field, how fast it moves, how it falls.
+  const body = data?.body ?? {};
   return {
+    radius: body.radius ?? BODY_RADIUS,
+    height: body.height ?? 1.05,
+    speedMul: body.speed ?? 1,
+    gravityMul: body.gravity ?? 1,
     side,
     name: data?.name ?? 'Pokémon',
     cardId: data?.cardId ?? null,
@@ -144,7 +150,10 @@ function makeSide(data, side, start) {
   };
 }
 
-/** A new battle. `a` and `b`: { battle, name, cardId } as for the turn-based engine. */
+/**
+ * A new battle. `a` and `b`: { battle, name, cardId, body? } as for the turn-based engine; `body`
+ * ({ radius, height, speed, gravity }) sizes the fighter to its real build (default: a 1 m Pokémon).
+ */
 export function createRealtime(a, b, { rng = Math.random, seed = null, weather = 'clear', arena = 'meadow', mode = 'cpu', difficulty = 'normal' } = {}) {
   const rules = ARENA_RULES[arena] ?? ARENA_RULES.meadow;
   const random = seed != null ? createRng(seed) : rng;
@@ -266,7 +275,8 @@ function fire(state, f, foe, move, index, events) {
     const dz = foe.z - f.z;
     const d = len(dx, dz);
     const ahead = Math.cos(Math.atan2(dx, dz) - f.facing);
-    if (d <= MELEE_RANGE && ahead > 0.2 && Math.abs(foe.y - f.y) < 1.2) damage(state, f, foe, move, f.x, f.z, events);
+    const reach = MELEE_RANGE + f.radius + foe.radius - BODY_RADIUS * 2; // longer for big bodies
+    if (d <= reach && ahead > 0.2 && Math.abs(foe.y - f.y) < Math.max(1.2, foe.height * 0.6)) damage(state, f, foe, move, f.x, f.z, events);
     else events.push({ type: 'miss', side: f.side });
     return;
   }
@@ -392,8 +402,8 @@ function stepFighter(state, f, foe, intent, dt, events) {
     const m = Math.min(1, len(intent?.move.x ?? 0, intent?.move.z ?? 0));
     const k = m > 0 ? m / len(intent.move.x, intent.move.z) : 0;
     const slow = f.action ? 0.35 : 1; // moving while attacking is slow
-    const tx = (intent?.move.x ?? 0) * k * SPEED * slow;
-    const tz = (intent?.move.z ?? 0) * k * SPEED * slow;
+    const tx = (intent?.move.x ?? 0) * k * SPEED * f.speedMul * slow;
+    const tz = (intent?.move.z ?? 0) * k * SPEED * f.speedMul * slow;
     const grip = f.y > 0.001 || f.vy > 0 ? 4 : 14; // little control in the air
     f.vx += (tx - f.vx) * Math.min(1, grip * dt);
     f.vz += (tz - f.vz) * Math.min(1, grip * dt);
@@ -401,7 +411,7 @@ function stepFighter(state, f, foe, intent, dt, events) {
   f.x += f.vx * dt;
   f.z += f.vz * dt;
   if (f.y > 0 || f.vy > 0) {
-    f.vy -= GRAVITY * dt;
+    f.vy -= GRAVITY * f.gravityMul * dt; // flyers and levitators come down slowly
     f.y = Math.max(0, f.y + f.vy * dt);
     if (f.y === 0) { f.vy = 0; f.airDashUsed = false; }
   }
@@ -415,8 +425,9 @@ function stepFighter(state, f, foe, intent, dt, events) {
       const dx = foe.x - f.x;
       const dz = foe.z - f.z;
       const d = len(dx, dz);
-      if (d > 1.1 && d < LUNGE_RANGE + 0.5) {
-        const k = Math.min(LUNGE_SPEED * dt, d - 1.1) / d;
+      const stop = 1.1 + f.radius + foe.radius - BODY_RADIUS * 2;
+      if (d > stop && d < LUNGE_RANGE + 0.5 + stop - 1.1) {
+        const k = Math.min(LUNGE_SPEED * dt, d - stop) / d;
         f.x += dx * k;
         f.z += dz * k;
       }
@@ -435,7 +446,7 @@ function stepFighter(state, f, foe, intent, dt, events) {
 
   // The field's edge: a wall, or (Floating Stadium) a fall.
   const r = len(f.x, f.z);
-  const limit = state.zone - BODY_RADIUS;
+  const limit = state.zone - f.radius;
   if (r > limit) {
     if (state.rules.wall || state.zone < state.rules.radius) {
       f.x *= limit / r;
@@ -452,7 +463,7 @@ function stepFighter(state, f, foe, intent, dt, events) {
     const along = Math.max(0, Math.min(1, ((foe.x - beforeX) * dx + (foe.z - beforeZ) * dz) / (dx * dx + dz * dz || 1)));
     const x = beforeX + dx * along;
     const z = beforeZ + dz * along;
-    if (len(foe.x - x, foe.z - z) <= BODY_RADIUS * 2 + 0.1) {
+    if (len(foe.x - x, foe.z - z) <= f.radius + foe.radius + 0.1) {
       action.rushHit = true;
       damage(state, f, foe, actionMove, beforeX, beforeZ, events);
     }
@@ -466,7 +477,7 @@ function stepProjectiles(state, dt, events) {
     p.z += p.vz * dt;
     p.life -= dt;
     const target = state.fighters[1 - p.side];
-    const hitBody = len(target.x - p.x, target.z - p.z) < PROJECTILE_RADIUS + BODY_RADIUS && Math.abs(target.y + 0.6 - p.y) < 1.1;
+    const hitBody = len(target.x - p.x, target.z - p.z) < PROJECTILE_RADIUS + target.radius && Math.abs(target.y + Math.min(0.6, target.height * 0.5) - p.y) < Math.max(1.1, target.height * 0.6);
     if (hitBody && damage(state, state.fighters[p.side], target, p.move, p.x - p.vx * 0.05, p.z - p.vz * 0.05, events)) {
       events.push({ type: 'burst', id: p.id, x: p.x, z: p.z, moveType: p.move.type });
       continue;
@@ -507,8 +518,8 @@ export function step(state, intents = [null, null], dt = STEP) {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
   const d = len(dx, dz);
-  if (d > 0 && d < BODY_RADIUS * 2 && Math.abs(a.y - b.y) < 0.8) {
-    const push = (BODY_RADIUS * 2 - d) / 2;
+  if (d > 0 && d < a.radius + b.radius && Math.abs(a.y - b.y) < 0.8) {
+    const push = (a.radius + b.radius - d) / 2;
     a.x -= (dx / d) * push; a.z -= (dz / d) * push;
     b.x += (dx / d) * push; b.z += (dz / d) * push;
   }
@@ -586,7 +597,8 @@ export function aiIntent(state, side) {
   const open = seen.dodgeT > 0 && seen.dodgeT < DODGE_RECOVERY + 0.02;
   // 3. Pick a move it can use now, if it feels like attacking.
   const usable = me.moves.map((m, i) => ({ m, i })).filter(({ m, i }) => me.cooldowns[i] <= 0 && me.energy >= m.energy && !(m.once && me.usedOnce.includes(i)));
-  const inRange = usable.filter(({ m }) => (m.kind === 'melee' || m.kind === 'rush' ? d < LUNGE_RANGE : m.kind === 'projectile' ? d < 7.5 : true));
+  const lunge = LUNGE_RANGE + me.radius + foe.radius - BODY_RADIUS * 2;
+  const inRange = usable.filter(({ m }) => (m.kind === 'melee' || m.kind === 'rush' ? d < lunge : m.kind === 'projectile' ? d < 7.5 : true));
   const hurtSelf = me.hp < me.maxHp * 0.5;
   const pick = inRange.find(({ m }) => m.kind === 'boost' && foe.hp > foe.maxHp * 0.4)
     ?? inRange.find(({ m }) => m.kind === 'heal' && hurtSelf)

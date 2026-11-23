@@ -15,6 +15,8 @@ import { createSwimmer, stepSwimmer } from './player.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { buildTrainer } from './trainer.js';
 import { createCreature, habitatFor, nearest, reefResidents, stepDrifter } from './zoo.js';
+import { bodyPlan } from '../creature/body.js';
+import { createAnimator } from '../creature/animate.js';
 
 const BATTLE_KEEP = 'pokedex.battleKeep';
 const SPAWN_KEY = 'pokedex.sanctuarySpawn';
@@ -158,18 +160,20 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     loading++;
     try {
       const entry = await getJson(`/api/battles/cards/${c.card.id}`);
-      const url = entry.models?.forms?.find((f) => f.form === entry.models.default)?.url;
-      const model = alive ? await loadModel(models.loader, url, 1.0, { realistic: level !== 'basic', types: ['Water'] }) : null;
+      const form = entry.models?.forms?.find((f) => f.form === entry.models.default);
+      const species = form?.species ?? entry.species;
+      if (species) c.plan = bodyPlan(species, { fallbackHeight: 1 }); // its real size
+      const model = alive ? await loadModel(models.loader, form?.url, c.plan.heightM, { realistic: level !== 'basic', types: ['Water'], measure: c.plan.measure }) : null;
       if (model && alive) {
         c.group.remove(c.stand);
         c.group.add(model.object);
         c.model = model;
         const clips = pickClips(model.clips);
-        if (clips.idle || clips.walk) {
+        if (clips.walk) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
-          c.action = c.mixer.clipAction(clips.walk ?? clips.idle);
+          c.action = c.mixer.clipAction(clips.walk);
           c.action.play();
-        }
+        } else c.anim = createAnimator(model.object, { ...c.plan, mode: 'swim' }); // underwater, everyone swims
       }
     } catch { /* it stays a card */ } finally {
       loading--;
@@ -186,7 +190,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     cardModal.hidden = false;
   };
   const hearts = (c) => {
-    const p = new THREE.Vector3(c.x, c.y + 1.2, c.z).project(camera);
+    const p = new THREE.Vector3(c.x, c.y + (c.model?.height ?? 1) + 0.2, c.z).project(camera);
     for (let i = 0; i < 5; i++) {
       const heart = h('span.sanc-heart', '♥');
       heart.style.left = `${(p.x * 0.5 + 0.5) * el.clientWidth + (i - 2) * 16}px`;
@@ -325,16 +329,17 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     const W = el.clientWidth;
     const H = el.clientHeight;
     for (const c of creatures) {
-      const d = Math.hypot(c.x - swimmer.x, c.y - swimmer.y, c.z - swimmer.z);
+      const d = Math.max(0, Math.hypot(c.x - swimmer.x, c.y - swimmer.y, c.z - swimmer.z) - c.plan.radius);
       if (c.petted > 0) c.petted = Math.max(0, c.petted - dt);
       c.group.position.set(c.x, c.y + Math.sin(c.hop) * 0.12 + (c.petted ? Math.sin(c.petted * 12) * 0.25 : 0), c.z);
       c.group.rotation.y = c.model ? c.facing : Math.atan2(camera.position.x - c.x, camera.position.z - c.z);
       if (c.petted && c.model) c.group.rotation.y += c.petted * 8; // a happy spin
       if (!c.asked && d < 30 && loading < 2) wantModel(c);
       if (c.mixer && d < 30) c.mixer.update(dt);
+      if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed });
       let alpha = 0;
       if (d < 14) {
-        v.set(c.x, c.y + 1.3, c.z).project(camera);
+        v.set(c.x, c.y + (c.model?.height ?? 1) + 0.3, c.z).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
           alpha = Math.min(1, (14 - d) / 5);
           c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - c.plate.offsetWidth / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;

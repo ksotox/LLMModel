@@ -20,6 +20,7 @@ import { SET_CODES } from './setCodes.js';
 import { allSets, setChecklist, userSets } from './sets.js';
 import { battleData, isPokemonCard } from './battle.js';
 import { Models3D } from './models3d.js';
+import { formKey, speciesForCardName, speciesInfo } from './species.js';
 import { AiModels, aiModelsRouter } from './aiModels.js';
 import { scanLabelsRouter } from './scanLabels.js';
 import { CardDioramas, cardDioramasRouter } from './cardDioramas.js';
@@ -565,7 +566,8 @@ export function createApp({
   // The user's Pokémon cards for the picker (copies of the same card grouped), from the database only.
   app.get('/api/battles/fighters', (req, res) => {
     const { cards } = store.queryCards({ userId: req.user.id, group: true, pageSize: 500, sort: 'name' });
-    res.json({ cards: cards.filter((c) => !c.category || /pok[eé]mon|ポケモン/i.test(c.category)).map(toJson) });
+    // Each with its Pokémon's real size and build (found by name), so the Sanctuary can lay them out to scale.
+    res.json({ cards: cards.filter((c) => !c.category || /pok[eé]mon|ポケモン/i.test(c.category)).map((c) => ({ ...toJson(c), species: speciesForCardName(c.name) })) });
   });
 
   // One card ready for battle: its attacks, abilities, HP, weakness… and its 3D model forms.
@@ -573,7 +575,11 @@ export function createApp({
     const card = findCard(req.params.id, req);
     const battle = await battleData(catalog, card);
     if (!isPokemonCard(card, battle)) throw new HttpError(400, 'Only Pokémon cards can battle');
-    res.json({ card: toJson(card), battle, models: await models.forCard(card, battle.dexIds) });
+    const found = await models.forCard(card, battle.dexIds);
+    // Each model form's real size and build, so it can be drawn to scale and move as it should.
+    const dexId = found.dexId ?? battle.dexIds[0] ?? null;
+    const forms = found.forms.map((f) => ({ ...f, species: speciesInfo(dexId, formKey(f.form)) }));
+    res.json({ card: toJson(card), battle, species: speciesInfo(dexId), models: { ...found, forms } });
   });
 
   // A 3D model file: downloaded once from the Pokémon 3D API (only files its list names), then cached.

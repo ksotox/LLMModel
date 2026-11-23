@@ -9,6 +9,7 @@ import { createControls, joystick, toWorld } from './battle/controls.js';
 import { createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
+import { battleBody, battleScale, bodyPlan } from './creature/body.js';
 
 const TYPE_HEX = {
   Grass: '#4caf50', Fire: '#ff6d1f', Water: '#2f8cff', Lightning: '#e6b800', Psychic: '#b44cff', Fighting: '#d2691e',
@@ -37,7 +38,7 @@ const typeOrb = (t) => h('span.type-orb', { style: { background: typeHex(t) }, t
  * The card's details floating above the Pokémon, like an AR card scanner's banner: the card's
  * picture, name, set and number, its type and HP, then its attacks.
  */
-function infoPanel(entry) {
+function infoPanel(entry, species = entry.species) {
   const b = entry.battle;
   const c = entry.card;
   const thumb = c.official_url || c.photo_url;
@@ -48,6 +49,7 @@ function infoPanel(entry) {
       h('div.cip-right', h('span.cip-orbs', b.types.slice(0, 2).map(typeOrb)), h('span.cip-hp', `HP ${b.hp}`))),
     h('ul.cip-attacks', b.attacks.map((a) => h('li', costPips(a.cost), h('span', a.name), h('b', damageLabel(a))))),
     b.abilities.length > 0 && h('p.cip-ability', '✦ ', h('b', b.abilities[0].name)),
+    species?.heightM > 0 && h('p.cip-size', `Real size: ${metres(species.heightM)} · ${kilos(species.weightKg)}`),
     (b.weaknesses[0] || b.resistances[0]) && h('p.cip-foot', [b.weaknesses[0] && `Weak: ${b.weaknesses[0].type} ${b.weaknesses[0].value}`, b.resistances[0] && `Resist: ${b.resistances[0].type} ${b.resistances[0].value}`].filter(Boolean).join(' · ')),
     !b.fromCard && h('p.cip-note', 'No attack data for this card yet: using a basic attack.'));
 }
@@ -243,6 +245,19 @@ async function makeStage(host, mode) {
 }
 
 const modelUrl = (sel) => sel.entry.models.forms.find((f) => f.form === sel.form)?.url ?? null;
+// Its real size and build: the chosen 3D form's (a Gigantamax is far bigger), else the species'.
+const speciesOf = (sel) => sel.entry.models.forms.find((f) => f.form === sel.form)?.species ?? sel.entry.species ?? null;
+const planOf = (sel) => (speciesOf(sel) ? bodyPlan(speciesOf(sel)) : null);
+/** Both fighters at their real sizes: the stage's scale, and each one's plan. */
+function sizeUp(stage, sels) {
+  const plans = sels.map(planOf);
+  // A serpent's or a fish's Pokédex size is its length: it lies along the field, so it counts for less.
+  const scale = battleScale(plans.map((p) => (p ? p.heightM * (p.long ? 0.6 : 1) : 1.05)));
+  stage.setSizeScale?.(scale);
+  return { plans, scale };
+}
+const metres = (m) => (m >= 100 ? `${Math.round(m)} m` : m >= 1 ? `${m.toFixed(1)} m` : `${Math.round(m * 100)} cm`);
+const kilos = (kg) => (kg >= 100 ? `${Math.round(kg)} kg` : `${kg.toFixed(1)} kg`);
 const cardUrls = (sel) => [sel.card.official_url?.startsWith('/') ? sel.card.official_url : null, sel.card.photo_url];
 
 /**
@@ -376,7 +391,7 @@ function cleanupOnLeave(stage, shell) {
 
 /** The summon intro for one side: the card drops in, the Pokémon pops out, its details float in. */
 async function introduce(stage, a, slot, sel) {
-  const panel = infoPanel(sel.entry);
+  const panel = infoPanel(sel.entry, speciesOf(sel));
   panel.classList.add(`slot-${slot}`);
   await stage.summon(slot);
   a.hud.append(panel);
@@ -410,7 +425,7 @@ async function startShowcase(root, sel, onBack) {
     busy = true;
     setButtons(false);
     clear(a.hud);
-    const added = await stage.addFighter(0, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel) });
+    const added = await stage.addFighter(0, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: planOf(sel) });
     if (!stage.slots[1]) stage.addTarget();
     a.skip.hidden = false;
     a.skip.onclick = () => stage.skip();
@@ -519,7 +534,8 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   a.skip.hidden = false;
   a.skip.onclick = () => stage.skip();
   say(a.message, 'Getting the cards ready…', { hold: 0 });
-  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel) })));
+  const { plans, scale } = sizeUp(stage, [p1, p2]);
+  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot] })));
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
 
   // Intro: each card drops in and its Pokémon pops out, its details floating beside it.
@@ -709,7 +725,8 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   a.skip.hidden = false;
   a.skip.onclick = () => stage.skip();
   say(a.message, 'Getting the cards ready…', { hold: 0 });
-  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel) })));
+  const { plans, scale } = sizeUp(stage, [p1, p2]);
+  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot] })));
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
   await say(a.message, `${p1.card.name}, come on out!`, { hold: 0 });
   const panel1 = await introduce(stage, a, 0, p1);
@@ -722,8 +739,8 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   panel2.remove();
 
   const battle = createRealtime(
-    { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id },
-    { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id },
+    { battle: p1.entry.battle, name: p1.card.name, cardId: p1.id, body: plans[0] ? battleBody(plans[0], scale) : undefined },
+    { battle: p2.entry.battle, name: p2.card.name, cardId: p2.id, body: plans[1] ? battleBody(plans[1], scale) : undefined },
     { mode, weather: weatherNow(), arena: arena.environment, difficulty: arena.difficulty },
   );
   const [f1, f2] = battle.fighters;

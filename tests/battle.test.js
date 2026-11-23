@@ -84,6 +84,10 @@ describe('PokéBattles: battle data and 3D models', () => {
     assert.deepEqual(body.models.forms.map((f) => [f.form, f.url]), [['regular', '/api/battles/models/regular/264.glb']], 'a model outside the Pokémon 3D API address is left out');
     const v = (await get(`/api/battles/cards/${voltorb.id}`)).body;
     assert.deepEqual([v.models.dexId, v.models.default, v.models.forms.map((f) => f.form)], [100, 'regular', ['regular', 'hisuian', 'shiny']]);
+    // Its real size and build, for each model form (Hisuian Voltorb is the same size, other types).
+    assert.deepEqual([v.species.heightM, v.species.weightKg, v.species.shape], [0.5, 10.4, 'ball']);
+    assert.deepEqual(v.models.forms.find((f) => f.form === 'hisuian').species.types, ['electric', 'grass']);
+    assert.equal(body.species.dexId, 264);
   });
 
   test('Japanese cards, unlinked cards and cards without attack data still battle; Trainers can’t', async () => {
@@ -105,8 +109,10 @@ describe('PokéBattles: battle data and 3D models', () => {
     assert.equal(f.battle.fromCard, false, 'no attacks in the data: a basic attack');
     assert.equal(f.models.dexId, 656);
     assert.equal((await get(`/api/battles/cards/${helmet.id}`)).status, 400);
-    const fighters = (await get('/api/battles/fighters')).body.cards.map((c) => c.name);
+    const list = (await get('/api/battles/fighters')).body.cards;
+    const fighters = list.map((c) => c.name);
     assert.ok(fighters.includes('Voltorb') && !fighters.includes('Punk Helmet'));
+    assert.equal(list.find((c) => c.name === 'Voltorb').species.heightM, 0.5, 'each with its real size, found by name');
   });
 
   test('models are downloaded once, checked, cached and served; only listed files', async () => {

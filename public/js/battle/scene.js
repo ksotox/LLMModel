@@ -13,6 +13,8 @@
 import * as THREE from 'three';
 import { breathing, createModelLoader, loadModel, pickClips } from './modelLoader.js';
 import { createMoveFx } from './moveFx.js';
+import { createAnimator } from '../creature/animate.js';
+import { battleBody } from '../creature/body.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
 import { clearLoad, createPerf, markLoad } from './perf.js';
@@ -265,13 +267,18 @@ export class BattleStage {
       const half = Math.min(Math.max(need, Math.tan(THREE.MathUtils.degToRad(23))), Math.tan(THREE.MathUtils.degToRad(36)));
       this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(half));
       this.dolly = Math.max(1, need / half);
-      this.camera.position.copy(this.camLook).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly);
-      this.camera.lookAt(this.camLook);
+      this.camera.position.copy(this.#look()).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly * (this.sizeFrame ?? 1));
+      this.camera.lookAt(this.#look());
     }
     const shift = Math.min(this.inset, h * 0.6) / 2;
     if (shift > 0.5) this.camera.setViewOffset(w, h, 0, shift, w, h);
     else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Where the battle camera looks: higher up for tall fighters (see setSizeScale). */
+  #look() {
+    return this.camLook.clone().setY(this.camLook.y * (this.sizeFrame ?? 1));
   }
 
   /** The controls over the bottom of the stage are `px` tall: keep the Pokémon above them. */
@@ -299,9 +306,12 @@ export class BattleStage {
       if (!s) continue;
       s.mixer?.update(dt);
       s.breath?.update(now / 1000);
+      // Its own gait (walk, trot, slither, swim, wing beats, hover), at its real speed; a playing
+      // clip (an attack) keeps the bones meanwhile.
+      if (s.anim && s.ready && !s.fainted) s.anim.update(dt, { speed: (s.liveSpeed ?? 0) / s.realScale, air: (s.poseY ?? 0) > 0.05, posing: !(s.clipUntil > now) });
       if (s.ready && !s.fainted) {
         const t = now / 1000 + s.phase;
-        s.body.position.y = s.lift + (s.poseY ?? 0) + Math.sin(t * 2.2) * 0.035;
+        s.body.position.y = s.lift + s.air + (s.poseY ?? 0) + (s.anim ? 0 : Math.sin(t * 2.2) * 0.035);
         s.body.scale.setScalar(s.scale * (1 + Math.sin(t * 2.2 + 1) * 0.012));
         if (s.aura) s.aura.material.opacity = 0.35 + Math.sin(t * 6) * 0.2;
         if (s.aura && s.live) s.aura.position.set(s.base.x, 0.3 + (s.poseY ?? 0), s.base.z);
@@ -318,10 +328,10 @@ export class BattleStage {
       this.shakeAmount = this.shakeAmount < 0.004 ? 0 : this.shakeAmount * 0.88 ** (dt * 60);
       const k = this.shakeAmount;
       const drift = this.calm ? 0 : 1;
-      this.camera.position.copy(this.camLook).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly);
+      this.camera.position.copy(this.#look()).addScaledVector(this.camBase.clone().sub(this.camLook), this.dolly * (this.sizeFrame ?? 1));
       this.camera.position.x += Math.sin(t * 0.2) * 0.2 * drift + (Math.random() - 0.5) * k;
       this.camera.position.y += Math.sin(t * 0.27) * 0.07 * drift + (Math.random() - 0.5) * k * 0.5;
-      this.camera.lookAt(this.camLook);
+      this.camera.lookAt(this.#look());
     }
     this.world.update(now / 1000);
     this.world.render();
@@ -411,21 +421,39 @@ export class BattleStage {
   }
 
   /** A fighter's 3D model, normalised to `height` and standing on y = 0 (null if it can't load). */
-  #model(url, height, types = []) {
-    return loadModel(this.loader, url, height, { realistic: this.world.quality !== 'basic', types });
+  #model(url, height, types = [], measure = 'fit') {
+    return loadModel(this.loader, url, height, { realistic: this.world.quality !== 'basic', types, measure });
   }
 
   /**
-   * Put a fighter on the stage, still hidden in its card. `info`: { name, types, modelUrl, cardUrls[] }.
-   * Returns { hasModel }.
+   * Real sizes: the battle's scale (body.js battleScale), set before the fighters are added.
+   */
+  setSizeScale(scale) {
+    this.sizeScale = scale;
+  }
+
+  /** Step the camera back (and look higher) when a fighter stands taller than about 1.3 units. */
+  #frameSizes() {
+    const tallest = Math.max(1.05, ...this.slots.filter(Boolean).map((s) => s.height + (s.air ?? 0)));
+    this.sizeFrame = this.mode === 'showcase' ? 1 : Math.max(1, tallest / 1.3);
+    this.#fitCamera(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight));
+  }
+
+  /**
+   * Put a fighter on the stage, still hidden in its card. `info`: { name, types, modelUrl, cardUrls[],
+   * plan? }: with a body plan (creature/body.js) it is drawn at its real size (times the battle's
+   * scale, see setSizeScale) and moves the way it does. Returns { hasModel }.
    */
   async addFighter(slot, info) {
     this.removeFighter(slot);
     const color = typeColor(info.types?.[0]);
     const pos = this.position(slot);
     const platform = this.#platform(pos, color);
-    const height = this.mode === 'showcase' ? 1.2 : 1.05; // about the card's width, as in an AR card scanner
-    const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height, info.types)]);
+    // Its real height on the battlefield; without one (or in the showcase), about the card's width, as in an AR card scanner.
+    const real = info.plan && this.mode !== 'showcase';
+    const scale = this.sizeScale ?? 1;
+    const height = real ? info.plan.heightM * scale : this.mode === 'showcase' ? 1.2 : 1.05;
+    const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height, info.types, real ? info.plan.measure : 'fit')]);
 
     const card = new THREE.Group();
     const CARD_W = this.cardW;
@@ -471,17 +499,23 @@ export class BattleStage {
     body.visible = false;
     this.scene.add(body);
     const mixer = model?.clips.length ? new THREE.AnimationMixer(model.object.children[0]) : null;
-    const breath = model && !mixer ? breathing(model.object) : null; // a skeleton without clips still breathes
+    // It moves in code the way its body plan says, unless it has a walk of its own (creature/animate.js).
+    const anim = model && info.plan && !pickClips(model.clips).walk ? createAnimator(model.object, info.plan) : null;
+    const breath = model && !mixer && !anim ? breathing(model.object) : null; // a skeleton without clips still breathes
+    const fly = info.plan ? battleBody(info.plan, real ? scale : 1.05 / info.plan.heightM) : null;
     const ball = this.#pokeBall(this.mode === 'showcase' ? 0.15 : 0.13);
     ball.group.position.copy(pos).add(new THREE.Vector3(CARD_W * 0.22, 0, CARD_H * 0.3));
     ball.group.visible = false;
     this.scene.add(ball.group);
 
     this.slots[slot] = {
-      slot, info, color, pos, base, platform, card, faceMat, backMat, body, model, mixer, breath, ball,
+      slot, info, color, pos, base, platform, card, faceMat, backMat, body, model, mixer, breath, ball, anim,
+      air: fly?.air ?? 0, // flyers and levitators float above the card
+      realScale: real ? scale : 1.05 / (info.plan?.heightM || 1.05), // field units per real metre
       height: model?.height ?? CARD_H * 1.25 * 1.25,
       lift: 0, scale: 1, phase: slot * 1.7, ready: false, fainted: false, aura: null,
     };
+    this.#frameSizes();
     return { hasModel: Boolean(model) };
   }
 
@@ -610,13 +644,14 @@ export class BattleStage {
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = false;
     action.fadeIn(fade).play();
+    s.clipUntil = performance.now() + clip.duration * 1000;
     return action;
   }
 
   /** Screen position (px, relative to the host) of a point above a fighter, for floating text. */
   screenPoint(slot, y = 1.6) {
     const s = this.slots[slot];
-    const p = (s ? (s.base ?? s.pos).clone() : this.position(slot)).setY(s?.height ? s.lift + s.height * 0.8 : y).project(this.camera);
+    const p = (s ? (s.base ?? s.pos).clone() : this.position(slot)).setY(s?.height ? s.lift + (s.air ?? 0) + s.height * 0.8 : y).project(this.camera);
     return { x: (p.x * 0.5 + 0.5) * this.host.clientWidth, y: (-p.y * 0.5 + 0.5) * this.host.clientHeight };
   }
 
@@ -758,6 +793,7 @@ export class BattleStage {
     s.body.position.x = x;
     s.body.position.z = z;
     s.poseY = y;
+    s.liveSpeed = speed;
     s.body.rotation.y = facing;
     this.moveFx.track(slot, x, y, z, facing);
     const blend = 1 - Math.exp(-dt * 16);

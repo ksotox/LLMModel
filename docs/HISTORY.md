@@ -767,6 +767,23 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   reading the catalog confirms. The Classic Pikachu's name now reads; its number is ~8 px in these photos.
 - `styles.css`: panel checkbox labels wrap. Bench unchanged (recall 93%, correct 81%, confident-wrong 0).
 
+## Phase 46: Pokémon at their real size, moving the way they do
+- `server/speciesData.json` (built by `scripts/species-build.mjs` from PokéAPI's data files on GitHub): every
+  Pokémon's Pokédex height and weight, body shape, types and Levitate, plus forms that differ (Mega, Gigantamax,
+  regional). `server/species.js` looks it up by Pokédex number, by a model's form folder, or by a card's name
+  ("Team Rocket's Moltres ex", "Charizard VMAX" → 28 m). `/api/battles/fighters` and `/api/battles/cards/:id` send it.
+- `public/js/creature/body.js` (pure, tested): how it moves (walk, quad, slither, swim, fly, hover, hop) from shape,
+  types and abilities; walking pace from leg length (Froude number: a person walks ~1.4 m/s), step and wing-beat
+  rates by size; `battleScale` (both shrink together only past 2.4 units; long bodies count at 60%); `battleBody`.
+- `public/js/creature/animate.js`: the models have skeletons but almost never clips, so gaits are made in code:
+  bones found by name (LThigh, RArm, Tail3, Spine2; a flyer's LFeeler1 is its wing) and turned about the model's
+  own axes; models without bones move as a whole.
+- Sanctuary and Reef: true scale beside the 1.75 m trainer; swimmers live in the lake (mostly under water), flyers
+  take off to travel and land to rest, levitators float; spacing, reach and nameplates by size.
+- Battles: real metres (Pikachu 0.4 m beside Charizard 1.7 m); the camera steps back for tall fighters; flyers and
+  levitators float; in real time each side's radius, reach, speed (0.8–1.2×) and fall follow its build.
+  The intro panel shows "Real size".
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

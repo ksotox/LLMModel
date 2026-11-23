@@ -81,7 +81,7 @@ body.battle-mode .topbar { display: none; }
 .cip-attacks { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .cip-attacks li { display: flex; align-items: center; gap: 6px; }
 .cip-attacks li span:nth-child(2) { flex: 1; }
-.cip-ability, .cip-foot, .cip-note { margin: 4px 0 0; color: #cbd5e1; font-size: 0.74rem; }
+.cip-ability, .cip-size, .cip-foot, .cip-note { margin: 4px 0 0; color: #cbd5e1; font-size: 0.74rem; }
 .cip-note { color: #fcd34d; }
 .type-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; color: #fff; font-size: 0.7rem; font-weight: 800; text-shadow: 0 1px 1px #0006; }
 .cost-pips { display: inline-flex; gap: 2px; flex: none; }
