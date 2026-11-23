@@ -18,9 +18,10 @@ export function createModelLoader() {
 /**
  * Load a model and stand it at the origin, scaled to `height` (wide models by their width), with
  * its own materials. Returns { object, height, clips, attackClip, faintClip }, or null if it can't
- * be loaded.
+ * be loaded. `measure`: 'fit' (the default: the tallest or widest side), 'height' (it stands
+ * `height` tall: a Pokémon's real height) or 'length' (its longest side: serpents and fish).
  */
-export async function loadModel(loader, url, height, { shadows = true, realistic = false, types = [] } = {}) {
+export async function loadModel(loader, url, height, { shadows = true, realistic = false, types = [], measure = 'fit' } = {}) {
   if (!url) return null;
   try {
     const gltf = await loader.loadAsync(url);
@@ -40,13 +41,15 @@ export async function loadModel(loader, url, height, { shadows = true, realistic
     });
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
-    const s = height / Math.max(size.y, size.x * 0.8, size.z * 0.8, 1e-3);
+    const side = measure === 'height' ? size.y : measure === 'length' ? Math.max(size.x, size.y, size.z) : Math.max(size.y, size.x * 0.8, size.z * 0.8);
+    const s = height / Math.max(side, 1e-3);
     root.scale.setScalar(s);
     const box2 = new THREE.Box3().setFromObject(root);
     const c = box2.getCenter(new THREE.Vector3());
     root.position.set(-c.x, -box2.min.y, -c.z);
     const wrap = new THREE.Group();
     wrap.add(root);
+    wrap.userData.height = box2.max.y - box2.min.y;
     const clips = gltf.animations ?? [];
     return {
       object: wrap,

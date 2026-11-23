@@ -1,14 +1,9 @@
 # Project memory — handoff notes for the next agent
 
-> **Read this first.** It's the short, current state of the project so any agent or model can
-> pick up the work. Plain Markdown, no tool-specific syntax.
->
-> **Size rules (enforced by `tests/memory.test.js`): at most 150 lines and 10 KB.**
-> - Keep it *current*, not chronological: edit or replace lines, don't append a log.
-> - When something is finished or no longer true, delete it here. If it's worth keeping, add one
->   line to [`docs/HISTORY.md`](docs/HISTORY.md) (the full history) instead.
-> - Sources and APIs live in [`docs/SOURCES.md`](docs/SOURCES.md); user docs in [`README.md`](README.md).
->   Link to them rather than copying.
+> **Read this first**: the short, current state, so any agent can pick up the work.
+> **At most 150 lines and 10 KB** (`tests/memory.test.js`). Keep it *current*: replace lines, don't append.
+> Finished work goes to one line in [`docs/HISTORY.md`](docs/HISTORY.md); sources and APIs live in
+> [`docs/SOURCES.md`](docs/SOURCES.md), user docs in [`README.md`](README.md): link, don't copy.
 
 ## What this is
 A personal Pokédex: a local web app for cataloguing your own Pokémon TCG cards and the packs, tins
@@ -80,9 +75,10 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - The sandbox reaches only GitHub and npm: the owner checks live sources (`npm run check:live`).
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
-## Current state (2026-11-13)
-- `main` has PRs #1–#21. **Plan: `docs/ROADMAP.md`** (M0–M2 done: detection 93%, reading 81%). #19 dioramas,
-  #20 scanner, #21 cloud.
+## Current state (2026-11-23)
+- `main` has PRs #1–#34. **Plan: `docs/ROADMAP.md`** (M0–M2 done: detection 93%, reading 81%).
+- **Real sizes** (Phase 46): `server/species.js` + `speciesData.json` (PokéAPI, `scripts/species-build.mjs`);
+  `js/creature/body.js` (pure: mode, pace, gaits, `displayHeight` compressed sizes) + `animate.js` (bones by name).
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas

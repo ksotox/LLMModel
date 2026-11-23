@@ -17,6 +17,8 @@ import { trainerState } from './rig.js';
 import { buildTrainer } from './trainer.js';
 import { createPlayer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
+import { bodyPlan, sizedSpecies } from '../creature/body.js';
+import { createAnimator } from '../creature/animate.js';
 
 const MAX_MODELS = 24; // full 3D models at once; the rest stand as their cards
 const MODEL_RANGE = 30;
@@ -102,7 +104,7 @@ export async function renderSanctuary(root) {
 }
 
 function start3d(root, cards, world3d) {
-  const [THREE, worldKit, { createModelLoader, loadModel, pickClips, breathing }, stadiumKit, surfaceKit] = world3d;
+  const [THREE, worldKit, { createModelLoader, loadModel, pickClips }, stadiumKit, surfaceKit] = world3d;
   const { buildWorld, preferredQuality, saveQuality, terrainHeight, LAKE } = worldKit;
 
   // ---- the page ----
@@ -177,7 +179,13 @@ function start3d(root, cards, world3d) {
   dress(savedTrainer());
 
   // ---- the zoo ----
-  const spots = layoutHabitats(cards, { blocked: (x, z) => inWater(x, z) || solidAt(plan, x, z, 0.9) || Math.hypot(x, z) > WORLD_RADIUS - 4 });
+  const outside = (x, z) => Math.hypot(x, z) > WORLD_RADIUS - 4;
+  const spots = layoutHabitats(cards, {
+    blocked: (x, z) => inWater(x, z) || solidAt(plan, x, z, 0.9) || outside(x, z),
+    water: (x, z) => inWater(x, z) && !outside(x, z), // swimmers live in the lake
+  });
+  // Where a creature can't go, by how it moves: swimmers stay in the lake, flyers cross anything.
+  const blockedFor = (x, z, mode) => (mode === 'swim' ? !inWater(x, z) : mode === 'fly' ? outside(x, z) : inWater(x, z) || solidAt(plan, x, z, 0.1) || outside(x, z));
   const models = createModelLoader();
   // A trainer model of the owner's own (uploaded in the chooser), animated on its skeleton.
   const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: world.quality !== 'basic' }).catch(() => null);
@@ -211,19 +219,29 @@ function start3d(root, cards, world3d) {
     loading++;
     try {
       const entry = await getJson(`/api/battles/cards/${c.card.id}`);
-      const url = entry.models?.forms?.find((f) => f.form === entry.models.default)?.url;
-      const model = alive ? await loadModel(models.loader, url, 1.0, { realistic: world.quality !== 'basic', types: entry.battle?.types ?? [] }) : null;
+      const form = entry.models?.forms?.find((f) => f.form === entry.models.default);
+      // Its size and build (the model's own form: a Gigantamax is far bigger than the usual one).
+      const species = sizedSpecies(form?.species ?? entry.species);
+      if (species && species.heightM !== c.plan.heightM) {
+        // (It keeps to the habitat it was given: a swimmer found only now stays where it is, on land.)
+        const was = c.plan.mode;
+        c.plan = bodyPlan(species, { fallbackHeight: 1 });
+        if ((c.plan.mode === 'swim') !== (was === 'swim')) c.plan.mode = was === 'swim' ? 'swim' : 'walk';
+      }
+      const model = alive ? await loadModel(models.loader, form?.url, c.plan.heightM, { realistic: world.quality !== 'basic', types: entry.battle?.types ?? [], measure: c.plan.measure }) : null;
       if (model && alive) {
         c.group.remove(c.stand);
         c.group.add(model.object);
         c.model = model;
-        // Its own animations: idle when standing, walk when moving, and a happy one when petted.
+        if (c.plan.mode === 'swim') c.sink = model.height * 0.65; // a swimmer shows its back and head above the water
+        // Its own animations when it has a walk (idle when standing, walk when moving, a happy one when
+        // petted); otherwise it moves in code, the way its body plan says (creature/animate.js).
         const clips = pickClips(model.clips);
-        if (clips.idle || clips.walk) {
+        if (clips.walk) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.actions = Object.fromEntries(Object.entries(clips).filter(([, clip]) => clip).map(([k, clip]) => [k, c.mixer.clipAction(clip)]));
           c.playing = null;
-        } else c.breath = breathing(model.object); // a skeleton without clips still breathes
+        } else c.anim = createAnimator(model.object, c.plan);
         loaded++;
       }
     } catch { /* it stays a card */ } finally {
@@ -245,7 +263,7 @@ function start3d(root, cards, world3d) {
     cardModal.hidden = false;
   };
   const hearts = (c) => {
-    const p = new THREE.Vector3(c.x, c.y + 1.3, c.z).project(camera);
+    const p = new THREE.Vector3(c.x, c.y + (c.model?.height ?? 1) + 0.3, c.z).project(camera);
     for (let i = 0; i < 5; i++) {
       const heart = h('span.sanc-heart', '♥');
       heart.style.left = `${(p.x * 0.5 + 0.5) * el.clientWidth + (i - 2) * 16}px`;
@@ -429,7 +447,7 @@ function start3d(root, cards, world3d) {
         jump: jumpPressed && !paused(), jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
       }, STEP, ground);
       jumpPressed = false;
-      for (const c of creatures) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: (x, z) => inWater(x, z) || solidAt(plan, x, z, 0.1) });
+      for (const c of creatures) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: blockedFor, waterLevel: LAKE.level });
     }
 
     // The trainer: stride, arms, glider.
@@ -468,18 +486,16 @@ function start3d(root, cards, world3d) {
     const W = el.clientWidth;
     const H = el.clientHeight;
     for (const c of creatures) {
-      const d = Math.hypot(c.x - player.x, c.z - player.z);
+      // Distance to its body: a big Pokémon is seen (and loaded) from further away.
+      const d = Math.max(0, Math.hypot(c.x - player.x, c.z - player.z) - c.plan.radius);
       if (c.petted > 0) c.petted = Math.max(0, c.petted - dt);
-      // With a walk animation of its own, it barely hops; without one, it waddles and breathes.
-      const animated = Boolean(c.actions?.walk);
-      const bob = animated ? (c.y - terrainHeight(c.x, c.z)) * 0.25 : c.y - terrainHeight(c.x, c.z);
-      c.group.position.set(c.x, terrainHeight(c.x, c.z) + bob + (c.petted ? Math.abs(Math.sin(c.petted * 10)) * 0.35 : 0), c.z);
+      const happy = c.petted ? Math.abs(Math.sin(c.petted * 10)) * Math.min(0.35, 0.1 + c.plan.heightM * 0.2) : 0;
+      // A card (before its model loads) hops along; a model stands where the creature is: on the ground,
+      // in the air, or at the lake's surface, and its animator moves its body and limbs.
+      const stand = c.model ? 0 : Math.sin(c.hop) * 0.22;
+      c.group.position.set(c.x, c.y + stand + happy, c.z);
       c.group.rotation.y = c.model ? c.facing : Math.atan2(camera.position.x - c.x, camera.position.z - c.z); // a card faces you
-      if (c.breath && d < 30) c.breath.update(t);
-      if (c.model && !c.mixer) {
-        c.group.rotation.z = c.speed > 0.1 ? Math.sin(t * 9 + c.id) * 0.08 : 0;
-        c.group.scale.set(1, 1 + (c.speed > 0.1 ? 0 : Math.sin(t * 2 + c.id) * 0.025), 1);
-      }
+      if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed, air: c.air });
       if (c.mixer && d < 30) {
         if (!(c.extraUntil > now)) {
           const want = (c.speed > 0.3 && c.actions.walk) || c.actions.idle || c.actions.walk;
@@ -492,10 +508,10 @@ function start3d(root, cards, world3d) {
         }
         c.mixer.update(dt);
       }
-      if (!c.asked && d < MODEL_RANGE && loading < 2 && loaded + loading < MAX_MODELS) wantModel(c);
+      if (!c.asked && d < MODEL_RANGE + c.plan.heightM * 2 && loading < 2 && loaded + loading < MAX_MODELS) wantModel(c);
       let alpha = 0;
       if (d < PLATE_RANGE) {
-        v.set(c.x, c.y + 1.45, c.z).project(camera);
+        v.set(c.x, c.y + (c.model?.height ?? 1) + 0.45, c.z).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
           alpha = Math.min(1, (PLATE_RANGE - d) / 5);
           c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - c.plate.offsetWidth / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
