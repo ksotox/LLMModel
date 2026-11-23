@@ -17,7 +17,7 @@ import { trainerState } from './rig.js';
 import { buildTrainer } from './trainer.js';
 import { createPlayer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
-import { bodyPlan } from '../creature/body.js';
+import { bodyPlan, sizedSpecies } from '../creature/body.js';
 import { createAnimator } from '../creature/animate.js';
 
 const MAX_MODELS = 24; // full 3D models at once; the rest stand as their cards
@@ -220,8 +220,8 @@ function start3d(root, cards, world3d) {
     try {
       const entry = await getJson(`/api/battles/cards/${c.card.id}`);
       const form = entry.models?.forms?.find((f) => f.form === entry.models.default);
-      // Its real size and build (the model's own form: a Gigantamax is far bigger than the usual one).
-      const species = form?.species ?? entry.species;
+      // Its size and build (the model's own form: a Gigantamax is far bigger than the usual one).
+      const species = sizedSpecies(form?.species ?? entry.species);
       if (species && species.heightM !== c.plan.heightM) {
         // (It keeps to the habitat it was given: a swimmer found only now stays where it is, on land.)
         const was = c.plan.mode;

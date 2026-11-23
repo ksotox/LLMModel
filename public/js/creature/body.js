@@ -8,11 +8,35 @@
 //     legs as it does for real animals (the same "Froude number": a Pikachu scurries, an Onix lumbers);
 //   • gaitRate(plan, speed): steps (or wing beats, or body waves) a second at that speed;
 //   • creaturePose(plan, phase, …): the pose at that moment of the gait, as angles and offsets that
-//     creature/animate.js applies to the model's bones (or to the whole model when it has none).
+//     creature/animate.js applies to the model's bones (or to the whole model when it has none);
+//   • displayHeight / sizedSpecies: the size it is drawn at. Real heights run from 10 cm (Joltik) to
+//     100 m (Eternamax Eternatus), too wide a range for one screen, so sizes are compressed on a power
+//     curve around a reference height: bigger always looks bigger, but a small one stays visible and a
+//     giant still fits.
 
 export const TRAINER_HEIGHT = 1.75; // the trainer, in metres: the Sanctuary's scale
 const G = 9.81;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/** How big things are drawn in the Sanctuary and the Reef (beside the 1.75 m trainer) and in battles. */
+export const SANCTUARY_SIZES = { anchor: TRAINER_HEIGHT, power: 0.55, min: 0.3, max: 7 };
+export const BATTLE_SIZES = { anchor: 1, power: 0.5, min: 0.3, max: 6 };
+
+/**
+ * The height (m) a Pokémon `realM` tall is drawn at: `anchor` stays as it is, the rest is pulled
+ * towards it on a power curve (power 1 = true scale, 0.5 = by the square root), within [min, max].
+ * Order is kept: taller in life is taller on screen (until the cap).
+ */
+export function displayHeight(realM, { anchor = TRAINER_HEIGHT, power = 0.55, min = 0.3, max = 7 } = {}) {
+  if (!(realM > 0)) return anchor;
+  return clamp(anchor * (realM / anchor) ** power, min, max);
+}
+
+/** The species at the size it is drawn at (`heightM`), keeping its real height as `realHeightM`. */
+export function sizedSpecies(species, sizes = SANCTUARY_SIZES) {
+  if (!species?.heightM) return species ?? null;
+  return { ...species, realHeightM: species.heightM, heightM: displayHeight(species.heightM, sizes) };
+}
 
 /** How it moves, from its body shape, types and abilities. */
 export function movementMode({ shape = '', types = [], levitates = false } = {}) {

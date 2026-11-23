@@ -1,12 +1,12 @@
 // The Sanctuary's zoo: where each of your Pokémon lives, and how it behaves. Pure (no DOM, no
 // three.js): the page draws what these functions decide, and the tests run them in Node.
 //
-// One creature per different Pokémon in your collection, in the habitat of its card's type, at its real
-// size and moving as it does (creature/body.js): walkers and four-legged ones roam the ground at a pace
+// One creature per different Pokémon in your collection, in the habitat of its card's type, sized by its
+// real height (compressed to fit the screen: creature/body.js displayHeight) and moving as it does (creature/body.js): walkers and four-legged ones roam the ground at a pace
 // that suits their legs, swimmers keep to the lake, flyers take off to travel and land to rest, and
 // Pokémon that levitate float above the grass.
 
-import { bodyPlan } from '../creature/body.js';
+import { bodyPlan, sizedSpecies } from '../creature/body.js';
 
 /** Habitats on the meadow: a centre, a radius, and what the page calls it. */
 export const HABITATS = [
@@ -52,7 +52,7 @@ export function layoutHabitats(cards, { blocked = () => false, water = null, pla
     const key = String(card.name ?? '').toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    const plan = bodyPlan(card.species, { fallbackHeight: 1 });
+    const plan = bodyPlan(sizedSpecies(card.species), { fallbackHeight: 1 });
     const swims = plan.mode === 'swim' && water;
     const habitat = swims ? shore : habitatFor(card);
     // A swimmer needs water all round it (as far as its size reaches), easing off if the lake is small.
@@ -78,7 +78,7 @@ export const CREATURE = { walk: 1.3, follow: 4.6, roam: 6, keep: 2.4, catchUp: 1
 
 /** A creature's state for stepCreature(). */
 export function createCreature(spot, id) {
-  const plan = spot.plan ?? bodyPlan(spot.card?.species, { fallbackHeight: 1 });
+  const plan = spot.plan ?? bodyPlan(sizedSpecies(spot.card?.species), { fallbackHeight: 1 });
   return { id, card: spot.card, habitat: spot.habitat, home: spot.home, x: spot.x, z: spot.z, y: 0, alt: plan.mode === 'hover' ? plan.hoverHeight : 0, facing: 0, state: 'idle', timer: 1 + (id % 5) * 0.7, target: null, hop: 0, speed: 0, plan, air: false };
 }
 

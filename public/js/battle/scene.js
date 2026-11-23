@@ -426,7 +426,7 @@ export class BattleStage {
   }
 
   /**
-   * Real sizes: the battle's scale (body.js battleScale), set before the fighters are added.
+   * Sizes: the battle's scale (body.js battleScale), set before the fighters are added.
    */
   setSizeScale(scale) {
     this.sizeScale = scale;
@@ -441,7 +441,7 @@ export class BattleStage {
 
   /**
    * Put a fighter on the stage, still hidden in its card. `info`: { name, types, modelUrl, cardUrls[],
-   * plan? }: with a body plan (creature/body.js) it is drawn at its real size (times the battle's
+   * plan? }: with a body plan (creature/body.js) it is drawn at the plan's height (times the battle's
    * scale, see setSizeScale) and moves the way it does. Returns { hasModel }.
    */
   async addFighter(slot, info) {
@@ -449,10 +449,11 @@ export class BattleStage {
     const color = typeColor(info.types?.[0]);
     const pos = this.position(slot);
     const platform = this.#platform(pos, color);
-    // Its real height on the battlefield; without one (or in the showcase), about the card's width, as in an AR card scanner.
+    // Its height by its body plan (real height, compressed to fit); without one (or in the showcase),
+    // about the card's width, as in an AR card scanner.
     const real = info.plan && this.mode !== 'showcase';
     const scale = this.sizeScale ?? 1;
-    const height = real ? info.plan.heightM * scale : this.mode === 'showcase' ? 1.2 : 1.05;
+    const height = real ? Math.max(0.3, info.plan.heightM * scale) : this.mode === 'showcase' ? 1.2 : 1.05; // never too small to see
     const [front, model] = await Promise.all([this.#texture(info.cardUrls ?? [], info.name, color), this.#model(info.modelUrl, height, info.types, real ? info.plan.measure : 'fit')]);
 
     const card = new THREE.Group();

@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { formKey, speciesForCardName, speciesInfo } from '../server/species.js';
-import { battleBody, battleScale, bodyPlan, creaturePose, gaitRate, movementMode } from '../public/js/creature/body.js';
+import { BATTLE_SIZES, battleBody, battleScale, bodyPlan, creaturePose, displayHeight, gaitRate, movementMode, SANCTUARY_SIZES, sizedSpecies, TRAINER_HEIGHT } from '../public/js/creature/body.js';
 import { createRealtime, step } from '../public/js/battle/realtime.js';
 
 describe('species: real sizes from the Pokédex', () => {
@@ -99,6 +99,30 @@ describe('body plans: how each Pokémon gets about', () => {
     const still = creaturePose(plan(4), 1, { move: 0, t: 2 });
     assert.equal(still.thighL, 0, 'standing still');
     assert.ok(creaturePose(bodyPlan({ heightM: 0.5, shape: 'ball', types: [] }), Math.PI / 2, { move: 0.5 }).lift > 0.2, 'a round one bounces');
+  });
+});
+
+describe('sizes on screen: by real height, compressed to fit', () => {
+  test('bigger in life is bigger on screen; small ones stay visible, giants fit', () => {
+    const shown = (h, sizes = SANCTUARY_SIZES) => displayHeight(h, sizes);
+    const heights = [0.1, 0.4, 0.6, 1.7, 2.1, 6.5, 14.5, 28];
+    for (const sizes of [SANCTUARY_SIZES, BATTLE_SIZES]) {
+      const drawn = heights.map((h) => shown(h, sizes));
+      for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i] > drawn[i - 1], `${heights[i]} m is drawn bigger than ${heights[i - 1]} m`);
+      assert.ok(drawn[0] >= 0.3, 'Joltik is still visible');
+      assert.ok(drawn.at(-1) <= sizes.max, 'a Gigantamax fits');
+    }
+    assert.ok(shown(2.1) > TRAINER_HEIGHT && shown(0.4) < TRAINER_HEIGHT / 2, 'Snorlax stands over the trainer, Pikachu below the knee… nearly');
+    assert.equal(shown(TRAINER_HEIGHT), TRAINER_HEIGHT, 'the trainer’s own height is kept');
+    assert.ok(shown(14.5) / shown(0.4) < 14.5 / 0.4 / 4, 'the range is compressed');
+    const sized = sizedSpecies(speciesInfo(143));
+    assert.deepEqual([sized.realHeightM, sized.heightM.toFixed(2)], [2.1, shown(2.1).toFixed(2)]);
+    assert.equal(sizedSpecies(null), null);
+    // Pikachu and Wailord: both on screen, Wailord far bigger.
+    const pika = bodyPlan(sizedSpecies(speciesInfo(25), BATTLE_SIZES));
+    const wailord = bodyPlan(sizedSpecies(speciesInfo(321), BATTLE_SIZES));
+    const k = battleScale([pika.heightM, wailord.heightM]);
+    assert.ok(pika.heightM * k >= 0.3 && wailord.heightM > 5 * pika.heightM);
   });
 });
 

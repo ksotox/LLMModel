@@ -9,7 +9,7 @@ import { createControls, joystick, toWorld } from './battle/controls.js';
 import { createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
-import { battleBody, battleScale, bodyPlan } from './creature/body.js';
+import { BATTLE_SIZES, battleBody, battleScale, bodyPlan, sizedSpecies } from './creature/body.js';
 
 const TYPE_HEX = {
   Grass: '#4caf50', Fire: '#ff6d1f', Water: '#2f8cff', Lightning: '#e6b800', Psychic: '#b44cff', Fighting: '#d2691e',
@@ -247,12 +247,13 @@ async function makeStage(host, mode) {
 const modelUrl = (sel) => sel.entry.models.forms.find((f) => f.form === sel.form)?.url ?? null;
 // Its real size and build: the chosen 3D form's (a Gigantamax is far bigger), else the species'.
 const speciesOf = (sel) => sel.entry.models.forms.find((f) => f.form === sel.form)?.species ?? sel.entry.species ?? null;
-const planOf = (sel) => (speciesOf(sel) ? bodyPlan(speciesOf(sel)) : null);
-/** Both fighters at their real sizes: the stage's scale, and each one's plan. */
+// Drawn by its real height, compressed so both fit the screen (body.js displayHeight): big still looks big.
+const planOf = (sel) => (speciesOf(sel) ? bodyPlan(sizedSpecies(speciesOf(sel), BATTLE_SIZES)) : null);
+/** Both fighters sized by their real heights: the stage's scale, and each one's plan. */
 function sizeUp(stage, sels) {
   const plans = sels.map(planOf);
-  // A serpent's or a fish's Pokédex size is its length: it lies along the field, so it counts for less.
-  const scale = battleScale(plans.map((p) => (p ? p.heightM * (p.long ? 0.6 : 1) : 1.05)));
+  // (A serpent's or a fish's size is its length: a long Wailord across the field would hide its rival.)
+  const scale = battleScale(plans.map((p) => (p ? p.heightM : 1.05)));
   stage.setSizeScale?.(scale);
   return { plans, scale };
 }

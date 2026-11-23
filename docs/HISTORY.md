@@ -767,7 +767,7 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   reading the catalog confirms. The Classic Pikachu's name now reads; its number is ~8 px in these photos.
 - `styles.css`: panel checkbox labels wrap. Bench unchanged (recall 93%, correct 81%, confident-wrong 0).
 
-## Phase 46: Pokémon at their real size, moving the way they do
+## Phase 46: Pokémon sized by their real height, moving the way they do
 - `server/speciesData.json` (built by `scripts/species-build.mjs` from PokéAPI's data files on GitHub): every
   Pokémon's Pokédex height and weight, body shape, types and Levitate, plus forms that differ (Mega, Gigantamax,
   regional). `server/species.js` looks it up by Pokédex number, by a model's form folder, or by a card's name
@@ -783,6 +783,10 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - Battles: real metres (Pikachu 0.4 m beside Charizard 1.7 m); the camera steps back for tall fighters; flyers and
   levitators float; in real time each side's radius, reach, speed (0.8–1.2×) and fall follow its build.
   The intro panel shows "Real size".
+- Owner: "fit the screen, but a big Pokémon should look big and a small one small". True scale hid small ones
+  (Wailord is 36× Pikachu), so sizes are compressed on a power curve (`displayHeight`: anchor 1.75 m, power 0.55,
+  0.3–7 m in the Sanctuary; anchor 1 m, power 0.5 in battles, at least 0.3 units): order kept, Snorlax over the
+  trainer, Pikachu knee-high, Joltik visible, giants fit. Pace, spacing and gaits follow the drawn size.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

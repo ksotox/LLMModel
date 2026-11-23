@@ -15,7 +15,7 @@ import { createSwimmer, stepSwimmer } from './player.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { buildTrainer } from './trainer.js';
 import { createCreature, habitatFor, nearest, reefResidents, stepDrifter } from './zoo.js';
-import { bodyPlan } from '../creature/body.js';
+import { bodyPlan, sizedSpecies } from '../creature/body.js';
 import { createAnimator } from '../creature/animate.js';
 
 const BATTLE_KEEP = 'pokedex.battleKeep';
@@ -161,8 +161,8 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     try {
       const entry = await getJson(`/api/battles/cards/${c.card.id}`);
       const form = entry.models?.forms?.find((f) => f.form === entry.models.default);
-      const species = form?.species ?? entry.species;
-      if (species) c.plan = bodyPlan(species, { fallbackHeight: 1 }); // its real size
+      const species = sizedSpecies(form?.species ?? entry.species);
+      if (species) c.plan = bodyPlan(species, { fallbackHeight: 1 }); // its size, compressed to fit
       const model = alive ? await loadModel(models.loader, form?.url, c.plan.heightM, { realistic: level !== 'basic', types: ['Water'], measure: c.plan.measure }) : null;
       if (model && alive) {
         c.group.remove(c.stand);
