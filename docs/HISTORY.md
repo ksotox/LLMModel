@@ -755,6 +755,18 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 ## Phase 44: Battle momentum and Sanctuary mantling
 - Added real-time dodge jumps and air dashes, cast wind-up cues, Fire contact rushes, and a climbable Sanctuary basalt slab with matching collision and animation.
 
+## Phase 45: Fixes from the owner's photo test (3 photos of the same 4 cards)
+- Before: 2 of 12 answers right, 2 confidently wrong (Pikachu 30C 049 read as 040; and as McDonald's 2022 7/15),
+  2 of 4 cards found in one photo, none in the close-up. Profile ran 10 px off a phone screen.
+- `detect.js`: a found card proposes same-size neighbours (8 directions, settled on edges, kept when card-shaped and
+  supported); proposals touching the photo edge are skipped (cut-off cards). Found 4/4/3 (was 4/2/0).
+- `identify.js` `ambiguousNumber`: a 'high' match is checked against the same name's printings in its own set
+  (one digit away → review) and, when neither set code nor total agrees, against a common name (→ review). Noise
+  read as a set code ("RCL") no longer vouches. After: 0 confidently wrong, the right card still offered first.
+- `ocr.js`: old-layout name (and "58/102" at the bottom right) found by their text (`locateLine`); `read.name` is the
+  reading the catalog confirms. The Classic Pikachu's name now reads; its number is ~8 px in these photos.
+- `styles.css`: panel checkbox labels wrap. Bench unchanged (recall 93%, correct 81%, confident-wrong 0).
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

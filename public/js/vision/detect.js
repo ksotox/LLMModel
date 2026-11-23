@@ -87,7 +87,7 @@ export function dropGroupsAndParts(candidates) {
  * Returns quads in that image's pixels (TL/TR/BR/BL), in reading order. Empty when nothing
  * card-shaped was found. `strategies` names the ways of finding outlines to use.
  */
-export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colourEdges = true, fitLines = true, sleeves = true, debug = null } = {}) {
+export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colourEdges = true, fitLines = true, sleeves = true, neighbours = true, debug = null } = {}) {
   const W = image.width;
   const H = image.height;
   const pad = 12;
@@ -188,9 +188,48 @@ export function detectQuads(cv, image, { strategies = DEFAULT_STRATEGIES, colour
   candidates = dropGroupsAndParts(candidates.filter((c) => c.rank > 0));
 
   // Keep the best candidate wherever several overlap.
-  candidates.sort((a, b) => b.rank - a.rank);
-  const kept = [];
-  for (const c of candidates) if (!kept.some((k2) => overlap(k2.quad, c.quad) > 0.3)) kept.push(c);
-  const quads = kept.map((c) => c.quad);
-  return readingOrder(quads);
+  const choose = (list) => {
+    const out = [];
+    for (const c of [...list].sort((a, b) => b.rank - a.rank)) if (!out.some((k2) => overlap(k2.quad, c.quad) > 0.3)) out.push(c);
+    return out;
+  };
+  let kept = choose(candidates);
+
+  // Cards laid side by side are the same size. Where cards touch, their shared border may never close
+  // into an outline of its own (shiny silver borders against each other), or only part of a card
+  // is outlined. So each card found proposes a card of its own size next to it on every side; a
+  // proposal is kept when the real edges back it up about as well as the card it came from, and it
+  // lies inside the photo (a card cut off by the photo's edge can't be read).
+  if (neighbours && grad && kept.length) {
+    const proposals = [];
+    for (const c of kept.filter((k2) => !k2.part && !k2.neighbour)) {
+      const q = c.quad;
+      const across = { x: (q[1].x - q[0].x + q[2].x - q[3].x) / 2, y: (q[1].y - q[0].y + q[2].y - q[3].y) / 2 };
+      const down = { x: (q[3].x - q[0].x + q[2].x - q[1].x) / 2, y: (q[3].y - q[0].y + q[2].y - q[1].y) / 2 };
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        const v = { x: (across.x * a + down.x * b) * 1.02, y: (across.y * a + down.y * b) * 1.02 };
+        const moved = q.map((p) => ({ x: p.x + v.x, y: p.y + v.y }));
+        const box = bbox(moved);
+        if (box.x0 < W * 0.004 || box.y0 < H * 0.004 || box.x1 > W * 0.996 || box.y1 > H * 0.996) continue; // cut off by the photo's edge
+        // A card of about this size is already there (a smaller outline may be just part of one).
+        const size = polygonArea(moved);
+        if (kept.some((k2) => overlap(k2.quad, moved) > 0.3 && polygonArea(k2.quad) >= size * 0.8)) continue;
+        proposals.push({ quad: moved, area: polygonArea(moved), score: c.score * 0.9, label: 'neighbour', neighbour: true, from: c });
+      }
+    }
+    const accepted = [];
+    for (const p of proposals) {
+      settle(p);
+      // (Its sides run on into the next card in a grid, so "part of something bigger" doesn't apply,
+      // and the side it shares with a touching card is faint: a quarter of the source's support.)
+      p.part = false;
+      p.rank = p.score * Math.sqrt(p.area) * p.support;
+      const size = polygonArea(p.quad) / polygonArea(p.from.quad);
+      if (aspectOff(p.quad) <= 0.08 && size > 0.8 && size < 1.25 && p.support >= p.from.support * 0.25) accepted.push(p);
+    }
+    if (debug) debug.proposals = proposals.map((p) => ({ from: p.from.label, support: Math.round(p.support), fromSupport: Math.round(p.from.support), aspect: +aspectOff(p.quad).toFixed(3), areaRatio: +(p.area / p.from.area).toFixed(2), part: p.part, box: Object.values(bbox(p.quad)).map((v, i) => +(v / (i % 2 ? H : W)).toFixed(2)) }));
+    if (accepted.length) kept = choose(dropGroupsAndParts([...candidates, ...accepted]));
+  }
+  if (debug) debug.kept = kept.map((c) => ({ label: c.label, quad: c.quad, rank: c.rank, support: c.support }));
+  return readingOrder(kept.map((c) => c.quad));
 }
