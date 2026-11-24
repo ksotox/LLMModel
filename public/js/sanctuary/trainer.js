@@ -1,6 +1,8 @@
 // The Sanctuary's trainer: an original little low-poly figure (no game character), in the colours
-// of the chosen preset, with a glider for long falls. Shared by the meadow and the Reef.
+// of the chosen preset, with a glider for long falls; or a trainer model (Ash, Iris and May come with
+// the app; you can add your own). Shared by the meadow, the Reef and the battles.
 
+import { autoRig } from '../creature/autoRig.js';
 import { findRig, gait, isHumanRig } from './rig.js';
 import { MOVE } from './player.js';
 
@@ -55,6 +57,8 @@ export function buildTrainer(THREE) {
     const loaded = await loadModel(loader, url, 1.75, { realistic });
     if (!loaded) return null;
     const object = loaded.object;
+    // A model exported without a skeleton (like the Ash that comes with the app) gets one, so it walks.
+    if (!loaded.clips?.length) autoRig(object, 'walk');
     const all = loaded.clips ?? [];
     const clips = pickClips(all);
     const extraClips = {

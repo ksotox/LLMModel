@@ -11,11 +11,18 @@ export const TRAINER_PRESETS = [
 ];
 
 const KEY = 'pokedex.trainer';
-const MODEL_KEY = 'pokedex.trainerModel'; // the id of an uploaded trainer model in use (server/trainers.js)
+const MODEL_KEY = 'pokedex.trainerModel'; // the id of the trainer model in use (server/trainers.js), or 'none'
+export const DEFAULT_TRAINER_MODEL = 'builtin-ash';
 
-/** The id of the uploaded trainer model in use, or null for the built-in figure. */
+/**
+ * The id of the trainer model in use: Ash until another is chosen; null when the simple figure
+ * (a preset) was chosen instead.
+ */
 export function savedTrainerModel(storage = globalThis.localStorage) {
-  try { return storage?.getItem(MODEL_KEY) || null; } catch { return null; }
+  let id = null;
+  try { id = storage?.getItem(MODEL_KEY) ?? null; } catch { /* storage unavailable */ }
+  if (id === 'none') return null;
+  return id || DEFAULT_TRAINER_MODEL;
 }
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 
@@ -56,7 +63,7 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
   const swatches = TRAINER_PRESETS.map((preset) => h('button.trainer-swatch', {
     type: 'button', class: preset.id === current.id ? 'active' : '', 'aria-pressed': String(preset.id === current.id),
     onclick: (e) => {
-      try { storage?.setItem(KEY, preset.id); storage?.removeItem(MODEL_KEY); } catch { /* storage unavailable */ }
+      try { storage?.setItem(KEY, preset.id); storage?.setItem(MODEL_KEY, 'none'); } catch { /* storage unavailable */ }
       for (const b of [...swatches, ...modelList.querySelectorAll('button.trainer-swatch')]) { b.classList.toggle('active', b === e.currentTarget); b.setAttribute('aria-pressed', String(b === e.currentTarget)); }
       onSelectTrainer(preset, null);
     },
@@ -77,11 +84,11 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
           onSelectTrainer(savedTrainer(storage), m);
         },
       }, h('span.trainer-name', m.name), h('small', credit(m) || 'Your model')),
-      h('button.trainer-remove', {
+      !m.builtin && h('button.trainer-remove', {
         type: 'button', 'aria-label': `Remove ${m.name}`, title: 'Remove',
         onclick: async () => {
           await fetch(`/api/trainers/${m.id}`, { method: 'DELETE' });
-          if (savedTrainerModel(storage) === m.id) { try { storage?.removeItem(MODEL_KEY); } catch { /* */ } onSelectTrainer(savedTrainer(storage), null); }
+          if (savedTrainerModel(storage) === m.id) { try { storage?.setItem(MODEL_KEY, 'none'); } catch { /* */ } onSelectTrainer(savedTrainer(storage), null); }
           refresh();
         },
       }, '×'))));
@@ -110,9 +117,9 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
   });
   const modal = h('div.sanctuary-modal', { hidden: true, role: 'dialog', 'aria-label': 'Choose trainer' },
     h('div.modal-card', h('h3', 'Choose trainer'), h('div.trainer-grid', swatches),
-      h('h4', 'Your trainer models'), modelList,
+      h('h4', 'Trainer models'), modelList,
       h('button.btn.small', { type: 'button', onclick: () => fileInput.click() }, '＋ Add a trainer model (.glb)'), fileInput,
-      h('p.trainer-hint', 'Models stay on this computer, for your own use. Rigged models are animated as you move.'), note,
+      h('p.trainer-hint', 'Ash, Iris and May come with the app. Models you add stay on this computer, for your own use. Every model walks, runs and swims with you.'), note,
       h('button.btn.primary', { type: 'button', onclick: () => { modal.hidden = true; } }, 'Done')));
   host.append(radial, ring, modal);
 

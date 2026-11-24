@@ -10,6 +10,7 @@ import { createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT 
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
 import { BATTLE_SIZES, battleBody, battleScale, bodyPlan, sizedSpecies } from './creature/body.js';
+import { savedTrainer, savedTrainerModel, TRAINER_PRESETS } from './sanctuary/sanctuaryUI.js';
 
 const TYPE_HEX = {
   Grass: '#4caf50', Fire: '#ff6d1f', Water: '#2f8cff', Lightning: '#e6b800', Psychic: '#b44cff', Fighting: '#d2691e',
@@ -257,6 +258,28 @@ function sizeUp(stage, sels) {
   stage.setSizeScale?.(scale);
   return { plans, scale };
 }
+/**
+ * Each side's trainer on the stage: yours (as chosen in the Sanctuary: Ash until you pick another), and
+ * for the opponent another of the trainer models (always the same one for the same card), or the simple
+ * figure in other colours. Loads in the background; the battle doesn't wait for it.
+ */
+async function addTrainers(stage, rival) {
+  if (!stage.addTrainers) return;
+  let models = [];
+  try { models = (await (await fetch('/api/trainers')).json()).trainers ?? []; } catch { /* the figures, then */ }
+  const mineId = savedTrainerModel();
+  const mine = models.find((m) => m.id === mineId) ?? null;
+  const others = models.filter((m) => m.id !== mineId);
+  const hash = [...String(rival?.card?.id ?? rival?.id ?? '')].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  const theirs = others.length ? others[hash % others.length] : null;
+  const myPreset = savedTrainer();
+  const url = (m) => (m ? { url: `/api/trainers/${m.id}.glb` } : null);
+  await stage.addTrainers([
+    { model: url(mine), preset: myPreset },
+    { model: url(theirs), preset: TRAINER_PRESETS.find((p) => p.id !== myPreset.id) ?? myPreset },
+  ]);
+}
+
 const metres = (m) => (m >= 100 ? `${Math.round(m)} m` : m >= 1 ? `${m.toFixed(1)} m` : `${Math.round(m * 100)} cm`);
 const kilos = (kg) => (kg >= 100 ? `${Math.round(kg)} kg` : `${kg.toFixed(1)} kg`);
 const cardUrls = (sel) => [sel.card.official_url?.startsWith('/') ? sel.card.official_url : null, sel.card.photo_url];
@@ -537,6 +560,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   say(a.message, 'Getting the cards ready…', { hold: 0 });
   const { plans, scale } = sizeUp(stage, [p1, p2]);
   const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot], dexId: speciesOf(sel)?.dexId })));
+  addTrainers(stage, p2).catch(() => {}); // each side's trainer, behind its Pokémon
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
 
   // Intro: each card drops in and its Pokémon pops out, its details floating beside it.
@@ -728,6 +752,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   say(a.message, 'Getting the cards ready…', { hold: 0 });
   const { plans, scale } = sizeUp(stage, [p1, p2]);
   const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot], dexId: speciesOf(sel)?.dexId })));
+  addTrainers(stage, p2).catch(() => {}); // each side's trainer, behind its Pokémon
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
   await say(a.message, `${p1.card.name}, come on out!`, { hold: 0 });
   const panel1 = await introduce(stage, a, 0, p1);
@@ -748,7 +773,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   const plates = [livePlate(f1, 0, 'Player 1'), livePlate(f2, 1, mode === 'cpu' ? `Computer · ${arena.difficulty}` : 'Player 2')];
   a.hud.append(plates[1].el);
   a.plateSlot.append(plates[0].el);
-  stage.goLive();
+  stage.goLive({ ring: battle.rules.radius + 1.2 }); // the trainers step back to the field's edge
   if (battle.rules.shrink) stage.setZone(battle.zone);
 
   // The dock: your moves (with their cooldown), Dodge and Jump, and the clock.

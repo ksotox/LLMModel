@@ -817,6 +817,17 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   vibrance grade in the High post-process. All wired through `creature/life.js` `bringToLife` (Sanctuary,
   Reef, battles); `battle/modelLoader.js` `patchShader` chains shader changes.
 
+## Phase 49: Ash, Iris and May as trainers, also in battles
+- At the owner's request the three trainer models they supplied ship with the app (`public/assets/trainers/`,
+  CC-BY-4.0 on Sketchfab, credits in `manifest.json` and SOURCES.md), changing the earlier "never committed" rule for
+  these files only; Pokémon models are still never committed. `/api/trainers` lists them first (`builtin`, can't
+  be removed). Ash is the default trainer until another is chosen (`pokedex.trainerModel` = `none` for the figure).
+- Ash has no skeleton: `trainer.js` gives clip-less models one (`autoRig`) before `rigDriver` (arms down from his
+  T-pose); Iris and May use their own rigs.
+- Battles (`battle/trainers.js`, `scene.js addTrainers`): your trainer stands to the left of your Pokémon, the
+  opponent gets another trainer model (stable per card); they cheer on attacks and slump on a faint; in real time
+  they step back to the field's edge.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
