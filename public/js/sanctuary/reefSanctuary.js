@@ -16,7 +16,7 @@ import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.
 import { buildTrainer } from './trainer.js';
 import { createCreature, habitatFor, nearest, reefResidents, stepDrifter } from './zoo.js';
 import { bodyPlan, sizedSpecies } from '../creature/body.js';
-import { createAnimator } from '../creature/animate.js';
+import { bringToLife } from '../creature/life.js';
 
 const BATTLE_KEEP = 'pokedex.battleKeep';
 const SPAWN_KEY = 'pokedex.sanctuarySpawn';
@@ -173,7 +173,9 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.action = c.mixer.clipAction(clips.walk);
           c.action.play();
-        } else c.anim = createAnimator(model.object, { ...c.plan, mode: 'swim' }); // underwater, everyone swims
+        }
+        // Underwater, everyone swims; eyes still blink (a fire Pokémon's flames don't live down here).
+        c.anim = bringToLife(model, { ...c.plan, mode: 'swim' }, { dexId: species?.dexId ?? null, quality: level, animate: !clips.walk });
       }
     } catch { /* it stays a card */ } finally {
       loading--;

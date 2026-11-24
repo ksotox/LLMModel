@@ -802,6 +802,21 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   never better than "Review needed". Reference photos: Voltorb close-up 066/193 now found; Voltorb photo
   recognised in 3 s (was "Review" in 6 s). Bench unchanged (recall 93%, correct 81%, confident-wrong 0).
 
+## Phase 48: Livelier Pokémon (wings, arms, skeletons, blinking, fire, colour)
+- Wings: a flyer's wing on each side is the chain that reaches furthest out (`animate.js` `wingSide`): a bird's
+  arms (Pidgeot, Pidgey), a dragon's feelers (Charizard). The beat lags down the wing; perched, wings fold back.
+  Numbered rigs ("050 Head", "050_Head" in three.js) were missed before: birds didn't move at all.
+- Arms: hang with bent elbows and sway when standing, tuck in while flying, forearms bend, and an attack throws
+  them forward (`gesture()`, battles).
+- `creature/autoRig.js`: models without a skeleton (Snorlax, Ponyta, Magmar, Onix, a plain-mesh trainer) get one
+  from their shape (upright, four-legged, chain, winged) with soft skin weights; pure layout tested.
+- `creature/blink.js`: eye materials ("…Eye1") get an eyelid in the body's colour; blinks every 2.5–6 s.
+- `creature/flames.js`: fire parts (named Fire/Flame, Ponyta's mane, Charizard's tail tip by its bone) glow
+  unshaded and flicker, grey stencil textures become an orange glow, embers rise, a light on High.
+- Colour: `vividColour` (1.22× saturation, a little contrast) on every model material, a stronger rim, and a
+  vibrance grade in the High post-process. All wired through `creature/life.js` `bringToLife` (Sanctuary,
+  Reef, battles); `battle/modelLoader.js` `patchShader` chains shader changes.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

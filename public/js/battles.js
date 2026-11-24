@@ -426,7 +426,7 @@ async function startShowcase(root, sel, onBack) {
     busy = true;
     setButtons(false);
     clear(a.hud);
-    const added = await stage.addFighter(0, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: planOf(sel) });
+    const added = await stage.addFighter(0, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: planOf(sel), dexId: speciesOf(sel)?.dexId });
     if (!stage.slots[1]) stage.addTarget();
     a.skip.hidden = false;
     a.skip.onclick = () => stage.skip();
@@ -536,7 +536,7 @@ async function startBattle(root, picks, mode, onBack, onNewOpponent = onBack) {
   a.skip.onclick = () => stage.skip();
   say(a.message, 'Getting the cards ready…', { hold: 0 });
   const { plans, scale } = sizeUp(stage, [p1, p2]);
-  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot] })));
+  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot], dexId: speciesOf(sel)?.dexId })));
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
 
   // Intro: each card drops in and its Pokémon pops out, its details floating beside it.
@@ -727,7 +727,7 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
   a.skip.onclick = () => stage.skip();
   say(a.message, 'Getting the cards ready…', { hold: 0 });
   const { plans, scale } = sizeUp(stage, [p1, p2]);
-  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot] })));
+  const added = await Promise.all([p1, p2].map((sel, slot) => stage.addFighter(slot, { name: sel.card.name, types: sel.entry.battle.types, modelUrl: modelUrl(sel), cardUrls: cardUrls(sel), plan: plans[slot], dexId: speciesOf(sel)?.dexId })));
   a.frame.dataset.fighters = added.map((r) => (r.hasModel ? '3d' : 'card')).join(',');
   await say(a.message, `${p1.card.name}, come on out!`, { hold: 0 });
   const panel1 = await introduce(stage, a, 0, p1);

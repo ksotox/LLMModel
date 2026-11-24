@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { breathing, createModelLoader, loadModel, pickClips } from './modelLoader.js';
 import { createMoveFx } from './moveFx.js';
-import { createAnimator } from '../creature/animate.js';
+import { bringToLife } from '../creature/life.js';
 import { battleBody } from '../creature/body.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
@@ -311,7 +311,7 @@ export class BattleStage {
       if (s.anim && s.ready && !s.fainted) s.anim.update(dt, { speed: (s.liveSpeed ?? 0) / s.realScale, air: (s.poseY ?? 0) > 0.05, posing: !(s.clipUntil > now) });
       if (s.ready && !s.fainted) {
         const t = now / 1000 + s.phase;
-        s.body.position.y = s.lift + s.air + (s.poseY ?? 0) + (s.anim ? 0 : Math.sin(t * 2.2) * 0.035);
+        s.body.position.y = s.lift + s.air + (s.poseY ?? 0) + (s.anim?.anim ? 0 : Math.sin(t * 2.2) * 0.035);
         s.body.scale.setScalar(s.scale * (1 + Math.sin(t * 2.2 + 1) * 0.012));
         if (s.aura) s.aura.material.opacity = 0.35 + Math.sin(t * 6) * 0.2;
         if (s.aura && s.live) s.aura.position.set(s.base.x, 0.3 + (s.poseY ?? 0), s.base.z);
@@ -501,8 +501,9 @@ export class BattleStage {
     this.scene.add(body);
     const mixer = model?.clips.length ? new THREE.AnimationMixer(model.object.children[0]) : null;
     // It moves in code the way its body plan says, unless it has a walk of its own (creature/animate.js).
-    const anim = model && info.plan && !pickClips(model.clips).walk ? createAnimator(model.object, info.plan) : null;
-    const breath = model && !mixer && !anim ? breathing(model.object) : null; // a skeleton without clips still breathes
+    // Alive: its gait (unless it has a walk of its own), blinking eyes and burning flames (creature/life.js).
+    const anim = model ? bringToLife(model, info.plan, { dexId: info.dexId ?? null, quality: this.world.quality, animate: Boolean(info.plan) && !pickClips(model.clips).walk }) : null;
+    const breath = model && !mixer && !anim?.anim ? breathing(model.object) : null; // a skeleton without clips still breathes
     const fly = info.plan ? battleBody(info.plan, real ? scale : 1.05 / info.plan.heightM) : null;
     const ball = this.#pokeBall(this.mode === 'showcase' ? 0.15 : 0.13);
     ball.group.position.copy(pos).add(new THREE.Vector3(CARD_W * 0.22, 0, CARD_H * 0.3));
@@ -675,6 +676,7 @@ export class BattleStage {
     const from = s.base.clone();
     const to = this.slots[1 - slot]?.base?.clone() ?? this.position(1 - slot);
     const dir = to.clone().sub(from).setY(0).normalize();
+    s.anim?.gesture(); // arms thrown forward
     if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
     // Wind up (a step back), then lunge forward and let the move fly.
     const step = (k) => s.body.position.set(from.x + dir.x * k, s.body.position.y, from.z + dir.z * k);
@@ -830,6 +832,7 @@ export class BattleStage {
     if (!s?.live || s.fainted) return;
     s.windup.material.color.set(typeColor(moveType));
     s.windup.visible = true;
+    s.anim?.gesture();
     if (s.liveAttack) s.liveCastAction = this.#playClip(s, s.liveAttack, 0.07);
   }
 

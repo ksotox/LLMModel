@@ -124,14 +124,21 @@ export function battleScale(heights, { maxHeight = 2.4 } = {}) {
  * The pose for this moment: `phase` (radians of the gait cycle), `move` (0 standing … 1 at full run),
  * `t` (seconds, for idle motion), `air` (off the ground). Angles in radians, forward or up positive;
  * `lift`, `squash` as shares of the height. Missing parts are 0:
- *   { lift, pitch, roll, squash, thighL, thighR, kneeL, kneeR, armL, armR, wing, tail, wave, waveAmp, head }
+ *   { lift, pitch, roll, squash, thighL, thighR, kneeL, kneeR, armL, armR, forearmL, forearmR, wing,
+ *     wingAmp, wingFold, tail, wave, waveAmp, head }
  * `wave`/`waveAmp`: a body wave travelling down the spine and tail (snakes, fish, serpents).
+ * `wing` is the beat now; `wingAmp` its size, so the animator can lag it down the wing (the tip
+ * follows the shoulder); `wingFold` 0–1 tucks the wings in (a flyer resting on the ground).
  */
 export function creaturePose(plan, phase, { move = 0, t = 0, air = false } = {}) {
   const s = Math.sin(phase);
   const c = Math.cos(phase);
   const breathe = Math.sin(t * 1.8) * 0.012;
-  const p = { lift: 0, pitch: 0, roll: 0, squash: breathe, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0, armR: 0, wing: 0, tail: Math.sin(t * 1.3) * 0.12, wave: phase, waveAmp: 0, head: Math.sin(t * 0.45) * 0.15 };
+  // Standing still, arms hang with the elbows a little bent and sway with the breathing.
+  const sway = Math.sin(t * 1.1) * 0.07;
+  const p = { lift: 0, pitch: 0, roll: 0, squash: breathe, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0.04 + sway, armR: 0.04 - sway,
+    forearmL: 0.25 + Math.max(0, sway) * 0.8, forearmR: 0.25 + Math.max(0, -sway) * 0.8, wing: 0, wingAmp: 0, wingFold: 0,
+    tail: Math.sin(t * 1.3) * 0.12, wave: phase, waveAmp: 0, head: Math.sin(t * 0.45) * 0.15 };
   const m = clamp(move, 0, 1);
   switch (plan.mode) {
     case 'walk': {
@@ -139,11 +146,14 @@ export function creaturePose(plan, phase, { move = 0, t = 0, air = false } = {})
       if (m > 0.02) Object.assign(p, {
         lift: Math.abs(c) * 0.03 * (0.5 + m), roll: s * 0.04, pitch: m * 0.12,
         thighL: s * a, thighR: -s * a, kneeL: Math.max(0, -c) * a * 1.3, kneeR: Math.max(0, c) * a * 1.3,
-        armL: -s * a * 0.7, armR: s * a * 0.7, tail: s * 0.25, head: 0,
+        armL: -s * a * 0.7, armR: s * a * 0.7, forearmL: 0.3 + Math.max(0, -s) * a * 0.9, forearmR: 0.3 + Math.max(0, s) * a * 0.9,
+        tail: s * 0.25, head: 0,
       });
       break;
     }
     case 'quad': {
+      // Front legs are its "arms": no hanging sway for them, they stand.
+      Object.assign(p, { armL: 0, armR: 0, forearmL: 0, forearmR: 0 });
       const a = 0.3 + m * 0.4;
       if (m > 0.02) Object.assign(p, { // a trot: diagonal legs together
         lift: Math.abs(Math.sin(phase * 2)) * 0.02 * (0.5 + m), pitch: Math.sin(phase * 2) * 0.03,
@@ -156,23 +166,31 @@ export function creaturePose(plan, phase, { move = 0, t = 0, air = false } = {})
       Object.assign(p, { waveAmp: 0.12 + m * 0.3, tail: 0, head: 0, lift: 0 });
       break;
     case 'swim':
-      Object.assign(p, { waveAmp: 0.1 + m * 0.25, lift: s * 0.03, armL: s * 0.3, armR: s * 0.3, tail: 0, roll: s * 0.04 });
+      Object.assign(p, { waveAmp: 0.1 + m * 0.25, lift: s * 0.03, armL: s * 0.3, armR: s * 0.3, forearmL: 0.2, forearmR: 0.2, tail: 0, roll: s * 0.04 });
       break;
     case 'fly':
-      Object.assign(p, {
-        wing: s * (0.75 + m * 0.2), lift: -s * 0.04, pitch: m * 0.3, roll: Math.sin(t * 0.7) * 0.06,
-        thighL: -0.5, thighR: -0.5, kneeL: 0.8, kneeR: 0.8, tail: Math.sin(phase * 0.5) * 0.15,
-      });
+      if (air) {
+        const amp = 0.75 + m * 0.2;
+        Object.assign(p, {
+          wing: s * amp, wingAmp: amp, lift: -s * 0.04, pitch: m * 0.3, roll: Math.sin(t * 0.7) * 0.06,
+          thighL: -0.5, thighR: -0.5, kneeL: 0.8, kneeR: 0.8, tail: Math.sin(phase * 0.5) * 0.15,
+          // Arms (when they aren't the wings) held in, moving with the beat.
+          armL: 0.45 + s * 0.12, armR: 0.45 + s * 0.12, forearmL: 0.7, forearmR: 0.7,
+        });
+      } else {
+        // Perched: wings folded, with the odd small shuffle.
+        Object.assign(p, { wingFold: 1, wing: Math.sin(t * 0.8) * 0.04, wingAmp: 0.04 });
+      }
       break;
     case 'hover':
-      Object.assign(p, { lift: s * 0.06, roll: Math.sin(t * 0.9) * 0.06, pitch: m * 0.15, armL: 0.25 + s * 0.15, armR: 0.25 + s * 0.15 });
+      Object.assign(p, { lift: s * 0.06, roll: Math.sin(t * 0.9) * 0.06, pitch: m * 0.15, armL: 0.25 + s * 0.15, armR: 0.25 + s * 0.15, forearmL: 0.4 + s * 0.1, forearmR: 0.4 + s * 0.1 });
       break;
     case 'hop':
       if (m > 0.02 || air) Object.assign(p, { lift: Math.abs(s) * 0.35, squash: Math.abs(s) < 0.25 ? -0.12 * (1 - Math.abs(s) * 4) : 0.06 * Math.abs(s), pitch: m * 0.1 });
       break;
     default:
   }
-  if (air && plan.mode !== 'fly' && plan.mode !== 'hover') Object.assign(p, { thighL: 0.6, thighR: 0.4, kneeL: 0.9, kneeR: 0.7, armL: 0.5, armR: 0.5 });
+  if (air && plan.mode !== 'fly' && plan.mode !== 'hover') Object.assign(p, { thighL: 0.6, thighR: 0.4, kneeL: 0.9, kneeR: 0.7, armL: 0.5, armR: 0.5, forearmL: 0.6, forearmR: 0.6 });
   return p;
 }
 
