@@ -1,7 +1,7 @@
 {
   "source": "Poly Haven (polyhaven.com)",
   "licence": "CC0 1.0",
-  "fetched": "2026-11-15T10:37:29.958Z",
+  "fetched": "2026-11-24T08:32:11.429Z",
   "assets": {
     "sky-day": {
       "id": "kloofendal_48d_partly_cloudy_puresky",
@@ -24,16 +24,16 @@
       "bytes": 1440400
     },
     "grass": {
-      "id": "sparse_grass",
+      "id": "leafy_grass",
       "type": "textures",
-      "name": "Sparse Grass",
-      "page": "https://polyhaven.com/a/sparse_grass",
+      "name": "Leafy Grass",
+      "page": "https://polyhaven.com/a/leafy_grass",
       "files": [
         "color.jpg",
         "normal.jpg",
         "rough.jpg"
       ],
-      "bytes": 2859599
+      "bytes": 3172828
     },
     "soil": {
       "id": "forest_ground_04",
@@ -106,6 +106,18 @@
         "rough.jpg"
       ],
       "bytes": 2522778
+    },
+    "planks": {
+      "id": "weathered_planks",
+      "type": "textures",
+      "name": "Weathered Planks",
+      "page": "https://polyhaven.com/a/weathered_planks",
+      "files": [
+        "color.jpg",
+        "normal.jpg",
+        "rough.jpg"
+      ],
+      "bytes": 1499935
     },
     "rocks": {
       "id": "rock_moss_set_01",
