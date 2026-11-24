@@ -34,6 +34,7 @@ export async function loadModel(loader, url, height, { shadows = true, realistic
           if ('envMapIntensity' in m) m.envMapIntensity = 1;
         }
         if (realistic) o.material = Array.isArray(o.material) ? o.material.map((m) => realisticMaterial(m, types)) : realisticMaterial(o.material, types);
+        else for (const m of [].concat(o.material)) if (m.isMeshStandardMaterial || m.isMeshBasicMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial) vividColour(m);
         o.frustumCulled = false;
         o.castShadow = shadows;
         o.receiveShadow = shadows;
@@ -145,16 +146,50 @@ function textureLook(texture) {
   return out;
 }
 
+/**
+ * Add a change to a material's shader on top of any already there (the rim, the colour lift, blinking
+ * eyes, flickering flames each add their own). `key` names this change for three.js' program cache;
+ * `patch(shader)` edits the shader source and may add uniforms.
+ */
+export function patchShader(material, key, patch) {
+  const before = material.onBeforeCompile;
+  const keyBefore = material.customProgramCacheKey;
+  material.onBeforeCompile = (shader, renderer) => {
+    before?.call(material, shader, renderer);
+    patch(shader);
+  };
+  const keys = [...(material.userData.shaderKeys ?? []), key];
+  material.userData.shaderKeys = keys;
+  material.customProgramCacheKey = () => `${keyBefore === THREE.Material.prototype.customProgramCacheKey ? '' : keyBefore?.call(material) ?? ''}|${keys.join('+')}`;
+  material.needsUpdate = true;
+}
+
 /** A soft rim of light on the edges facing away from the camera (view-space normal and position). */
 function addRim(material) {
-  material.onBeforeCompile = (shader) => {
+  patchShader(material, 'pokemon-rim', (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', `{
         float rim = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 3.0);
-        outgoingLight += diffuseColor.rgb * rim * 0.22;
+        outgoingLight += diffuseColor.rgb * rim * 0.26;
       }
       #include <opaque_fragment>`);
-  };
-  material.customProgramCacheKey = () => 'pokemon-rim';
+  });
+}
+
+/**
+ * Livelier colour: the model's own colours a little more saturated and with a touch more contrast,
+ * right after its texture is read (the game textures are flat and pale under realistic light).
+ */
+export function vividColour(material, saturation = 1.22, contrast = 1.06) {
+  if (!material || material.userData.vivid) return;
+  material.userData.vivid = true;
+  patchShader(material, 'pokemon-vivid', (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        float grey = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        diffuseColor.rgb = max(mix(vec3(grey), diffuseColor.rgb, ${saturation.toFixed(3)}), 0.0);
+        diffuseColor.rgb = max((diffuseColor.rgb - 0.18) * ${contrast.toFixed(3)} + 0.18, 0.0);
+      }`);
+  });
 }
 
 /** The realistic version of one of a model's materials (the original is disposed of). */
@@ -182,6 +217,7 @@ export function realisticMaterial(m, types = []) {
   if (kind === 'fur' && m.color) p.sheenColor.copy(m.color).lerp(new THREE.Color(0xffffff), 0.5);
   if (p.map) p.map.anisotropy = 8;
   addRim(p);
+  vividColour(p);
   p.userData.surface = kind;
   m.dispose();
   return p;

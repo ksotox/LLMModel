@@ -18,7 +18,7 @@ import { buildTrainer } from './trainer.js';
 import { createPlayer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
 import { bodyPlan, sizedSpecies } from '../creature/body.js';
-import { createAnimator } from '../creature/animate.js';
+import { bringToLife } from '../creature/life.js';
 
 const MAX_MODELS = 24; // full 3D models at once; the rest stand as their cards
 const MODEL_RANGE = 30;
@@ -235,13 +235,15 @@ function start3d(root, cards, world3d) {
         c.model = model;
         if (c.plan.mode === 'swim') c.sink = model.height * 0.65; // a swimmer shows its back and head above the water
         // Its own animations when it has a walk (idle when standing, walk when moving, a happy one when
-        // petted); otherwise it moves in code, the way its body plan says (creature/animate.js).
+        // petted); otherwise it moves in code, the way its body plan says. Either way its eyes blink and
+        // its flames burn (creature/life.js).
         const clips = pickClips(model.clips);
         if (clips.walk) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.actions = Object.fromEntries(Object.entries(clips).filter(([, clip]) => clip).map(([k, clip]) => [k, c.mixer.clipAction(clip)]));
           c.playing = null;
-        } else c.anim = createAnimator(model.object, c.plan);
+        }
+        c.anim = bringToLife(model, c.plan, { dexId: species?.dexId ?? null, quality: world.quality, animate: !clips.walk });
         loaded++;
       }
     } catch { /* it stays a card */ } finally {

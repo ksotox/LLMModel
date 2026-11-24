@@ -8,16 +8,22 @@
 import * as THREE from 'three';
 import { creaturePose, gaitRate } from './body.js';
 
-const norm = (name) => String(name).replace(/[_.]\d+$/, '').replace(/^.*[:|]/, '');
+// "LThigh_6", "mixamorig:LeftUpLeg", and "050 Head" / "050_Head" (a numbered rig; three.js turns the space into _).
+const norm = (name) => String(name).replace(/[_.]\d+$/, '').replace(/^.*[:|]/, '').replace(/^\d+[ _]+/, '');
 const sideOf = (name) => (/^L(?=[A-Z])|^Left|[._]L$|[._]l$/.test(name) ? 1 : /^R(?=[A-Z])|^Right|[._]R$|[._]r$/.test(name) ? -1 : 0);
 const numberOf = (name) => Number(name.match(/(\d+)$/)?.[1] ?? 0);
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 
-/** The model's bones, sorted into the parts creaturePose() moves. Pure on names (tested). */
+/**
+ * The model's bones, sorted into the parts creaturePose() moves. Pure on names (tested).
+ * `wing` holds bones named as wings; with `flies`, the roots of the feeler chains ("LFeeler1",
+ * "RFeelerA1") are kept as `feeler` candidates: a dragon's wings are feelers, while a bird's wings are
+ * its arms. createAnimator() picks, for each side, whichever reaches further out (wingSide()).
+ */
 export function sortBones(names, { flies = false } = {}) {
-  const parts = { thigh: [], knee: [], arm: [], forearm: [], wing: [], tail: [], spine: [], head: [] };
+  const parts = { thigh: [], knee: [], shoulder: [], arm: [], forearm: [], wing: [], feeler: [], tail: [], spine: [], head: [] };
   for (const raw of names) {
     const n = norm(raw);
     const side = sideOf(n);
@@ -25,17 +31,18 @@ export function sortBones(names, { flies = false } = {}) {
     if (/wing/.test(bare) && side) parts.wing.push({ name: raw, side, order: numberOf(n) });
     else if (/^(thigh|upleg|upperleg)$/.test(bare) && side) parts.thigh.push({ name: raw, side });
     else if (/^(leg|calf|knee|lowerleg|shin)$/.test(bare) && side) parts.knee.push({ name: raw, side });
+    else if (/^(shoulder|clavicle)$/.test(bare) && side) parts.shoulder.push({ name: raw, side });
     else if (/^(arm|arma|upperarm)$/.test(bare) && side) parts.arm.push({ name: raw, side });
     else if (/^(forearm|lowerarm)$/.test(bare) && side) parts.forearm.push({ name: raw, side });
-    // In the game rigs a flyer's wings (and a fish's fins) are "feelers": the first of each chain.
-    else if (flies && /^feeler(a)?1$/.test(bare) && side) parts.wing.push({ name: raw, side, order: 1 });
+    // In the game rigs a dragon's wings (and a fish's fins) are "feelers": the first of each chain.
+    else if (flies && /^feeler(a)?0?1$/.test(bare) && side) parts.feeler.push({ name: raw, side });
     else if (/^tail\d*$/.test(bare)) parts.tail.push({ name: raw, order: numberOf(n) });
     else if (/^(spine\d*|waist|chest|neck\d*)$/.test(bare)) parts.spine.push({ name: raw, order: /neck/.test(bare) ? 10 + numberOf(n) : /waist/.test(bare) ? 0 : 1 + numberOf(n) });
     else if (bare === 'head') parts.head.push({ name: raw });
   }
   parts.tail.sort((a, b) => a.order - b.order);
   parts.spine.sort((a, b) => a.order - b.order);
-  // A rig with only some wing bones named "Wing" may list several per side: keep the root of each.
+  // A rig with several bones named "Wing" per side: keep the root of each.
   for (const s of [1, -1]) {
     const mine = parts.wing.filter((w) => w.side === s).sort((a, b) => a.order - b.order);
     for (const extra of mine.slice(1)) parts.wing.splice(parts.wing.indexOf(extra), 1);
@@ -44,9 +51,21 @@ export function sortBones(names, { flies = false } = {}) {
 }
 
 /**
+ * Which chain is a flyer's wing on one side: one named as a wing; otherwise the arm chain or the feeler
+ * chain, whichever reaches further out from the body (`armReach`, `feelerReach`: how far the chain's
+ * bones go sideways). Returns 'wing', 'arm', 'feeler' or null. Pure (tested).
+ */
+export function wingSide({ named = false, armReach = 0, feelerReach = 0 } = {}) {
+  if (named) return 'wing';
+  if (!armReach && !feelerReach) return null;
+  return feelerReach > armReach * 1.1 ? 'feeler' : 'arm';
+}
+
+/**
  * An animator for one loaded model (modelLoader.loadModel's result.object) with this body plan.
  * update(dt, { speed (m/s, real), air, posing }) each frame; `posing` false leaves the bones to a
- * playing animation clip and only moves the whole body.
+ * playing animation clip and only moves the whole body. gesture() swings the arms forward for a
+ * moment (an attack).
  */
 export function createAnimator(object, plan) {
   const root = object.children[0] ?? object;
@@ -54,26 +73,59 @@ export function createAnimator(object, plan) {
   object.updateMatrixWorld(true);
   const bonesByName = new Map();
   root.traverse((o) => { if (o.isBone && !bonesByName.has(o.name)) bonesByName.set(o.name, o); });
-  const parts = sortBones([...bonesByName.keys()], { flies: plan.mode === 'fly' || plan.mode === 'swim' });
+  const flies = plan.mode === 'fly';
+  const parts = sortBones([...bonesByName.keys()], { flies: flies || plan.mode === 'swim' });
   const objectQ = object.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const local = (bone) => object.worldToLocal(bone.getWorldPosition(new THREE.Vector3()));
   // For each bone: its rest rotation and its parent's rest orientation in the model's frame.
-  const joint = (name) => {
-    const bone = bonesByName.get(name);
-    if (!bone) return null;
+  const jointOf = (bone) => {
     const parentQ = bone.parent ? objectQ.clone().multiply(bone.parent.getWorldQuaternion(new THREE.Quaternion())) : new THREE.Quaternion();
-    const position = bone.getWorldPosition(new THREE.Vector3());
-    object.worldToLocal(position);
-    return { bone, rest: bone.quaternion.clone(), parentQ, parentInv: parentQ.clone().invert(), x: position.x };
+    return { bone, rest: bone.quaternion.clone(), parentQ, parentInv: parentQ.clone().invert(), x: local(bone).x };
   };
+  const joint = (name) => (bonesByName.get(name) ? jointOf(bonesByName.get(name)) : null);
   const pick = (list) => list.map((p) => ({ ...p, j: joint(p.name) })).filter((p) => p.j);
+  // A chain: the bone and up to `depth` bones down its first line of children (shoulder → hand).
+  const chainOf = (bone, depth = 3) => {
+    const out = [bone];
+    for (let b = bone; out.length <= depth;) {
+      b = b.children.find((c) => c.isBone);
+      if (!b) break;
+      out.push(b);
+    }
+    return out;
+  };
+  // How far a chain reaches out sideways from its own root.
+  const reach = (bone) => {
+    let most = 0;
+    const x0 = Math.abs(local(bone).x);
+    bone.traverse((o) => { if (o.isBone) most = Math.max(most, Math.abs(local(o).x) - x0); });
+    return most;
+  };
   const thighs = pick(parts.thigh);
   const knees = pick(parts.knee);
-  const arms = pick(parts.arm);
-  const wings = pick(parts.wing);
+  const forearms = pick(parts.forearm);
   const tail = pick(parts.tail);
   const spine = pick(parts.spine);
   const head = pick(parts.head)[0] ?? null;
+  let arms = pick(parts.arm);
+  // Wings, per side: a chain of joints, the root first.
+  const wings = [];
+  for (const side of [1, -1]) {
+    const named = parts.wing.find((w) => w.side === side);
+    const armRoot = bonesByName.get(parts.shoulder.find((b) => b.side === side)?.name) ?? bonesByName.get(parts.arm.find((b) => b.side === side)?.name);
+    const feelerRoot = bonesByName.get(parts.feeler.find((b) => b.side === side)?.name);
+    const choice = flies || plan.mode === 'swim'
+      ? wingSide({ named: Boolean(named), armReach: flies && armRoot ? reach(armRoot) : 0, feelerReach: feelerRoot ? reach(feelerRoot) : 0 })
+      : named ? 'wing' : null;
+    const rootBone = choice === 'wing' ? bonesByName.get(named.name) : choice === 'arm' ? armRoot : choice === 'feeler' ? feelerRoot : null;
+    if (!rootBone) continue;
+    wings.push({ side, chain: chainOf(rootBone).map(jointOf) });
+    // A bird's arms are its wings: they don't also swing as arms.
+    if (choice === 'arm') arms = arms.filter((a) => a.side !== side);
+  }
   const hasBones = thighs.length + arms.length + wings.length + tail.length + spine.length > 0;
+  const all = [...thighs, ...knees, ...arms, ...forearms, ...tail, ...spine, ...(head ? [head] : [])].map((p) => p.j)
+    .concat(wings.flatMap((w) => w.chain));
   const q = new THREE.Quaternion();
   const turn = new THREE.Quaternion();
 
@@ -84,21 +136,28 @@ export function createAnimator(object, plan) {
     q.copy(j.parentInv).multiply(turn).multiply(j.parentQ); // the model's axis, seen from the parent
     j.bone.quaternion.premultiply(q);
   };
-  const reset = () => {
-    for (const list of [thighs, knees, arms, wings, tail, spine]) for (const p of list) p.j.bone.quaternion.copy(p.j.rest);
-    if (head) head.j.bone.quaternion.copy(head.j.rest);
-  };
+  const reset = () => { for (const j of all) j.bone.quaternion.copy(j.rest); };
 
   let phase = Math.random() * Math.PI * 2;
   let t = Math.random() * 10;
+  let gestureT = 0; // seconds left of an attack gesture
   return {
     plan,
     hasBones,
+    wings: wings.length,
+    gesture(seconds = 0.55) { gestureT = seconds; },
     update(dt, { speed = 0, air = false, posing = true } = {}) {
       t += dt;
+      gestureT = Math.max(0, gestureT - dt);
       phase = (phase + dt * gaitRate(plan, speed) * Math.PI * 2) % (Math.PI * 200);
       const move = Math.min(1, speed / Math.max(0.1, plan.runSpeed));
       const p = creaturePose(plan, phase, { move, t, air });
+      if (gestureT > 0) {
+        // An attack: both arms thrown forward and back again.
+        const k = Math.sin((1 - gestureT / 0.55) * Math.PI);
+        p.armL = p.armR = Math.max(p.armL, 1.3 * k);
+        p.forearmL = p.forearmR = 0.2 + 0.5 * k;
+      }
       // The whole body: lift, lean, roll and squash (scaled to the model's own height).
       const h = object.userData.height ?? 1;
       root.position.copy(rest.position);
@@ -116,9 +175,22 @@ export function createAnimator(object, plan) {
       for (const { side, j } of thighs) rotate(j, X, -(side > 0 ? p.thighL : p.thighR));
       for (const { side, j } of knees) rotate(j, X, side > 0 ? p.kneeL : p.kneeR);
       for (const { side, j } of arms) rotate(j, X, -(side > 0 ? p.armL : p.armR));
-      // Wings beat up and down (about the front-to-back axis, mirrored for each side).
-      // A wing on the model's left (+X, as it faces +Z) rises with a positive turn, one on the right negative.
-      for (const { side, j } of wings) rotate(j, Z, (Math.abs(j.x) > 1e-4 ? Math.sign(j.x) : side || 1) * p.wing);
+      for (const { side, j } of forearms) if (arms.some((a) => a.side === side)) rotate(j, X, -(side > 0 ? p.forearmL : p.forearmR));
+      // Wings beat up and down about the front-to-back axis: a wing on the model's left (+X, as it faces
+      // +Z) rises with a positive turn. Down the wing the beat comes a little later and smaller, so the
+      // tip follows through. Folded, the wing sweeps back and down along the body.
+      for (const { side, chain } of wings) {
+        const dir = Math.abs(chain[0].x) > 1e-4 ? Math.sign(chain[0].x) : side;
+        chain.forEach((j, k) => {
+          const lagged = p.wingAmp ? Math.sin(phase - k * 0.45) * p.wingAmp : p.wing;
+          rotate(j, Z, dir * lagged * (k === 0 ? 1 : 0.35));
+          if (k === 0 && p.wingFold) {
+            // Down to the side, then swept back along the body (a left wing, along +X, turns towards −Z).
+            rotate(j, Z, -dir * 0.6 * p.wingFold);
+            rotate(j, Y, dir * 1.0 * p.wingFold);
+          }
+        });
+      }
       // A body wave runs down the spine and tail; a tail also wags on its own.
       spine.forEach(({ j }, i) => rotate(j, Y, p.waveAmp ? Math.sin(p.wave - i * 0.7) * p.waveAmp * 0.6 : 0));
       tail.forEach(({ j }, i) => rotate(j, Y, (p.waveAmp ? Math.sin(p.wave - (spine.length + i) * 0.7) * p.waveAmp : 0) + p.tail * (0.4 + i * 0.12)));

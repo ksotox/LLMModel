@@ -78,7 +78,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Current state (2026-11-23)
 - `main` has PRs #1–#34. **Plan: `docs/ROADMAP.md`** (M0–M2 done: detection 93%, reading 81%).
 - **Real sizes** (Phase 46): `server/species.js` + `speciesData.json` (PokéAPI, `scripts/species-build.mjs`);
-  `js/creature/body.js` (pure: mode, pace, gaits, `displayHeight` compressed sizes) + `animate.js` (bones by name).
+  `js/creature/body.js` (pure: mode, pace, gaits, `displayHeight` sizes) + `life.js` (`autoRig`, `animate`, blink, flames).
 - Not verified live: eBay Insights API (needs approval), PokemonPriceTracker (needs the owner's key).
 
 ## Open items / ideas

@@ -81,6 +81,12 @@ const COMBINE_FRAGMENT = `
     for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) ao += texture2D(tAO, vUv + vec2(x, y) * uAOTexel).r;
     c *= mix(1.0, ao / 9.0, uAO);
     c += (texture2D(tBloom1, vUv).rgb + texture2D(tBloom2, vUv).rgb * 0.9) * uBloom;
+    // A light grade: vibrance (dull colours gain the most saturation, vivid ones little) and a touch of
+    // contrast, for more colour depth.
+    float grey = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    float sat = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+    c = mix(vec3(grey), c, 1.0 + 0.28 * (1.0 - clamp(sat * 2.0, 0.0, 1.0)));
+    c = clamp((c - 0.5) * 1.05 + 0.5, 0.0, 1.0);
     gl_FragColor = vec4(c, 1.0);
   }`;
 
