@@ -156,7 +156,7 @@ function start3d(root, cards, world3d) {
   const habitats = buildHabitats(scene, plan, {
     THREE, heightAt: terrainHeight, lake, dark, leaves: world.leaves, time: sway, shoreSand: worldKit.SHORE_SAND,
     tree: worldKit.tree, ruins: worldKit.ruins, rockGeometry: worldKit.rockGeometry, noiseTexture: worldKit.noiseTexture,
-    palm: stadiumKit.palm, canvasTexture: stadiumKit.canvasTexture, speckle: stadiumKit.speckle,
+    palm: stadiumKit.palm, canvasTexture: stadiumKit.canvasTexture, speckle: stadiumKit.speckle, photoWood: (m) => world.photoWood?.(m),
     ...(() => { const m = stadiumKit.palmMaterials({ time: sway, keep: (o) => o }); return { palmTrunk: m.trunkMat, palmFrond: m.frondMat, palmFrondDepth: m.frondDepth }; })(),
     contactShadows: surfaceKit.contactShadows, contactTexture: surfaceKit.contactTexture, addSurfaceDepth: surfaceKit.addSurfaceDepth,
   });
@@ -424,6 +424,7 @@ function start3d(root, cards, world3d) {
   let acc = 0;
   const STEP = 1 / 60;
   const v = new THREE.Vector3();
+  const prevP = { x: player.x, y: player.y, z: player.z, facing: player.facing };
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
@@ -437,6 +438,9 @@ function start3d(root, cards, world3d) {
     acc += dt;
     while (acc >= STEP) {
       acc -= STEP;
+      // Where everything was before this step, to draw in between steps (below).
+      prevP.x = player.x; prevP.y = player.y; prevP.z = player.z; prevP.facing = player.facing;
+      for (const c of creatures) { c.px = c.x; c.py = c.y; c.pz = c.z; c.pf = c.facing; }
       const is = (...codes) => codes.some((c) => keys.has(c));
       const f = paused() ? 0 : (is('KeyW', 'ArrowUp') ? 1 : 0) - (is('KeyS', 'ArrowDown') ? 1 : 0) + stick.y + pad.y;
       const r = paused() ? 0 : (is('KeyD', 'ArrowRight') ? 1 : 0) - (is('KeyA', 'ArrowLeft') ? 1 : 0) + stick.x + pad.x;
@@ -452,9 +456,19 @@ function start3d(root, cards, world3d) {
       for (const c of creatures) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: blockedFor, waterLevel: LAKE.level });
     }
 
+    // Drawn between the last two steps (the simulation runs 60 times a second, the screen may run at
+    // 120 or 144): smooth motion at any refresh rate.
+    const alpha = acc / STEP;
+    const mix = (a, b) => a + (b - a) * alpha;
+    const turnMix = (a, b) => a + ((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * alpha;
+    const P = { x: mix(prevP.x, player.x), y: mix(prevP.y, player.y), z: mix(prevP.z, player.z), facing: turnMix(prevP.facing, player.facing) };
+    for (const c of creatures) {
+      c.rx = mix(c.px ?? c.x, c.x); c.ry = mix(c.py ?? c.y, c.y); c.rz = mix(c.pz ?? c.z, c.z); c.rf = turnMix(c.pf ?? c.facing, c.facing);
+    }
+
     // The trainer: stride, arms, glider.
-    avatar.position.set(player.x, player.y, player.z);
-    avatar.rotation.y = player.facing;
+    avatar.position.set(P.x, P.y, P.z);
+    avatar.rotation.y = P.facing;
     const stride = player.mode === 'walk' ? Math.sin(t * (6 + player.moving)) * Math.min(1, player.moving / 4) : 0;
     legs[0].rotation.x = stride * 0.7;
     legs[1].rotation.x = -stride * 0.7;
@@ -464,39 +478,39 @@ function start3d(root, cards, world3d) {
     glider.visible = player.mode === 'glide';
     trainer.play(trainerState(player), player.moving, dt, t); // the owner's model, if one is chosen
     avatar.rotation.x = player.mode === 'glide' || player.mode === 'mantle' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
-    world.sun.target.position.set(player.x, player.y, player.z); // the sharp shadows stay round the trainer
+    world.sun.target.position.set(P.x, P.y, P.z); // the sharp shadows stay round the trainer
     world.sun.position.copy(world.sun.target.position).addScaledVector(sunDir, 30);
 
     // The camera orbits behind the trainer, and stays above the ground.
     const cp = Math.cos(pitch);
-    v.set(player.x + Math.sin(yaw) * cp * distance, player.y + 1.5 + Math.sin(pitch) * distance, player.z + Math.cos(yaw) * cp * distance);
+    v.set(P.x + Math.sin(yaw) * cp * distance, P.y + 1.5 + Math.sin(pitch) * distance, P.z + Math.cos(yaw) * cp * distance);
     // Pulled in when a tree, rock or ruin stands between the trainer and the camera.
     for (let k = 0.2; k <= 1; k += 0.1) {
-      const cx = player.x + (v.x - player.x) * k;
-      const cz = player.z + (v.z - player.z) * k;
+      const cx = P.x + (v.x - P.x) * k;
+      const cz = P.z + (v.z - P.z) * k;
       if (solidAt(plan, cx, cz, 0.2)) {
         const back = Math.max(0.25, k - 0.12);
-        v.set(player.x + (v.x - player.x) * back, player.y + 1.5 + (v.y - player.y - 1.5) * back, player.z + (v.z - player.z) * back);
+        v.set(P.x + (v.x - P.x) * back, P.y + 1.5 + (v.y - P.y - 1.5) * back, P.z + (v.z - P.z) * back);
         break;
       }
     }
     v.y = Math.max(v.y, ground.heightAt(v.x, v.z) + 0.4, LAKE.level + 0.3);
     camera.position.lerp(v, ease(dt, 14)); // the same glide at any frame rate
-    camera.lookAt(player.x, player.y + 1.4, player.z);
+    camera.lookAt(P.x, P.y + 1.4, P.z);
 
     // The creatures, their models (the nearest few) and their nameplates.
     const W = el.clientWidth;
     const H = el.clientHeight;
     for (const c of creatures) {
       // Distance to its body: a big Pokémon is seen (and loaded) from further away.
-      const d = Math.max(0, Math.hypot(c.x - player.x, c.z - player.z) - c.plan.radius);
+      const d = Math.max(0, Math.hypot(c.rx - P.x, c.rz - P.z) - c.plan.radius);
       if (c.petted > 0) c.petted = Math.max(0, c.petted - dt);
       const happy = c.petted ? Math.abs(Math.sin(c.petted * 10)) * Math.min(0.35, 0.1 + c.plan.heightM * 0.2) : 0;
       // A card (before its model loads) hops along; a model stands where the creature is: on the ground,
       // in the air, or at the lake's surface, and its animator moves its body and limbs.
       const stand = c.model ? 0 : Math.sin(c.hop) * 0.22;
-      c.group.position.set(c.x, c.y + stand + happy, c.z);
-      c.group.rotation.y = c.model ? c.facing : Math.atan2(camera.position.x - c.x, camera.position.z - c.z); // a card faces you
+      c.group.position.set(c.rx, c.ry + stand + happy, c.rz);
+      c.group.rotation.y = c.model ? c.rf : Math.atan2(camera.position.x - c.rx, camera.position.z - c.rz); // a card faces you
       if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed, air: c.air });
       if (c.mixer && d < 30) {
         if (!(c.extraUntil > now)) {
@@ -513,15 +527,23 @@ function start3d(root, cards, world3d) {
       if (!c.asked && d < MODEL_RANGE + c.plan.heightM * 2 && loading < 2 && loaded + loading < MAX_MODELS) wantModel(c);
       let alpha = 0;
       if (d < PLATE_RANGE) {
-        v.set(c.x, c.y + (c.model?.height ?? 1) + 0.45, c.z).project(camera);
+        v.set(c.rx, c.ry + (c.model?.height ?? 1) + 0.45, c.rz).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
           alpha = Math.min(1, (PLATE_RANGE - d) / 5);
-          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - c.plate.offsetWidth / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
         }
       }
       c.plate.style.opacity = String(alpha);
     }
     near = nearest(creatures, player);
+    // The grass bends aside around the trainer and the creatures walking nearest.
+    const pushers = [{ x: player.x, z: player.z, radius: 0.7, strength: player.mode === 'walk' ? 1 : 0 }];
+    for (const c of creatures) {
+      if (pushers.length >= 6) break;
+      if (c.plan.mode === 'swim' || c.air || Math.hypot(c.x - player.x, c.z - player.z) > 20) continue;
+      pushers.push({ x: c.x, z: c.z, radius: Math.max(0.5, c.plan.radius * 1.6), strength: 1 });
+    }
+    world.setGrassPushers?.(pushers);
     atDive = player.mode === 'swim' && Math.hypot(player.x - LAKE.x, player.z - LAKE.z) < LAKE.r * 0.6;
     prompt.hidden = (!near && !atDive) || paused();
     if (near) prompt.textContent = `${touch ? 'Tap' : 'E'} · ${near.card.name}`;

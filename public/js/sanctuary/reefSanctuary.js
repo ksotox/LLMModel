@@ -344,7 +344,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
         v.set(c.x, c.y + (c.model?.height ?? 1) + 0.3, c.z).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
           alpha = Math.min(1, (14 - d) / 5);
-          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - c.plate.offsetWidth / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
         }
       }
       c.plate.style.opacity = String(alpha);

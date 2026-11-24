@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 export const REALISM_BASE = '/assets/realism/';
 
 /** The surface sets the scenery uses, and how many world units one texture tile covers. */
-export const SURFACES = { grass: 4, soil: 5, rock: 6, cliff: 9, sand: 4, snow: 7, bark: 1 };
+export const SURFACES = { grass: 4, soil: 5, rock: 6, cliff: 9, sand: 4, snow: 7, bark: 1, planks: 1 };
 
 let manifest = null;
 const cache = new Map();
@@ -89,7 +89,7 @@ export function modelSet(slot) {
 export function groundWeights({ y, ny, lake = false, n1 = 0.5, n2 = 0.5 }) {
   const smooth = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   return {
-    soil: smooth(0.55, 0.78, n1) * 0.6,
+    soil: smooth(0.6, 0.8, n1) * 0.3,
     sand: lake ? smooth(0.15, -0.6, y) : 0,
     rock: Math.max(smooth(0.86, 0.66, ny), smooth(17, 32, y) * 0.85),
     snow: smooth(42, 60, y + n2 * 12) * smooth(0.45, 0.78, ny),

@@ -828,6 +828,23 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   opponent gets another trainer model (stable per card); they cheer on attacks and slump on a faint; in real time
   they step back to the field's edge.
 
+## Phase 50: Grass like grass, rocky mountains, real trees and wood, smoother frames
+- Grass (`world.js grassField` `follow`): in the Sanctuary a 56 m field of blades follows the camera, each blade fixed
+  in the world (the tile repeats), standing on a baked height/grows-here texture (`groundTexture`); even density
+  everywhere you walk, fuller blades, lighter roots, bent aside by the trainer and nearby creatures
+  (`setGrassPushers`). Dirt patches halved; the ground photo leans on the meadow's green.
+- Mountains: ridges domain-warped with crags (`terrainHeight` beyond 140 m), a denser ground mesh on desktop (340
+  segments), rock strata and darker steep faces, and the photo rock kept far out instead of flat paint.
+- Trees: broadleaf crowns of 3–5 separate clumps on branches, each tree its own green (`leafCards` `tinted`), barked
+  trunks (`battle/wood.js`), shared materials; the far forest spaced so crowns don't merge, with leaf cards on
+  Standard too. Leaf and needle cards keep their own normals on both sides (black needle stripes and dark leaf
+  patches were back faces lit from inside).
+- Wood (`battle/wood.js`): procedural bark and plank textures (grain, knots, seams) on logs, posts, the dock, boats,
+  signs (carved lettering), driftwood and the beach pier; photo planks (Poly Haven, new `planks` slot) on High.
+- Frames: the Sanctuary draws between its 60 Hz steps (smooth at 120/144 Hz); `perf.js` aims at the screen's own
+  refresh rate (`frameTargets`); the mirror water renders only on screen, every other frame; nameplate widths
+  cached; fireflies written in place.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

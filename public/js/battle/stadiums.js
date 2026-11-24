@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { addCaustics } from '../reef/reef.js';
 import { MIRROR_GLSL } from './postfx.js';
+import { barkTexture, plankTexture } from './wood.js';
 
 /** Sky, fog and light for each stadium (display colours, like the meadow's palette). */
 export const STADIUM_LOOK = {
@@ -785,18 +786,21 @@ function beach({ fieldR, time, glow, add, keep, look, contact, mirror }) {
     add(rock);
     contact(x, beachHeight(x, z, fieldR), z, 0.95 * rock.scale.x * (rock.geometry.parameters.radius ?? 0.5) * 2);
   }
-  const wood = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 3.4, 7), std({ color: 0xb9ab95 }));
+  const drift = barkTexture(false); // bleached driftwood: bark grain, pale
+  const wood = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 3.4, 7), std({ map: drift.color, normalMap: drift.normal, color: 0xd8cdbb }));
   wood.rotation.set(Math.PI / 2, 0, 0.4);
   wood.position.set(5.2, beachHeight(5.2, -9.4, fieldR) + 0.14, -9.4);
   wood.castShadow = true;
   add(wood);
   const boat = new THREE.Group();
-  const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std({ color: 0x2c4a6e, side: THREE.DoubleSide, roughness: 0.7 }));
+  const painted = plankTexture('grey');
+  const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std({ map: painted.color, normalMap: painted.normal, color: 0x5d86bd, side: THREE.DoubleSide, roughness: 0.7 }));
   hull.scale.set(2.3, 0.7, 0.75);
   hull.castShadow = true;
   boat.add(hull);
   for (const x of [-0.9, 0.2, 1.2]) {
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 1.25 - Math.abs(x) * 0.3), std({ color: 0xc9b48c }));
+    const warm = plankTexture('warm');
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 1.25 - Math.abs(x) * 0.3), std({ map: warm.color, normalMap: warm.normal }));
     seat.position.set(x, -0.12, 0);
     boat.add(seat);
   }
@@ -806,7 +810,8 @@ function beach({ fieldR, time, glow, add, keep, look, contact, mirror }) {
   contact(-3.2, beachHeight(-3.2, -11.6, fieldR), -11.6, 2.5);
 
   // A wooden pier out over the water, with a lamp at its end, and two buoys bobbing.
-  const plank = std({ color: 0x9a7a55, roughness: 0.9 });
+  const boards = plankTexture('weathered');
+  const plank = std({ map: boards.color, normalMap: boards.normal, roughness: 0.9 });
   const pierA = sunA + 0.55;
   const pier = new THREE.Group();
   pier.rotation.y = -pierA;

@@ -299,3 +299,15 @@ describe('realistic Pokémon materials', () => {
     assert.equal(surfaceKind(), 'fur');
   });
 });
+
+describe('as many frames as the screen shows', () => {
+  test('a fast screen is aimed at its own rate, without giving up much sharpness', async () => {
+    const { frameTargets, nextPixelRatio } = await import('../public/js/battle/perf.js');
+    assert.deepEqual(frameTargets(16.7), { slow: 19, fast: 13.5, floor: 0.6, target: 16.7 }, '60 Hz: as before');
+    const hz144 = frameTargets(1000 / 144);
+    assert.ok(hz144.slow < 10 && hz144.floor === 0.75, JSON.stringify(hz144));
+    assert.ok(nextPixelRatio(9.5, 2, 2, hz144) < 2, '105 fps on a 144 Hz screen: a little fewer pixels');
+    assert.equal(nextPixelRatio(9.5, 2, 2), 2, 'the same on a 60 Hz screen: nothing to do');
+    assert.ok(nextPixelRatio(40, 2, 2, hz144) >= 1.5, 'never below three quarters on a fast screen');
+  });
+});

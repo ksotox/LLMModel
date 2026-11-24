@@ -58,13 +58,14 @@ function groundPatch(shader, maps, tint) {
         float far = smoothstep(18.0, 90.0, hdDist);
         vec2 gp = vHdPos.xz;
         vec3 col = hdTwo(tGC, gp, ${f(T.grass)}, far);
-        col = mix(col, diffuseColor.rgb * 1.7, 0.45); // the meadow's own green through the photo's soil
+        col = mix(col, diffuseColor.rgb * 1.7, 0.6); // the meadow's own green, so the photo's bare soil doesn't show
         col = mix(col, hdTwo(tSC, gp, ${f(T.soil)}, far), vLayers.x);
         col = mix(col, hdTwo(tAC, gp, ${f(T.sand)}, far), vLayers.y);
         col = mix(col, hdRock(gp, normalize(vHdNor), far), vLayers.z);
         col = mix(col, hdTwo(tNC, gp, ${f(T.snow)}, far), vLayers.w);
         col *= uHdTint;
-        diffuseColor.rgb = mix(col, diffuseColor.rgb, smoothstep(160.0, 340.0, hdDist)); // the painted colours far out
+        // The painted colours far out, except on rock: the mountains keep their photo rock (at its large tile).
+        diffuseColor.rgb = mix(col, diffuseColor.rgb, smoothstep(160.0, 340.0, hdDist) * (1.0 - vLayers.z * 0.85));
       }`)
     .replace('#include <normal_fragment_maps>', `{
         vec2 gp = vHdPos.xz;
@@ -89,6 +90,7 @@ export function hdScenery({ renderer, scene, ground, stoneMat, boulders = [], tr
   let loaded = null;
   const swapped = []; // [material, original values]
   const extraRocks = [];
+  const woodMats = new Set(); // plank materials to dress in the photo planks (the Sanctuary's dock)
   const tint = new THREE.Color(dark ? 0x9a9ab8 : 0xffffff);
 
   const wear = (mat, maps, { repeat = null } = {}) => {
@@ -121,12 +123,13 @@ export function hdScenery({ renderer, scene, ground, stoneMat, boulders = [], tr
   };
 
   const load = async () => {
-    const [grass, soil, sandS, rock, snow, bark, cliff, env, rocks] = await Promise.all([
+    const [grass, soil, sandS, rock, snow, bark, cliff, env, rocks, planks] = await Promise.all([
       surface('grass'), surface('soil'), surface('sand'), surface('rock'), surface('snow'), surface('bark'), surface('cliff'),
-      envSlot ? skyLight(renderer, envSlot) : null, boulders.length ? modelSet('rocks') : null,
+      envSlot ? skyLight(renderer, envSlot) : null, boulders.length ? modelSet('rocks') : null, surface('planks'),
     ]);
     const all = grass && soil && sandS && rock && snow;
-    const result = { env, ground: false };
+    const result = { env, ground: false, planks };
+    for (const m of woodMats) wear(m, planks, { repeat: [1, 1] });
     if (ground && all && ground.normalMap) {
       const maps = { grass, soil, sand: sandS, rock, snow };
       const before = ground.onBeforeCompile;
@@ -172,6 +175,11 @@ export function hdScenery({ renderer, scene, ground, stoneMat, boulders = [], tr
         return;
       }
       if (loaded) apply();
+    },
+    /** Dress a plank material in the photo planks too (when the set has them; it keeps its own otherwise). */
+    wood(mat) {
+      woodMats.add(mat);
+      if (loaded?.planks) { wear(mat, loaded.planks, { repeat: [1, 1] }); apply(); }
     },
     dispose() { for (const r of extraRocks) r.alt.removeFromParent(); },
   };

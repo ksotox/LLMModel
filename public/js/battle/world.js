@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildStadium, lookFor, starField } from './stadiums.js';
 import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, needleClusterTexture, skirtGeometry, skyEnvironment } from './surface.js';
+import { barkTexture } from './wood.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 import { addCaustics, buildReef } from '../reef/reef.js';
 import { createEffects, MIRROR_GLSL, planarMirror } from './postfx.js';
@@ -141,7 +142,14 @@ export function terrainHeight(x, z, flat = 16) {
   const d = Math.hypot(x, z);
   let h = (fbm(x * 0.035, z * 0.035, 4) - 0.48) * 1.8 * smooth(flat, flat + 14, d);
   h += smooth(flat + 14, 110, d) * (fbm(x * 0.011 + 7.3, z * 0.011 - 2.1, 5) - 0.4) * 16;
-  h += smooth(150, 270, d) * ridged(x * 0.0055 + 3.1, z * 0.0055 + 9.4, 5) * 85; // mountains rising with distance (a little lower than the reference: our camera is lower)
+  if (d > 140) {
+    // Mountains rising with distance: ridges bent by a slow warp (so they wander like real ranges, not
+    // a grid), with crags and gullies on top.
+    const wx = x + (fbm(x * 0.008, z * 0.008, 3) - 0.5) * 90;
+    const wz = z + (fbm(x * 0.008 + 11, z * 0.008 - 7, 3) - 0.5) * 90;
+    const range = ridged(wx * 0.0055 + 3.1, wz * 0.0055 + 9.4, 6);
+    h += smooth(150, 270, d) * (range * 85 + ridged(wx * 0.03, wz * 0.03, 3) * 9 * range);
+  }
   const lake = 1 - smooth(LAKE.r * 0.5, LAKE.r * 1.3, lakeDistance(x, z));
   return h * (1 - lake) - 2.4 * lake;
 }
@@ -169,9 +177,12 @@ function paintTerrain(geo, dark) {
     const z = pos.getZ(i);
     const ny = nor.getY(i);
     c.copy(meadowA).lerp(meadowB, fbm(x * 0.05, z * 0.05, 3));
-    c.lerp(dirt, smooth(0.55, 0.78, fbm(x * 0.02 + 40, z * 0.02, 4)) * 0.55);
+    c.lerp(dirt, smooth(0.6, 0.8, fbm(x * 0.02 + 40, z * 0.02, 4)) * 0.28); // a few worn patches, not bald ones
     if (lakeDistance(x, z) < LAKE.r * 1.6) c.lerp(sand, smooth(0.15, -0.6, y));
-    c.lerp(rock, Math.max(smooth(0.86, 0.66, ny), smooth(17, 32, y) * 0.85));
+    // Rock: layered in bands (strata), darker on the steepest faces and in the gullies.
+    const strata = 0.5 + 0.5 * Math.sin(y * 0.55 + fbm(x * 0.03, z * 0.03, 3) * 5);
+    const rockHere = rock.clone().multiplyScalar(0.72 + strata * 0.38 - smooth(0.62, 0.3, ny) * 0.25 + (fbm(x * 0.09, z * 0.09, 3) - 0.5) * 0.3);
+    c.lerp(rockHere, Math.max(smooth(0.86, 0.66, ny), smooth(17, 32, y) * 0.85));
     c.lerp(snow, smooth(42, 60, y + fbm(x * 0.03, z * 0.03, 3) * 12) * smooth(0.45, 0.78, ny));
     colors.set([c.r, c.g, c.b], i * 3);
   }
@@ -541,6 +552,18 @@ function forest(count, { minR, maxR, dark, seed = 61, leaves = null }) {
   const c = new THREE.Color();
   let nb = 0;
   let np = 0;
+  // Room for each tree: no two crowns overlapping much (a grid of 4 m cells holds who stands where).
+  const cells = new Map();
+  const cell = (x, z) => `${Math.floor(x / 4)},${Math.floor(z / 4)}`;
+  const crowded = (x, z, rad) => {
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        for (const [ox, oz, orad] of cells.get(cell(x + i * 4, z + j * 4)) ?? []) if (Math.hypot(ox - x, oz - z) < (rad + orad) * 0.75) return true;
+      }
+    }
+    return false;
+  };
+  const claim = (x, z, rad) => { const k = cell(x, z); if (!cells.has(k)) cells.set(k, []); cells.get(k).push([x, z, rad]); };
   for (let tries = 0; nb + np < count && tries < count * 8; tries++) {
     const a = r() * Math.PI * 2;
     const d = minR + r() * (maxR - minR);
@@ -553,16 +576,21 @@ function forest(count, { minR, maxR, dark, seed = 61, leaves = null }) {
     if (y < -0.5 || y > 30) continue; // not in hollows, nor on the bare rock and snow up high
     p.set(x, y - 0.2, z);
     q.setFromAxisAngle(up, r() * Math.PI * 2);
-    if (r() < 0.42) {
-      const k = 6 + r() * 7;
+    const pine = r() < 0.42;
+    const k = pine ? 6 + r() * 7 : 1.4 + r() * 1.6;
+    const rad = pine ? k * 0.3 : k * 1.15;
+    if (crowded(x, z, rad)) continue;
+    claim(x, z, rad);
+    if (pine) {
       m.compose(p, q, sc.set(k, k * (0.9 + r() * 0.25), k));
       pines.setMatrixAt(np, m);
       pines.setColorAt(np++, c.setRGB(0.85 + r() * 0.3, 0.85 + r() * 0.3, 0.8 + r() * 0.25));
     } else {
-      const k = 1.4 + r() * 1.6;
       m.compose(p, q, sc.set(k, k * (0.9 + r() * 0.4), k));
       broad.setMatrixAt(nb, m);
-      broad.setColorAt(nb++, c.setScalar(0.8 + r() * 0.35));
+      // Each tree its own green: some deeper, some fresher and yellower.
+      const fresh = r();
+      broad.setColorAt(nb++, c.setRGB(0.75 + fresh * 0.4, 0.85 + r() * 0.3, 0.7 + (1 - fresh) * 0.25));
     }
   }
   broad.count = nb;
@@ -613,12 +641,39 @@ function mist(dark, tex, view) {
 // ---- grass that sways in the wind ----
 
 /**
+ * The ground under the grass, baked into a texture the grass reads in its shader: red is the height,
+ * green whether grass grows there (0–1). It covers the square `half` either side of the middle at
+ * `step` metres a texel.
+ */
+function groundTexture({ half, step = 0.5, allow }) {
+  const res = Math.round((half * 2) / step) + 1;
+  const data = new Float32Array(res * res * 4);
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      const x = -half + i * step;
+      const z = -half + j * step;
+      const o = (j * res + i) * 4;
+      data[o] = terrainHeight(x, z);
+      data[o + 1] = allow(x, z, data[o]);
+    }
+  }
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.FloatType);
+  tex.needsUpdate = true;
+  return { tex, box: new THREE.Vector4(-half, -half, half * 2, res) };
+}
+
+const PUSHERS = 6; // things that bend the grass aside as they pass (the trainer, creatures nearby)
+
+/**
  * Grass: up to `count` blades drawn in one call, each a tapered strip bent by gusts of wind that
  * roll across the meadow, darker at the roots and glowing where the sun shines through. With a
  * fixed camera (`view`) the blades go where it looks, densest close by and a little bigger far
- * away; otherwise they spread around the field.
+ * away. With `follow` ({ tile, ground }) the blades fill a `tile`-wide square around the camera
+ * evenly, wherever it goes: each blade keeps its place in the world (the square repeats, so none
+ * slide), stands on the ground baked in `ground` and only grows where it says grass grows; things in
+ * `pushers` bend it aside. Otherwise they spread around the field.
  */
-function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7, avoid = null }) {
+function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7, avoid = null, follow = null }) {
   const blade = new THREE.PlaneGeometry(1, 1, 1, 5);
   blade.translate(0, 0.5, 0);
   const geo = new THREE.InstancedBufferGeometry();
@@ -629,7 +684,17 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
   const params = new Float32Array(count * 4);
   const r = rng(seed);
   let n = 0;
-  for (let tries = 0; n < count && tries < count * 14; tries++) {
+  if (follow) {
+    // Evenly over the tile (its own coordinates; the shader places it around the camera).
+    for (; n < count; n++) {
+      const x = (r() - 0.5) * follow.tile;
+      const z = (r() - 0.5) * follow.tile;
+      const patch = fbm(x * 0.2 + 30, z * 0.2, 3);
+      offsets.set([x, 0, z], n * 3);
+      params.set([(0.2 + r() * 0.3) * (0.75 + patch * 0.55), 0.04 + r() * 0.035, r() * Math.PI * 2, r()], n * 4);
+    }
+  }
+  for (let tries = 0; !follow && n < count && tries < count * 14; tries++) {
     const x = (r() * 2 - 1) * outer;
     const z = (r() * 2 - 1) * outer;
     const d = Math.hypot(x, z);
@@ -648,7 +713,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
     if (r() > 0.35 + patch * 0.9) continue;
     const boost = 1 + Math.max(0, dc - 8) * 0.03;
     offsets.set([x, y - 0.03, z], n * 3);
-    params.set([(0.12 + r() * 0.22) * (0.7 + patch * 0.6) * boost, (0.026 + r() * 0.02) * boost, r() * Math.PI * 2, r()], n * 4);
+    params.set([(0.14 + r() * 0.24) * (0.75 + patch * 0.5) * boost, (0.032 + r() * 0.024) * boost, r() * Math.PI * 2, r()], n * 4);
     n++;
   }
   geo.setAttribute('iOffset', new THREE.InstancedBufferAttribute(offsets, 3));
@@ -663,16 +728,49 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
       uSunCol: { value: colors.sunCol },
       uSky: { value: dark ? new THREE.Color(0.36, 0.33, 0.48) : new THREE.Color(0.5, 0.58, 0.72) },
       uTint: { value: dark ? new THREE.Color(0.66, 0.62, 0.72) : new THREE.Color(1, 1, 1) },
+      uCentre: { value: new THREE.Vector2() },
+      uTile: { value: follow?.tile ?? 0 },
+      uGround: { value: follow?.ground.tex ?? null },
+      uGroundBox: { value: follow?.ground.box ?? new THREE.Vector4() },
+      uPush: { value: Array.from({ length: PUSHERS }, () => new THREE.Vector4(0, 0, 0, 0)) },
     }]),
+    defines: follow ? { FOLLOW: 1 } : {},
     vertexShader: `
       attribute vec3 iOffset; attribute vec4 iParams; uniform float uTime;
+      uniform vec2 uCentre; uniform float uTile; uniform sampler2D uGround; uniform vec4 uGroundBox;
+      uniform vec4 uPush[${PUSHERS}];
       varying float vH, vVar, vGust; varying vec3 vW, vNh;
       #include <common>
       #include <fog_pars_vertex>
       ${GLSL_NOISE}
+      // The baked ground (height, grows-here) at a point, blended between the four nearest texels.
+      vec2 ground(vec2 xz) {
+        vec2 t = (xz - uGroundBox.xy) / uGroundBox.z * (uGroundBox.w - 1.0);
+        ivec2 i = ivec2(floor(t));
+        vec2 f = fract(t);
+        int last = int(uGroundBox.w) - 1;
+        ivec2 a = clamp(i, ivec2(0), ivec2(last));
+        ivec2 b = clamp(i + 1, ivec2(0), ivec2(last));
+        vec2 g00 = texelFetch(uGround, ivec2(a.x, a.y), 0).rg;
+        vec2 g10 = texelFetch(uGround, ivec2(b.x, a.y), 0).rg;
+        vec2 g01 = texelFetch(uGround, ivec2(a.x, b.y), 0).rg;
+        vec2 g11 = texelFetch(uGround, ivec2(b.x, b.y), 0).rg;
+        return mix(mix(g00, g10, f.x), mix(g01, g11, f.x), f.y);
+      }
       void main() {
         float h = uv.y;
         float hgt = iParams.x, wid = iParams.y, rot = iParams.z, vr = iParams.w;
+        vec3 base = iOffset;
+        #ifdef FOLLOW
+          // Its place in the world: the tile repeats, so it's always the same blade at the same spot.
+          vec2 rel = mod(iOffset.xz - uCentre + uTile * 0.5, uTile) - uTile * 0.5;
+          vec2 xz = uCentre + rel;
+          vec2 g = ground(xz);
+          float fade = 1.0 - smoothstep(uTile * 0.36, uTile * 0.5, length(rel));
+          hgt *= fade * smoothstep(0.15, 0.6, g.y);
+          wid *= step(0.001, hgt);
+          base = vec3(xz.x, g.x - 0.03, xz.y);
+        #endif
         float taper = 1.0 - pow(h, 1.5);
         float c = cos(rot), s = sin(rot);
         vec3 p = vec3(position.x * wid * taper * c, position.y * hgt, position.x * wid * taper * s);
@@ -684,7 +782,17 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
         float bend = pow(h, 1.7) * hgt;
         p += wd * bend * wind * 0.55 + side * bend * (vr - 0.5) * 0.18;
         p.y -= bend * abs(wind) * 0.12;
-        vec3 world = p + iOffset;
+        // Pushed aside by the trainer and creatures walking through.
+        for (int k = 0; k < ${PUSHERS}; k++) {
+          vec4 push = uPush[k];
+          if (push.z <= 0.0) continue;
+          vec2 away = base.xz - push.xy;
+          float d = length(away);
+          float k2 = (1.0 - smoothstep(push.z * 0.4, push.z, d)) * push.w;
+          p.xz += (away / max(d, 1e-3)) * bend * k2 * 1.2;
+          p.y -= bend * k2 * 0.4;
+        }
+        vec3 world = p + base;
         vH = h; vVar = vr; vW = world; vGust = gust; vNh = side + wd * 0.25 * h;
         vec4 mvPosition = viewMatrix * vec4(world, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -697,13 +805,13 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
       #include <fog_pars_fragment>
       void main() {
         vec3 tip = mix(vec3(0.4, 0.64, 0.18), vec3(0.62, 0.66, 0.26), smoothstep(0.7, 1.0, vVar));
-        vec3 col = mix(vec3(0.07, 0.14, 0.04), tip, smoothstep(0.0, 1.0, vH));
+        vec3 col = mix(vec3(0.13, 0.24, 0.07), tip, smoothstep(0.0, 1.0, vH));
         col *= 0.85 + vVar * 0.3;
         vec3 V = normalize(cameraPosition - vW);
         vec3 Nh = dot(vNh, V) < 0.0 ? -vNh : vNh;
         vec3 N = normalize(Nh + vec3(0.0, 0.8, 0.0));
         float diff = clamp(dot(N, uSun) * 0.6 + 0.45, 0.0, 1.0);
-        float ao = mix(0.3, 1.0, smoothstep(0.0, 0.75, vH));
+        float ao = mix(0.55, 1.0, smoothstep(0.0, 0.75, vH));
         col *= (uSky * 0.6 + uSunCol * diff * 0.9) * ao;
         float back = pow(max(dot(-V, uSun), 0.0), 3.0);
         col += vec3(0.45, 0.6, 0.12) * uSunCol * back * vH * 0.8;
@@ -716,7 +824,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
-  return { mesh, uniforms: mat.uniforms, max: n };
+  return { mesh, uniforms: mat.uniforms, max: n, follow: Boolean(follow) };
 }
 
 // ---- props ----
@@ -760,22 +868,47 @@ export function rockGeometry(r, seed, detail = 2) {
   return g;
 }
 
+/** Materials shared by all the trees of one world (per `leaves`, or one set without leaf cards). */
+const treeMaterials = new WeakMap();
+const plainTrees = {};
+function treeMats(leaves, dark) {
+  const key = leaves ?? plainTrees;
+  let m = treeMaterials.get(key)?.[dark ? 'dark' : 'light'];
+  if (m) return m;
+  const bark = barkTexture(dark);
+  const trunk = new THREE.MeshStandardMaterial({ map: bark.color, normalMap: bark.normal, color: dark ? 0x9a8a80 : 0xffffff, roughness: 0.95 });
+  trunk.userData.bark = true; // (High/Standard: photo bark, hdScenery.js; one material, so every tree gets it)
+  const greens = dark ? [0x2f4a26, 0x36552a, 0x2a4221] : [0x4a8a38, 0x56963f, 0x3f7a33, 0x63a446];
+  m = {
+    trunk,
+    cones: greens.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true })),
+    core: new THREE.MeshStandardMaterial({ color: dark ? 0x1d3017 : 0x2b5520, roughness: 0.95 }),
+    // Each broadleaf its own shade: from a deep green to a fresh yellow-green.
+    shades: dark ? ['#b4bcc4', '#a6b0b8', '#c0c6cc'] : ['#ffffff', '#e6f2d2', '#d7ecc0', '#f4ffe0', '#cfe3b4'],
+  };
+  treeMaterials.set(key, { ...(treeMaterials.get(key) ?? {}), [dark ? 'dark' : 'light']: m });
+  return m;
+}
+
+/**
+ * A tree: a barked trunk, then either a pine (stacked cones with needle cards down their sides) or a
+ * broadleaf whose crown is several separate clumps of leaf cards on branches, each lit as a ball of its
+ * own (so the crown reads as clumps with gaps between, not one blob), in the tree's own shade of green.
+ */
 export function tree(seed, dark, leaves = null, kind = null) {
   const r = rng(seed);
+  const mats = treeMats(leaves, dark);
   const group = new THREE.Group();
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.95 });
-  trunkMat.userData.bark = true; // (High/Standard: photo bark, hdScenery.js)
   const h = 1.6 + r() * 1.4;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, h, 7), trunkMat);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.19, h, 9), mats.trunk);
   trunk.position.y = h / 2;
   trunk.castShadow = true;
   group.add(trunk);
-  const greens = dark ? [0x2f4a26, 0x36552a, 0x2a4221] : [0x3f7d2f, 0x4a8c35, 0x356b29, 0x5a9a3c];
   if (kind ? kind === 'pine' : r() < 0.45) {
     // Pine: stacked cones, with layers of needle cards down their sides (a ragged, airy edge).
     const tiers = [];
     for (let i = 0; i < 3; i++) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0 - i * 0.25, 1.3, 9), new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true }));
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0 - i * 0.25, 1.3, 9), mats.cones[i % mats.cones.length]);
       cone.position.y = h * 0.7 + i * 0.6;
       cone.castShadow = true;
       group.add(cone);
@@ -789,22 +922,43 @@ export function tree(seed, dark, leaves = null, kind = null) {
       group.add(skirt);
     }
   } else {
-    // Broadleaf: a dark core of lumpy spheres (the crown's shaded inside), covered in leaf cards.
-    if (leaves) {
-      const crown = new THREE.Mesh(leaves.crown(1.25 + r() * 0.3, seed * 7 + 3, 44), leaves.material);
-      crown.customDepthMaterial = leaves.depthMaterial;
-      crown.position.y = h + 0.75;
-      crown.scale.y = 1.15;
-      crown.castShadow = true;
-      crown.userData.leaves = true;
-      group.add(crown);
+    // Broadleaf: 3–5 clumps round a higher top clump, each on a branch from the trunk's top.
+    const crownR = 1.2 + r() * 0.35;
+    const shade = mats.shades[Math.floor(r() * mats.shades.length)];
+    const leafMat = leaves ? leaves.tinted?.(shade) ?? leaves.material : null;
+    const clumps = 3 + Math.floor(r() * 3);
+    const spots = [[0, h + 0.95 + r() * 0.3, 0, crownR * 0.62]];
+    for (let i = 0; i < clumps; i++) {
+      const a = (i / clumps) * Math.PI * 2 + r() * 0.8;
+      const out = crownR * (0.5 + r() * 0.25);
+      spots.push([Math.cos(a) * out, h + 0.25 + r() * 0.55, Math.sin(a) * out, crownR * (0.45 + r() * 0.15)]);
     }
-    for (let i = 0; i < (leaves ? 2 : 4); i++) {
-      const blob = new THREE.Mesh(rockGeometry((leaves ? 0.6 : 0.75) + r() * 0.45, seed * 10 + i), new THREE.MeshStandardMaterial({ color: leaves ? (dark ? 0x1f3319 : 0x2c5a22) : greens[Math.floor(r() * greens.length)], roughness: 0.9 }));
-      blob.position.set((r() - 0.5) * 0.9, h + 0.2 + r() * 0.7, (r() - 0.5) * 0.9);
-      blob.scale.y = 1.4;
-      blob.castShadow = true;
-      group.add(blob);
+    for (const [i, [x, y, z, rad]] of spots.entries()) {
+      // The branch up to the clump.
+      const from = new THREE.Vector3(0, h * 0.82, 0);
+      const to = new THREE.Vector3(x * 0.8, y - rad * 0.3, z * 0.8);
+      const len = from.distanceTo(to);
+      if (i > 0 && len > 0.2) {
+        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.07, len, 6), mats.trunk);
+        branch.position.copy(from).add(to).multiplyScalar(0.5);
+        branch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+        branch.castShadow = true;
+        group.add(branch);
+      }
+      if (leafMat) {
+        const clump = new THREE.Mesh(leaves.crown(rad, seed * 7 + i * 13 + 3, 24), leafMat);
+        clump.customDepthMaterial = leaves.depthMaterial;
+        clump.position.set(x, y, z);
+        clump.castShadow = true;
+        clump.userData.leaves = true;
+        group.add(clump);
+      }
+      // A small dark core inside each clump, so it isn't see-through, and its inside reads as shade.
+      const core = new THREE.Mesh(rockGeometry(rad * (leafMat ? 0.55 : 0.95), seed * 10 + i), leafMat ? mats.core : mats.cones[i % mats.cones.length]);
+      core.position.set(x, y - rad * 0.1, z);
+      core.scale.y = 1.15;
+      core.castShadow = true;
+      group.add(core);
     }
   }
   group.scale.setScalar(1.1 + r() * 0.7);
@@ -952,7 +1106,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const leaves = leafCards(leafTex, time);
   track(leaves.material);
   track(leaves.depthMaterial);
-  leaves.needles = leafCards(track(needleClusterTexture(dark ? ['#172f1a', '#1d3a20', '#244426'] : ['#22482a', '#2b5a2a', '#1e4224', '#30602e'])), time, { matte: true });
+  // (Brighter greens than a real pine's: in the cards' shade they would otherwise read as black stripes.)
+  leaves.needles = leafCards(track(needleClusterTexture(dark ? ['#27452a', '#2e5232', '#365c38'] : ['#3d7a3a', '#4a8a44', '#356e36', '#5a9a4c'])), time, { matte: true });
   track(leaves.needles.material);
   track(leaves.needles.depthMaterial);
   leaves.matte = track(leafCards(leafTex, time, { matte: true }).material); // the far woods' crowns (no sheen)
@@ -975,7 +1130,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   // Ground: rolling grass land, flat around the arena.
   // One mesh from the arena out to the mountains (fewer segments on phones).
   const phone = matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
-  const segments = phone ? 170 : 260;
+  const segments = phone ? 180 : 340; // (desktop: about 2.4 m between points, enough for the crags)
   const groundGeo = new THREE.PlaneGeometry(800, 800, segments, segments);
   groundGeo.rotateX(-Math.PI / 2);
   const gp = groundGeo.attributes.position;
@@ -1065,7 +1220,20 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   // Swaying grass around the field (fewer blades on "Standard", none on "Basic"), flowers, pollen.
   // (In the Sanctuary, no grass on the lake shore's sand.)
-  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
+  // In the Sanctuary the grass goes wherever you walk (a field that follows the camera, on the ground
+  // baked below: not in the water, on the shore's sand or the plaza, giving way to rock up the slopes).
+  const follow = mode === 'sanctuary' ? {
+    tile: 56,
+    ground: groundTexture({
+      half: 90,
+      allow: (x, z, y) => {
+        if (y < LAKE.level + 0.2 || lakeDistance(x, z) < SHORE_SAND || Math.hypot(x, z) < fieldR + 0.8) return 0;
+        return 1 - smooth(14, 22, y);
+      },
+    }),
+  } : null;
+  if (follow) disposables.push(follow.ground.tex);
+  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, follow, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
   scene.add(grass.mesh);
   flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
@@ -1131,19 +1299,25 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; }); // shadows / lighting changes recompile
     if (!grass) return; // a stadium: no meadow to thin out
     grass.mesh.visible = !basic;
-    grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 95000 : 28000); // the reference's desktop / phone counts
+    // The reference's desktop / phone counts; a field that follows you is spread evenly, so it keeps more.
+    grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 95000 : grass.follow ? 55000 : 28000);
     air.points.visible = !basic;
     air.points.geometry.setDrawRange(0, high ? 600 : 250);
     flowers.count = high ? 3000 : basic ? 0 : 1000;
     for (const kind of woods.children) {
       kind.userData.max ??= kind.count;
       kind.count = high ? kind.userData.max : Math.round(kind.userData.max * (basic ? 0.25 : 0.5));
-      if (kind.userData.cards) kind.visible = high;
+      if (kind.userData.cards) kind.visible = !basic; // leaf cards on Standard too: without them, crowns are smooth blobs
     }
     trees.traverse((o) => { if (o.isMesh) o.castShadow = high; });
   };
   setQuality(quality);
   let last = null;
+  const frustum = new THREE.Frustum();
+  const projView = new THREE.Matrix4();
+  const sphere = new THREE.Sphere();
+  let mirrorFrame = 0;
+  let mirrorDrawn = false;
 
   return {
     sun,
@@ -1153,6 +1327,17 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     get quality() { return current; },
     get pixelTop() { return pixelTop; },
     setQuality,
+    /** Dress a plank material in the scenery set's photo planks on High/Standard (hdScenery.js). */
+    photoWood(mat) { hd.wood(mat); },
+    /** Things bending the grass aside: [{ x, z, radius, strength }] (the first few count). */
+    setGrassPushers(list) {
+      if (!grass) return;
+      grass.uniforms.uPush.value.forEach((v, i) => {
+        const p = list[i];
+        if (p) v.set(p.x, p.z, p.radius, p.strength ?? 1);
+        else v.set(0, 0, 0, 0);
+      });
+    },
     update(seconds) {
       const dt = Math.min(0.1, Math.max(0, seconds - (last ?? seconds)));
       last = seconds;
@@ -1164,6 +1349,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       weatherFx?.update(seconds, dt);
       if (!grass) return;
       grass.uniforms.uTime.value = seconds;
+      if (grass.follow) grass.uniforms.uCentre.value.set(camera.position.x, camera.position.z);
       water.uniforms.uTime.value = seconds;
       if (air.points.visible) air.update(seconds, dt);
     },
@@ -1171,7 +1357,17 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     render() {
       const mirrored = water?.mesh ?? stadium?.water;
       mirror.on = effects.on && Boolean(mirrored);
-      if (mirrored) mirror.render(scene, camera, mirrored, grass ? [grass.mesh, air.points] : []);
+      // The mirror is a whole extra render of the scene: only when the water is on screen, and every other
+      // frame (a reflection a frame old doesn't show).
+      if (mirrored && mirror.on) {
+        frustum.setFromProjectionMatrix(projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        mirrored.geometry.boundingSphere ?? mirrored.geometry.computeBoundingSphere();
+        sphere.copy(mirrored.geometry.boundingSphere).applyMatrix4(mirrored.matrixWorld);
+        if (frustum.intersectsSphere(sphere) && (mirrorFrame++ % 2 === 0 || !mirrorDrawn)) {
+          mirror.render(scene, camera, mirrored, grass ? [grass.mesh, air.points] : []);
+          mirrorDrawn = true;
+        }
+      }
       effects.render(scene, camera);
     },
     resize() {},
