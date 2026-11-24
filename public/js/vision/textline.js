@@ -40,3 +40,30 @@ export function textBand(gray, W, H, { lineH, expected = H / 2, pad = 0.3, near 
   const p = Math.round(h * pad);
   return [Math.max(0, pick.top - p), Math.min(H, pick.top + h + p)];
 }
+
+/**
+ * Every line of text in a grey image, for a close-up photo where nothing says where the print is:
+ * runs of rows with clearly more left–right contrast than most rows, each padded by `pad` × its height.
+ * Returns up to `max` bands [{ top, bottom, energy }], strongest first. Bands taller than `maxShare`
+ * of the image are a busy picture, not a line of print, and are left out.
+ */
+export function textBands(gray, W, H, { max = 8, minRows = 3, maxShare = 0.22, pad = 0.35, cut = 0.6 } = {}) {
+  const e = rowEnergy(gray, W, H);
+  const s = new Float32Array(H);
+  for (let y = 0; y < H; y++) s[y] = (e[Math.max(0, y - 1)] + e[y] + e[Math.min(H - 1, y + 1)]) / 3;
+  const sorted = [...s].sort((a, b) => a - b);
+  const threshold = sorted[Math.min(H - 1, Math.floor(H * cut))];
+  const bands = [];
+  for (let y = 0; y < H;) {
+    if (s[y] <= threshold) { y++; continue; }
+    const top = y;
+    let sum = 0;
+    while (y < H && s[y] > threshold) sum += s[y++];
+    const rows = y - top;
+    if (rows >= minRows && rows <= H * maxShare) {
+      const p = Math.round(rows * pad);
+      bands.push({ top: Math.max(0, top - p), bottom: Math.min(H, y + p), energy: sum / rows });
+    }
+  }
+  return bands.sort((a, b) => b.energy - a.energy).slice(0, max);
+}

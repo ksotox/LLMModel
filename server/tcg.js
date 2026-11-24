@@ -1,4 +1,4 @@
-import { codeFromSetId, parseNumber, sameNumber, setFromCode } from './setCodes.js';
+import { codeFromSetId, isRenumbered, parseNumber, sameNumber, setIdsForCode } from './setCodes.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -98,8 +98,8 @@ export class TcgClient {
   /** Set ids to try for a set code and/or printed set total. */
   async #candidateSets(setCode, total) {
     if (this.lang === 'en') {
-      const known = setFromCode(setCode);
-      if (known) return [known.id];
+      const known = setIdsForCode(setCode);
+      if (known.length) return known;
     }
     if (!setCode && !total) return [];
     const sets = (await this.sets()) ?? [];
@@ -124,10 +124,13 @@ export class TcgClient {
 
     if (setIds.length) {
       for (const setId of setIds) {
+        // A renumbered set (the Classic Collection) can only be matched by name: its cards print other numbers.
+        const renumbered = isRenumbered(setId);
+        if (renumbered && !name) continue;
         const set = await this.set(setId);
         if (!set?.cards) continue;
         for (const card of set.cards) {
-          if (localId && !sameNumber(card.localId, localId)) continue;
+          if (localId && !renumbered && !sameNumber(card.localId, localId)) continue;
           if (name && !card.name.toLowerCase().includes(name.toLowerCase())) continue;
           results.push(this.#brief(card, set));
         }

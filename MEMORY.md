@@ -84,7 +84,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 ## Open items / ideas
 - Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
 - **Scan deck** (`#/scan`, `scan/`): perceptual hash, review before save, `scan_token` per copy; HTTPS via
-  `POKEDEX_TLS_*`. Owner photos (Phase 45): 0 confident-wrong; old-layout numbers too small to read.
+  `POKEDEX_TLS_*`. 30C = TCGdex `30th` + `30th-c` (Classic: original numbers, matched by name). Close-ups: review only.
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
 - Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.

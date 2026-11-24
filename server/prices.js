@@ -95,7 +95,7 @@ export class TcgCsvClient {
 
   async #group({ setName, setCode }) {
     // The set's TCGplayer group id is known for every printed set code; otherwise match by name.
-    const known = setFromCode(setCode)?.tcgplayer;
+    const known = setFromCode(setCode, setName)?.tcgplayer;
     if (known) return { groupId: known };
     const groups = await this.#get('/groups');
     const name = String(setName ?? '').trim().toLowerCase();

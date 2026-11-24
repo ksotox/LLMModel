@@ -182,4 +182,23 @@ describe('finding a line of small print by its text', () => {
     const [pt, pb] = textBand(gray, W, H, { lineH: 6, expected: 15, pad: 0.5 });
     assert.deepEqual([pt, pb], [17, 29], 'padded by half a line each side');
   });
+  test('a close-up: every line of print, strongest first; a busy picture is no line', async () => {
+    const { textBands } = await import('../public/js/vision/textline.js');
+    const W = 60;
+    const H = 100;
+    const gray = new Float32Array(W * H).fill(200);
+    const stripes = (y0, y1, step) => { for (let y = y0; y < y1; y++) for (let x = 0; x < W; x += step) gray[y * W + x] = 20; };
+    stripes(10, 16, 2); // a dense line
+    stripes(40, 45, 3); // a lighter line
+    stripes(70, 76, 2); // another dense line
+    const bands = textBands(gray, W, H, { pad: 0, cut: 0.5 });
+    // (each band within a row of its line: the rows are smoothed over three)
+    const found = bands.map((b) => [b.top, b.bottom]).sort((a, b) => a[0] - b[0]);
+    for (const [i, [y0, y1]] of [[10, 16], [40, 45], [70, 76]].entries()) {
+      assert.ok(Math.abs(found[i][0] - y0) <= 1 && Math.abs(found[i][1] - y1) <= 1, `line ${y0}–${y1} found as ${found[i]}`);
+    }
+    assert.ok(Math.abs(bands[2].top - 40) <= 1, 'the lighter line comes last');
+    stripes(0, 100, 2); // the whole picture busy: no line stands out
+    assert.deepEqual(textBands(gray, W, H, { cut: 0.5 }), []);
+  });
 });

@@ -3,7 +3,7 @@
 // Small print is hard to read reliably, so each area is read a few different ways; the server
 // (/api/identify) votes across the readings and checks them against the card database.
 
-import { textBand } from './vision/textline.js';
+import { textBand, textBands } from './vision/textline.js';
 
 let workerPromise = null;
 let japaneseWorker = null;
@@ -58,10 +58,11 @@ const JAPANESE_CODE = /(?:^|[^A-Z0-9])[S5]V\d{1,2}[A-Z]?(?![A-Z0-9])|(?:^|[^A-Z0
 export const looksJapanese = (lines) => lines.some((l) => JAPANESE_CODE.test(l));
 
 /**
- * Cut an area (fractions of the card) out, enlarge it and stretch its contrast; optionally invert
- * (for light text in a dark box) or threshold to pure black and white.
+ * Cut an area (fractions of the card) out, enlarge it and stretch its contrast; optionally sharpen
+ * (an unsharp mask: blurry photos of small print), invert (light text in a dark box) or threshold to
+ * pure black and white.
  */
-function area(card, [x0, y0, x1, y1], { scale = 2, invert = false, binary = false } = {}) {
+function area(card, [x0, y0, x1, y1], { scale = 2, invert = false, binary = false, sharpen = false } = {}) {
   const sw = (x1 - x0) * card.width;
   const sh = (y1 - y0) * card.height;
   const c = document.createElement('canvas');
@@ -81,6 +82,28 @@ function area(card, [x0, y0, x1, y1], { scale = 2, invert = false, binary = fals
     lum[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
     lo = Math.min(lo, lum[p]);
     hi = Math.max(hi, lum[p]);
+  }
+  if (sharpen) {
+    // Unsharp mask on the brightness: add back the difference from a 3×3 blur. Edges of the blurred
+    // digits get steeper, so "8" and "6", "0" and "9" come apart.
+    const W = c.width;
+    const H = c.height;
+    const out = new Float32Array(lum.length);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        let sum = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = Math.min(H - 1, Math.max(0, y + dy));
+          for (let dx = -1; dx <= 1; dx++) { sum += lum[yy * W + Math.min(W - 1, Math.max(0, x + dx))]; n++; }
+        }
+        const p = y * W + x;
+        out[p] = lum[p] + 1.2 * (lum[p] - sum / n);
+      }
+    }
+    lo = 255;
+    hi = 0;
+    for (let p = 0; p < lum.length; p++) { lum[p] = Math.min(255, Math.max(0, out[p])); lo = Math.min(lo, lum[p]); hi = Math.max(hi, lum[p]); }
   }
   const range = Math.max(1, hi - lo);
   let threshold = 128;
@@ -149,34 +172,62 @@ const NUMBER_RIGHT_SEARCH = [0.72, 0.905, 0.94, 0.975];
 const NAME_TIGHT = [0.15, 0.025, 0.6, 0.09];
 const TRAINER_NAME = [0.04, 0.085, 0.74, 0.135]; // Trainer and Energy cards print the name lower
 
-/** Read a straightened card. Returns { names: [...], lines: [...] } for /api/identify. */
+/**
+ * Read a straightened card. Returns { names: [...], lines: [...] } for /api/identify. `quick`: a
+ * first, short pass (the sharpest reads of the set line and name); when it identifies the card
+ * surely, the full set of reads isn't needed.
+ */
 let readQueue = Promise.resolve();
-export function readCardText(card) {
-  const task = readQueue.then(() => readCardTextNow(card));
+export function readCardText(card, { quick = false } = {}) {
+  const task = readQueue.then(() => (quick ? readCardTextQuick(card) : readCardTextNow(card)));
   readQueue = task.catch(() => {});
   return task;
 }
 
-async function readCardTextNow(card) {
+const LINE_CHARS = `${UPPER}${UPPER.toLowerCase()}0123456789/- `;
+// The code box: letters, and digits for codes like 30C.
+const CODE_CHARS = `${UPPER}0123456789 `;
+
+async function reader() {
   const { worker } = await ocrWorker();
-  const read = async (canvas, whitelist = '') => {
-    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: whitelist });
+  return async (canvas, whitelist = '', psm = '7') => {
+    await worker.setParameters({ tessedit_pageseg_mode: psm, tessedit_char_whitelist: whitelist });
     const { data } = await worker.recognize(canvas);
     return data.text.trim();
   };
-  const line = `${UPPER}${UPPER.toLowerCase()}0123456789/- `;
+}
+
+async function readCardTextQuick(card) {
+  const read = await reader();
+  const found = locateSetLine(card);
+  const lines = [
+    await read(area(card, found, { scale: 3, sharpen: true }), LINE_CHARS),
+    await read(area(card, SET_LINE, { scale: 3, sharpen: true, binary: true }), LINE_CHARS),
+    await read(area(card, CODE_BOX, { scale: 3, invert: true }), CODE_CHARS),
+  ];
+  const names = [
+    await read(area(card, NAME_LINE, { scale: 1.5 })),
+    await read(area(card, NAME_TIGHT, { scale: 2 })),
+  ];
+  return { names: names.filter(Boolean), lines: lines.filter(Boolean) };
+}
+
+async function readCardTextNow(card) {
+  const read = await reader();
+  const line = LINE_CHARS;
   const found = locateSetLine(card); // the set line where its text is (the fixed band can clip it)
   const lines = [
     await read(area(card, SET_LINE, { scale: 2 }), line),
-    await read(area(card, SET_LINE, { scale: 3 }), line),
+    await read(area(card, SET_LINE, { scale: 3, sharpen: true }), line),
     await read(area(card, SET_LINE, { scale: 3, binary: true }), line),
     await read(area(card, found, { scale: 2 }), line),
     await read(area(card, found, { scale: 3, binary: true }), line),
-    await read(area(card, CODE_BOX, { scale: 3, invert: true }), `${UPPER} `),
-    await read(area(card, CODE_BOX, { scale: 3, invert: true, binary: true }), `${UPPER} `),
+    await read(area(card, found, { scale: 4, sharpen: true, binary: true }), line),
+    await read(area(card, CODE_BOX, { scale: 3, invert: true }), CODE_CHARS),
+    await read(area(card, CODE_BOX, { scale: 3, invert: true, binary: true }), CODE_CHARS),
   ];
   // Only a whole "58/102" from the bottom right counts: stray digits there are holo sparkle.
-  const oldNumber = await read(area(card, locateLine(card, NUMBER_RIGHT_SEARCH, 0.02, 0.937), { scale: 4 }), '0123456789/ ');
+  const oldNumber = await read(area(card, locateLine(card, NUMBER_RIGHT_SEARCH, 0.02, 0.937), { scale: 4, sharpen: true }), '0123456789/ ');
   if (/\d+\s*\/\s*\d+/.test(oldNumber)) lines.push(oldNumber);
   const names = [
     await read(area(card, NAME_LINE, { scale: 1.5 })),
@@ -199,4 +250,55 @@ async function readCardTextNow(card) {
     }
   }
   return { names: names.filter(Boolean), lines: lines.filter(Boolean) };
+}
+
+/**
+ * A close-up photo (the card's bottom corner, or a card filling the frame with no edges in view):
+ * nothing says where the print is, so the photo's lines of text are found first (vision/textline.js
+ * textBands) and each is read on its own, enlarged to a good size and sharpened.
+ * Returns { names, lines } for /api/identify: lines with digits or capitals go in as set lines, and
+ * short capitalised words that aren't the card's own labels as possible names (often none: a corner
+ * close-up shows no name, so the caller also identifies it by code and number alone).
+ */
+const CARD_WORDS = /^(weakness|resistance|retreat|illus|ability|basic|stage|evolves|pokemon|pokémon|nintendo|creatures|game|freak|from|the|and)$/i;
+export function readCloseUp(img) {
+  const task = readQueue.then(async () => {
+    const read = await reader();
+    const W = img.naturalWidth || img.width;
+    const H = img.naturalHeight || img.height;
+    const k = Math.min(1, 1600 / Math.max(W, H));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(W * k));
+    c.height = Math.max(1, Math.round(H * k));
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const gray = new Float32Array(c.width * c.height);
+    for (let i = 0; i < gray.length; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    const texts = [];
+    for (const [i, band] of textBands(gray, c.width, c.height, { max: 8, cut: 0.72, pad: 0.2 }).entries()) {
+      const rows = band.bottom - band.top;
+      const scale = Math.min(4, Math.max(1, 48 / rows)); // about 48 px of line height for Tesseract
+      const box = [0, band.top / c.height, 1, band.bottom / c.height];
+      texts.push(await read(area(c, box, { scale, sharpen: true }), LINE_CHARS));
+      if (i < 4) {
+        // The left part alone: on modern cards the set code and number sit at the bottom left, and
+        // the flavour text beside them throws the whole-line read off. A band can hold two lines
+        // ("Illus." above the number), so these are read as a block. Plain enlargement reads the
+        // boxed code best; a sharpened read helps blurred digits.
+        const big = Math.max(1.5, scale);
+        texts.push(...(await read(area(c, [0, box[1], 0.55, box[3]], { scale: big }), LINE_CHARS, '6')).split(/\n+/));
+        texts.push(...(await read(area(c, [0, box[1], 0.55, box[3]], { scale: big, sharpen: true }), LINE_CHARS, '6')).split(/\n+/));
+        texts.push(...(await read(area(c, [0, box[1], 0.34, box[3]], { scale: big }), CODE_CHARS, '6')).split(/\n+/));
+      }
+    }
+    // The copyright line ("©2023 Pokémon / Nintendo / Creatures / GAME FREAK", often cut off: its year
+    // gives it away) and the illustrator's ("Illus. sui") read like set codes (CRE, POR, SVI…).
+    const all = texts.map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => t.length >= 2 && !/nintendo|creatures|game ?freak|pok[eé]mon ?\/|©|(19[89]\d|20[0-3]\d)(?!\d)|(?:^|\W)\w{0,2}[lI1|][uo]s(?=[\s.Y]|$)/i.test(t));
+    const lines = all.filter((t) => /\d/.test(t) || /\b[A-Z0-9]{2,4}\b/.test(t)).slice(0, 12);
+    const names = all.flatMap((t) => t.split(' ')).filter((w) => /^[A-Z][a-zé'.-]{2,13}$/.test(w) && !CARD_WORDS.test(w)).slice(0, 12);
+    return { names, lines };
+  });
+  readQueue = task.catch(() => {});
+  return task;
 }
