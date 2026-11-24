@@ -10,7 +10,11 @@ export const SET_CODES = {
   POR: { id: 'me03', name: 'Perfect Order', total: 88, tcgplayer: 24587 },
   CRI: { id: 'me04', name: 'Chaos Rising', total: 86, tcgplayer: 24655 },
   PBL: { id: 'me05', name: 'Pitch Black', total: 84, tcgplayer: 24688 },
-  '30C': { id: '30th', name: '30th Celebration', total: 128, tcgplayer: 24722 },
+  DLR: { id: 'me06', name: 'Delta Reign', total: 103, tcgplayer: 24831 },
+  // The 30th Celebration's Classic Collection shares its code. Its cards keep the numbers of the sets
+  // they first came from ("58/102"), while TCGdex numbers them 001–030: matched by name instead.
+  '30C': { id: '30th', name: '30th Celebration', total: 128, tcgplayer: 24722,
+    more: [{ id: '30th-c', name: '30th Classic Collection', tcgplayer: 24837, renumbered: true }] },
   MEP: { id: 'mep', name: 'MEP Black Star Promos', tcgplayer: 24451 },
   // Scarlet & Violet
   SVI: { id: 'sv01', name: 'Scarlet & Violet', total: 198, tcgplayer: 22873 },
@@ -56,12 +60,28 @@ export const isJapaneseCode = (code) => JAPANESE_CODE.test(String(code ?? '').tr
 /** Hiragana, katakana or kanji in a name. */
 export const hasJapanese = (text) => /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(String(text ?? ''));
 
-export function setFromCode(code) {
-  return SET_CODES[String(code ?? '').trim().toUpperCase()] ?? null;
+/**
+ * The set a printed code stands for. A code shared by two sets (30C: the 30th Celebration and its
+ * Classic Collection) gives the main one, or the other when `setName` names it.
+ */
+export function setFromCode(code, setName = null) {
+  const set = SET_CODES[String(code ?? '').trim().toUpperCase()] ?? null;
+  const name = String(setName ?? '').trim().toLowerCase();
+  if (set && name) return set.more?.find((m) => m.name.toLowerCase() === name) ?? set;
+  return set;
 }
 
+/** Every TCGdex set id a printed code can stand for (most codes: one). */
+export function setIdsForCode(code) {
+  const set = setFromCode(code);
+  return set ? [set.id, ...(set.more ?? []).map((m) => m.id)] : [];
+}
+
+/** A set whose cards print other numbers than TCGdex gives them (the Classic Collection's originals). */
+export const isRenumbered = (setId) => Object.values(SET_CODES).some((s) => s.more?.some((m) => m.id === setId && m.renumbered));
+
 export function codeFromSetId(setId) {
-  for (const [code, set] of Object.entries(SET_CODES)) if (set.id === setId) return code;
+  for (const [code, set] of Object.entries(SET_CODES)) if (set.id === setId || set.more?.some((m) => m.id === setId)) return code;
   return null;
 }
 

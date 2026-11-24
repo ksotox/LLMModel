@@ -788,6 +788,20 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   0.3–7 m in the Sanctuary; anchor 1 m, power 0.5 in battles, at least 0.3 units): order kept, Snorlax over the
   trainer, Pikachu knee-high, Joltik visible, giants fit. Pace, spacing and gaits follow the drawn size.
 
+## Phase 47: 30th Celebration cards, sharper number reading, close-ups
+- 30C stands for two TCGdex sets (`setCodes.js` `more`/`setIdsForCode`): `30th` (128 cards) and `30th-c`, the Classic
+  Collection, whose cards print their original numbers ("58/102") while TCGdex numbers them 001–030. `tcg.js`
+  matches a renumbered set by name; `identify.js` counts name + code 30C + a total that isn't 128 as the Classic
+  printing; the dataset's `me55c` (no printed total) is found by `findSets`' fallback; prices use its own
+  TCGplayer group. Delta Reign (DLR, `me06`) added. Codes starting with digits are read through letter look-alikes
+  (3OC → 30C); an all-digit token ("58" of "58/102") is no longer taken for a Japanese code (S8).
+- Add cards: a quick first read (sharpest reads only) and the full read only when unsure; a re-read from a cut at
+  the photo's own resolution (as the scanner does); an unsharp mask (`area({ sharpen })`) on number reads; digits
+  allowed in the code box. Close-ups (no card outline): text lines found by `textBands` (vision/textline.js) and
+  read one by one, copyright and illustrator lines dropped, looked up with and without names and by number alone;
+  never better than "Review needed". Reference photos: Voltorb close-up 066/193 now found; Voltorb photo
+  recognised in 3 s (was "Review" in 6 s). Bench unchanged (recall 93%, correct 81%, confident-wrong 0).
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

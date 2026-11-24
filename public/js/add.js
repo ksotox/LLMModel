@@ -8,7 +8,7 @@ import { suggestVariant, VARIANT_NAMES } from './foil.js';
 import { analyseCardAsync, compareAnglesAsync } from './foilAsync.js';
 import { biggestCardCanvas, canvasToBlob, cardQuads, cropToBlob, cutCard, cutRegion, loadImage, wholeQuad } from './images.js';
 import { describeBrief, lookupPanel } from './lookup.js';
-import { readCardText } from './ocr.js';
+import { readCardText, readCloseUp } from './ocr.js';
 import { warmUpCardFinder, warpCard } from './vision.js';
 import { retakeAdvice } from './vision/quality.js';
 import { wakeDioramaMaker } from './dioramas.js';
@@ -311,7 +311,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
 
   const onStatusChange = debounce(() => { drawSummary(); updateSave(); }, 50);
 
-  function makeCard(source, blob, previous = {}, canvas = null, quality = null, recut = null) {
+  function makeCard(source, blob, previous = {}, canvas = null, quality = null, recut = null, { sharp = null, closeUp = null } = {}) {
     // After re-cropping, keep what the user typed; anything read automatically is read again.
     const typed = previous.touched ? previous : {};
     const card = {
@@ -495,7 +495,18 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       readNote.className = 'read-note busy';
       readNote.textContent = retry ? 'Reading the card again…' : 'Reading the card…';
       try {
-        let result = await api.identify(await readCardText(canvas));
+        // A quick first pass (the sharpest reads); the full set of reads only when it isn't sure.
+        let result = await api.identify(await readCardText(canvas, { quick: true }));
+        if (readScore(result) < 3) {
+          const full = await api.identify(await readCardText(canvas)).catch(() => null);
+          if (full && readScore(full) >= readScore(result)) result = full;
+        }
+        // The number and code are tiny: read them again from a cut at the photo's own resolution
+        // (a phone photo often has far more detail than the saved cut-out), as the scanner does.
+        if (readScore(result) < 3 && sharp) {
+          const other = await api.identify(await readCardText(turnedRound ? rotated180(await sharp()) : await sharp())).catch(() => null);
+          if (other && readScore(other) > readScore(result)) result = other;
+        }
         // Small print is sensitive to exactly where the card was cut: when the reading isn't sure,
         // read cuts with slightly wider and tighter margins too (only the reading; the saved picture stays).
         for (const grow of [0.008, 0]) {
@@ -511,6 +522,21 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
           if (other && readScore(other) > readScore(result)) {
             result = other;
             await useTurned(flipped);
+          }
+        }
+        // No card outline in the photo: maybe it's a close-up (the card's corner, or the card filling the
+        // frame). Read the photo as it is, for any line of text in it.
+        let closeRead = false;
+        if (readScore(result) < 3 && closeUp) {
+          const text = await readCloseUp(closeUp).catch(() => null);
+          // With the words read as names; without them (a corner shows no name: the code and number
+          // decide); and with the number alone (stray words in a close-up can look like a set code).
+          const numbers = (text?.lines ?? []).flatMap((l) => l.match(/\d{1,3}\s*[/7]\s*\d{2,3}|\b\d{3}\b/g) ?? []);
+          for (const reading of text ? [text, { names: [], lines: text.lines }, { names: [], lines: numbers }] : []) {
+            const other = await api.identify(reading).catch(() => null);
+            // A close-up is never taken on trust: the match waits for the user to check it.
+            if (other?.confidence === 'high') other.confidence = 'medium';
+            if (other && readScore(other) > readScore(result)) { result = other; closeRead = true; }
           }
         }
         const typed = card.touched;
@@ -532,7 +558,9 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
             card.match = m;
             panel.show(result.candidates, m.tcgId);
             readNote.className = `read-note ${result.confidence}`;
-            readNote.textContent = result.confidence === 'high' ? '✓ Read from the photo' : 'Read from the photo — please check it’s the right card';
+            readNote.textContent = result.confidence === 'high'
+              ? `✓ Read from the ${closeRead ? 'close-up' : 'photo'}`
+              : `Read from the ${closeRead ? 'close-up' : 'photo'} — please check it’s the right card`;
             card.setStatus(result.confidence === 'high' ? 'recognized' : 'review');
           }
         } else if (!card.match) {
@@ -620,7 +648,13 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     for (const [i, quad] of quads.entries()) {
       const { canvas, blob, quality } = await cutCard(source.img, quad, `card-${i + 1}`);
       const recut = (grow) => warpCard(source.img, quad, { width: canvas.width, grow });
-      cards.push(makeCard(source, blob, previous[i], canvas, quality, recut));
+      // A cut at the photo's own resolution (up to 2000 px wide), for re-reading the small print.
+      const side = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const sourceWidth = (side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2;
+      const sharp = sourceWidth > canvas.width * 1.15 ? () => warpCard(source.img, quad, { width: Math.min(2000, Math.round(sourceWidth)) }) : null;
+      // With no card outline found, the photo may be a close-up of the card.
+      const closeUp = source.detected === false && quads.length === 1 ? source.img : null;
+      cards.push(makeCard(source, blob, previous[i], canvas, quality, recut, { sharp, closeUp }));
     }
     source.quads = quads;
     source.cards = cards;
@@ -634,6 +668,7 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
     const quads = await editQuads(source.img, source.quads);
     if (!quads) return;
     if (!quads.length) return removeSource(source);
+    source.detected = true; // outlined by hand: a card, not a close-up
     await buildSourceCards(source, quads);
   }
 
@@ -642,8 +677,8 @@ export async function renderAddCards(root, meta, navigate, { packId } = {}) {
       try {
         if (/\.(heic|heif)$/i.test(file.name ?? '') || /hei[cf]/i.test(file.type ?? '')) toast(`Opening the iPhone photo “${file.name}”…`, 'info');
         const img = await loadImage(file);
-        const { quads } = await cardQuads(img);
-        const source = { key: nextKey(), img, name: file.name || 'Photo', cards: [], quads: [] };
+        const { quads, detected } = await cardQuads(img);
+        const source = { key: nextKey(), img, name: file.name || 'Photo', cards: [], quads: [], detected };
         source.head = h('div.source-head');
         source.body = h('div.source-cards');
         source.el = h('div.source', source.head, source.body);

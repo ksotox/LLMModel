@@ -2,9 +2,13 @@
 // client sends several readings of each area; this module votes on the set code and number, then
 // checks candidates against the card database and ranks them by how close their name is.
 
-import { SET_CODES, hasJapanese, isJapaneseCode, sameNumber } from './setCodes.js';
+import { SET_CODES, hasJapanese, isJapaneseCode, isRenumbered, sameNumber } from './setCodes.js';
 
 const DIGIT_TO_LETTER = { 0: 'O', 1: 'I', 2: 'Z', 5: 'S', 6: 'G', 8: 'B' };
+// …and back, for codes that start with digits ("3OC" or "SOC" read for 30C).
+const LETTER_TO_DIGIT = { O: '0', D: '0', Q: '0', I: '1', L: '1', Z: '2', S: '5', G: '6', B: '8' };
+/** `token` with letters turned into digits wherever `code` has a digit. */
+const digitsLike = (token, code) => [...token].map((ch, i) => (/\d/.test(code[i] ?? '') ? LETTER_TO_DIGIT[ch] ?? ch : ch)).join('');
 
 export function editDistance(a, b) {
   const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
@@ -50,7 +54,7 @@ export function findSetCode(texts) {
       let best = 0;
       for (const t of tokens) {
         const asLetters = t.replace(/\d/g, (d) => DIGIT_TO_LETTER[d] ?? d);
-        if (t === code || asLetters === code) best = Math.max(best, 3);
+        if (t === code || asLetters === code || (/\d/.test(code) && t.length === code.length && digitsLike(t, code) === code)) best = Math.max(best, 3);
         else if (t.length >= 4 && (t.includes(code) || asLetters.includes(code))) best = Math.max(best, 2);
         else if (t.length >= 2 && t.length <= 4 && Math.min(editDistance(t, code), editDistance(asLetters, code)) <= 1 && code.length === 3) best = Math.max(best, 1);
       }
@@ -66,6 +70,7 @@ export function findJapaneseSetCode(texts) {
   const votes = new Map();
   for (const text of texts) {
     for (const raw of String(text ?? '').toUpperCase().split(/[^A-Z0-9-]+/)) {
+      if (/^\d+$/.test(raw)) continue; // all digits ("58" of "58/102"): a card number, not "S8"
       // OCR often reads the S of "SV" as a 5.
       const t = raw.replace(/^5(?=V?\d)/, 'S').replace(/^-+|-+$/g, '');
       if (t.length >= 2 && isJapaneseCode(t) && !/^S\d{3,}$/.test(t)) votes.set(t, (votes.get(t) ?? 0) + 1);
@@ -222,12 +227,15 @@ export async function identifyCard(catalog, { names = [], lines = [] }) {
     const japanese = hasJapanese(card.name);
     const sameScript = guesses.filter((g) => hasJapanese(g) === japanese);
     const sim = sameScript.length ? Math.max(...sameScript.map((g) => nameSimilarity(g, card.name))) : null;
-    const numberOk = Boolean(number && sameNumber(card.number, number));
+    const setOk = Boolean(setCode && String(card.setCode ?? '').toUpperCase() === setCode.toUpperCase());
+    // A Classic Collection card prints the number of the set it first came from, not TCGdex's: its name
+    // and the printed code are the evidence, and a total that isn't the main set's own says which set.
+    const classic = isRenumbered(card.setId) && setOk && (sim ?? 0) >= 0.8 && Boolean(total) && Number(total) !== Number(SET_CODES[setCode.toUpperCase()]?.total);
+    const numberOk = Boolean(number && sameNumber(card.number, number)) || classic;
     // One digit misread (6 read as 5, 3 as 8…) in an otherwise matching set: a hint, never enough
     // on its own for an automatic match (only exact numbers give 'high').
     const numberNear = !numberOk && nearNumber(card.number, number);
-    const setOk = Boolean(setCode && String(card.setCode ?? '').toUpperCase() === setCode.toUpperCase());
-    const totalOk = Boolean(total && card.setTotal && Number(card.setTotal) === Number(total));
+    const totalOk = Boolean(total && card.setTotal && Number(card.setTotal) === Number(total)) || classic;
     const score = (sim ?? 0) * 4 + (numberOk ? 2 : numberNear && (setOk || totalOk) ? 1 : 0) + (setOk ? 1.5 : 0) + (totalOk ? 1 : 0);
     return { card, score, sim, numberOk, setOk, totalOk, japanese };
   }).sort((a, b) => b.score - a.score);

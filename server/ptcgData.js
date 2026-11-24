@@ -49,7 +49,13 @@ export class PtcgDataClient {
     const code = String(setCode ?? '').trim().toUpperCase();
     if (code) {
       const byCode = sets.filter((s) => s.ptcgoCode?.toUpperCase() === code);
-      if (byCode.length) return total ? byCode.filter((s) => String(s.printedTotal) === String(Number(total))) : byCode;
+      if (byCode.length) {
+        if (!total) return byCode;
+        const sameTotal = byCode.filter((s) => String(s.printedTotal) === String(Number(total)));
+        // A card that prints another set's total under this code (the 30th Classic Collection's "58/102")
+        // belongs to the code's set that has no total of its own.
+        return sameTotal.length ? sameTotal : byCode.filter((s) => s.printedTotal == null);
+      }
     }
     if (setName) {
       const byName = sets.filter((s) => normalise(s.name) === normalise(setName));
@@ -83,7 +89,7 @@ export class PtcgDataClient {
   }
 
   #printed(set, number) {
-    const padded = PADDED_SERIES.has(set.series) && /^\d+$/.test(number);
+    const padded = PADDED_SERIES.has(set.series) && set.printedTotal != null && /^\d+$/.test(number);
     return {
       number: padded ? number.padStart(3, '0') : number,
       setTotal: set.printedTotal != null ? (padded ? String(set.printedTotal).padStart(3, '0') : String(set.printedTotal)) : null,
