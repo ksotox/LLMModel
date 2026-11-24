@@ -251,6 +251,13 @@ export function leafCards(texture, time, { matte = false } = {}) {
       `#include <begin_vertex>
        float lw = sin(uTime * 1.6 + position.x * 2.1 + position.z * 1.7 + modelMatrix[3].x) * 0.035;
        transformed.x += lw; transformed.y += lw * 0.5;`);
+    // A card is lit by the normal it was given (out from its crown, up from its cone) on both sides:
+    // three.js turns the normal round for a card's back, which lit half the leaves (and every needle
+    // card, wound the other way) from inside, as black patches.
+    if (shader.fragmentShader) {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>',
+        '#include <normal_fragment_begin>\n  normal = normalize(vNormal);\n  nonPerturbedNormal = normal;');
+    }
   };
   // (`matte`: no sheen at all, for cards often seen edge-on, such as needles along a pine's sides.)
   const material = matte
@@ -259,6 +266,17 @@ export function leafCards(texture, time, { matte = false } = {}) {
   material.onBeforeCompile = sway;
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: texture, alphaTest: 0.5 });
   depthMaterial.onBeforeCompile = sway;
+  // The same leaves in another shade (each tree its own green), made once per shade.
+  const shades = new Map();
+  const tinted = (hex) => {
+    if (!shades.has(hex)) {
+      const m = material.clone();
+      m.color.set(hex);
+      m.onBeforeCompile = sway;
+      shades.set(hex, m);
+    }
+    return shades.get(hex);
+  };
   const crown = (radius, seed, count = 22) => {
     let a = seed >>> 0;
     const r = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
@@ -294,5 +312,5 @@ export function leafCards(texture, time, { matte = false } = {}) {
     geo.setIndex(idx);
     return geo;
   };
-  return { material, depthMaterial, crown };
+  return { material, depthMaterial, crown, tinted, shades };
 }

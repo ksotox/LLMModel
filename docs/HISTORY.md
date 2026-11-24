@@ -817,6 +817,35 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   vibrance grade in the High post-process. All wired through `creature/life.js` `bringToLife` (Sanctuary,
   Reef, battles); `battle/modelLoader.js` `patchShader` chains shader changes.
 
+## Phase 49: Ash, Iris and May as trainers, also in battles
+- At the owner's request the three trainer models they supplied ship with the app (`public/assets/trainers/`,
+  CC-BY-4.0 on Sketchfab, credits in `manifest.json` and SOURCES.md), changing the earlier "never committed" rule for
+  these files only; Pokémon models are still never committed. `/api/trainers` lists them first (`builtin`, can't
+  be removed). Ash is the default trainer until another is chosen (`pokedex.trainerModel` = `none` for the figure).
+- Ash has no skeleton: `trainer.js` gives clip-less models one (`autoRig`) before `rigDriver` (arms down from his
+  T-pose); Iris and May use their own rigs.
+- Battles (`battle/trainers.js`, `scene.js addTrainers`): your trainer stands to the left of your Pokémon, the
+  opponent gets another trainer model (stable per card); they cheer on attacks and slump on a faint; in real time
+  they step back to the field's edge.
+
+## Phase 50: Grass like grass, rocky mountains, real trees and wood, smoother frames
+- Grass (`world.js grassField` `follow`): in the Sanctuary a 56 m field of blades follows the camera, each blade fixed
+  in the world (the tile repeats), standing on a baked height/grows-here texture (`groundTexture`); even density
+  everywhere you walk, fuller blades, lighter roots, bent aside by the trainer and nearby creatures
+  (`setGrassPushers`). Dirt patches halved; the ground photo leans on the meadow's green.
+- Mountains: ridges domain-warped with crags (`terrainHeight` beyond 140 m), a denser ground mesh on desktop (340
+  segments), rock strata and darker steep faces, and the photo rock kept far out instead of flat paint.
+- Trees: broadleaf crowns of 3–5 separate clumps on branches, each tree its own green (`leafCards` `tinted`), barked
+  trunks (`battle/wood.js`), shared materials; the far forest spaced so crowns don't merge, with leaf cards on
+  Standard too. Leaf and needle cards keep their own normals on both sides (black needle stripes and dark leaf
+  patches were back faces lit from inside).
+- Wood (`battle/wood.js`): procedural bark and plank textures (grain, knots, seams) on logs, posts, the dock, boats,
+  signs (carved lettering), driftwood and the beach pier; photo planks (Poly Haven, new `planks` slot) on High.
+- Frames: the Sanctuary draws between its 60 Hz steps (smooth at 120/144 Hz); `perf.js` aims at the screen's own
+  refresh rate (`frameTargets`); the mirror water renders only on screen, every other frame; nameplate widths
+  cached; fireflies written in place. A graphics change lets the new level settle for 2 s (`perf.settle()`) before
+  its frames are judged, so High's shader-compiling first frames don't switch its passes straight off.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

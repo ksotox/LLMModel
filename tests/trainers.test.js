@@ -72,13 +72,27 @@ describe('trainer models: the API', () => {
     assert.equal(entry.name, 'Hiker');
     assert.equal(entry.rigged, true);
     const { trainers } = await (await fetch(`${base}/api/trainers`)).json();
-    assert.deepEqual(trainers.map((t) => t.id), [entry.id]);
+    assert.deepEqual(trainers.filter((t) => !t.builtin).map((t) => t.id), [entry.id]);
     const file = await fetch(`${base}/api/trainers/${entry.id}.glb`);
     assert.equal(file.status, 200);
     assert.equal(Buffer.from(await file.arrayBuffer()).toString('ascii', 0, 4), 'glTF');
     assert.ok(fs.existsSync(path.join(dataDir, 'trainers')), 'kept in the data folder');
     assert.equal((await fetch(`${base}/api/trainers/${entry.id}`, { method: 'DELETE' })).status, 204);
-    assert.deepEqual((await (await fetch(`${base}/api/trainers`)).json()).trainers, []);
+    assert.deepEqual((await (await fetch(`${base}/api/trainers`)).json()).trainers.filter((t) => !t.builtin), []);
+  });
+
+  test('Ash, Iris and May come with the app: listed first, with their credits, and can’t be removed', async () => {
+    const { trainers } = await (await fetch(`${base}/api/trainers`)).json();
+    assert.deepEqual(trainers.slice(0, 3).map((t) => [t.id, t.name, t.builtin]), [['builtin-ash', 'Ash', true], ['builtin-iris', 'Iris', true], ['builtin-may', 'May', true]]);
+    for (const t of trainers.slice(0, 3)) {
+      assert.match(t.licence, /CC-BY-4\.0/);
+      assert.match(t.source, /^https:\/\/sketchfab\.com\//);
+      assert.ok(t.author);
+    }
+    const file = await fetch(`${base}/api/trainers/builtin-iris.glb`);
+    assert.equal(file.status, 200);
+    assert.equal(Buffer.from(await file.arrayBuffer()).toString('ascii', 0, 4), 'glTF');
+    assert.equal((await fetch(`${base}/api/trainers/builtin-may`, { method: 'DELETE' })).status, 400);
   });
 
   test('refuses what is not a .glb, and unknown ids', async () => {
@@ -136,5 +150,33 @@ describe('skeleton animation made in code (rig.js)', () => {
     assert.ok(gait('glide', 0).armOutL > 2, 'arms up to the glider');
     const idle = gait('idle', 0, 0, 1);
     assert.ok(Math.abs(idle.thighL) < 1e-9 && Math.abs(idle.lean) < 0.05);
+  });
+});
+
+describe('the trainer you wear', () => {
+  test('Ash until you choose; the simple figure once you pick a preset', async () => {
+    const { savedTrainerModel } = await import('../public/js/sanctuary/sanctuaryUI.js');
+    const storage = (value) => ({ getItem: () => value });
+    assert.equal(savedTrainerModel(storage(null)), 'builtin-ash', 'nothing chosen yet: Ash');
+    assert.equal(savedTrainerModel(storage('builtin-may')), 'builtin-may');
+    assert.equal(savedTrainerModel(storage('none')), null, 'a preset figure was chosen');
+  });
+});
+
+describe('trainers in battles', () => {
+  test('each stands behind its Pokémon, a step aside, facing the rival', async () => {
+    const { trainerSpot } = await import('../public/js/battle/trainers.js');
+    const me = { x: -1.55, z: 1.0 };
+    const rival = { x: 1.75, z: -1.6 };
+    const spot = trainerSpot(me, rival);
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+    assert.ok(dist(spot, rival) > dist(me, rival), 'further from the rival than its Pokémon is');
+    assert.ok(dist(spot, me) > 1 && dist(spot, me) < 2, 'close behind it');
+    // Facing the rival: its forward (+Z turned by `facing`) points from the spot towards the rival.
+    const fx = Math.sin(spot.facing);
+    const fz = Math.cos(spot.facing);
+    const tx = rival.x - spot.x;
+    const tz = rival.z - spot.z;
+    assert.ok((fx * tx + fz * tz) / Math.hypot(tx, tz) > 0.8, 'facing the rival');
   });
 });

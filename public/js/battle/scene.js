@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { breathing, createModelLoader, loadModel, pickClips } from './modelLoader.js';
 import { createMoveFx } from './moveFx.js';
 import { bringToLife } from '../creature/life.js';
+import { battleTrainer, trainerSpot } from './trainers.js';
 import { battleBody } from '../creature/body.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld, preferredQuality, saveQuality } from './world.js';
@@ -302,6 +303,7 @@ export class BattleStage {
     }
     for (const fx of [...this.effects]) if (fx.update(dt) === false) { this.scene.remove(fx.object); fx.dispose?.(); this.effects.delete(fx); }
     this.moveFx?.update(dt);
+    for (const tr of this.trainers ?? []) tr?.update(dt, now / 1000);
     for (const s of this.slots) {
       if (!s) continue;
       s.mixer?.update(dt);
@@ -378,6 +380,7 @@ export class BattleStage {
   setQuality(q) {
     this.world.setQuality(q);
     saveQuality(this.world.quality);
+    this.perf?.settle();
     this.resize();
   }
 
@@ -677,6 +680,7 @@ export class BattleStage {
     const to = this.slots[1 - slot]?.base?.clone() ?? this.position(1 - slot);
     const dir = to.clone().sub(from).setY(0).normalize();
     s.anim?.gesture(); // arms thrown forward
+    this.trainers?.[slot]?.cheer();
     if (s.model?.attackClip && s.mixer) this.#playClip(s, s.model.attackClip);
     // Wind up (a step back), then lunge forward and let the move fly.
     const step = (k) => s.body.position.set(from.x + dir.x * k, s.body.position.y, from.z + dir.z * k);
@@ -742,6 +746,7 @@ export class BattleStage {
     const s = this.slots[slot];
     if (!s) return;
     s.fainted = true;
+    this.trainers?.[slot]?.slump();
     if (s.aura) { this.scene.remove(s.aura); s.aura = null; }
     if (s.model?.faintClip && s.mixer) this.#playClip(s, s.model.faintClip);
     const mats = [];
@@ -761,10 +766,41 @@ export class BattleStage {
   // ---- real-time battles ----
 
   /**
+   * Each side's trainer, behind its Pokémon (battle/trainers.js). `sides`: [{ model: { url } | null,
+   * preset }] for slot 0 and 1. Not in the showcase. Resolves once their models are loaded.
+   */
+  async addTrainers(sides) {
+    if (this.mode === 'showcase') return;
+    for (const tr of this.trainers ?? []) tr?.dispose();
+    this.trainers = sides.map((side, slot) => {
+      if (!side) return null;
+      const tr = battleTrainer(THREE, { ...side, scale: this.sizeScale ?? 1, loader: this.loader, loadModel, pickClips, realistic: this.world.quality !== 'basic' });
+      // Yours stands to the left of your Pokémon, a little behind (the camera is behind your side); the
+      // rival's stands behind theirs, a step aside.
+      const at = trainerSpot(this.position(slot), this.position(1 - slot), slot === 0 ? { back: 0.35, aside: -1.5 } : { back: 1.2, aside: 0.7 });
+      tr.avatar.position.set(at.x, 0, at.z);
+      tr.avatar.rotation.y = at.facing;
+      tr.home = at;
+      this.scene.add(tr.avatar);
+      return tr;
+    });
+    await Promise.all(this.trainers.map((tr) => tr?.ready));
+  }
+
+  /**
    * After the intro of a real-time battle: the cards, platforms and Poké Balls go away and the
    * Pokémon move freely (setPose each frame); the camera follows behind your Pokémon (slot 0).
+   * The trainers step back to the field's edge (`ring`: its radius plus a little).
    */
-  goLive() {
+  goLive({ ring = null } = {}) {
+    if (ring) {
+      for (const tr of this.trainers ?? []) {
+        if (!tr) continue;
+        const d = Math.hypot(tr.home.x, tr.home.z) || 1;
+        tr.avatar.position.set((tr.home.x / d) * ring, 0, (tr.home.z / d) * ring);
+        tr.avatar.rotation.y = Math.atan2(-tr.home.x, -tr.home.z); // facing the middle of the field
+      }
+    }
     for (const s of this.slots) {
       if (!s) continue;
       s.live = true;
@@ -833,6 +869,7 @@ export class BattleStage {
     s.windup.material.color.set(typeColor(moveType));
     s.windup.visible = true;
     s.anim?.gesture();
+    this.trainers?.[slot]?.cheer(0.6);
     if (s.liveAttack) s.liveCastAction = this.#playClip(s, s.liveAttack, 0.07);
   }
 
@@ -1057,6 +1094,7 @@ export class BattleStage {
       s?.windup?.geometry.dispose();
       s?.windup?.material.dispose();
     }
+    for (const tr of this.trainers ?? []) tr?.dispose();
     this.moveFx?.dispose();
     clearTimeout(this.loadTimer);
     clearLoad(); // left on purpose: not a crash

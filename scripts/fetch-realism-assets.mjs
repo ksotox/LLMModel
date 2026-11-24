@@ -18,13 +18,15 @@ const MAX_MODEL = 6 * 1024 * 1024;
 const SLOTS = [
   { slot: 'sky-day', type: 'hdris', ids: ['kloofendal_48d_partly_cloudy_puresky', 'kloofendal_43d_clear_puresky', 'rolling_hills', 'meadow_2', 'spruit_sunrise'] },
   { slot: 'sky-sunset', type: 'hdris', ids: ['venice_sunset', 'kloofendal_misty_morning_puresky', 'the_sky_is_on_fire', 'sunflowers_puresky'] },
-  { slot: 'grass', type: 'textures', ids: ['sparse_grass', 'aerial_grass_rock', 'grass_path_2', 'forrest_ground_01'] },
+  // (A full, leafy grass first: the sparse one showed bare soil between the blades.)
+  { slot: 'grass', type: 'textures', ids: ['leafy_grass', 'grass_meadow', 'sparse_grass', 'aerial_grass_rock'] },
   { slot: 'soil', type: 'textures', ids: ['forest_ground_04', 'forrest_ground_01', 'brown_mud_leaves_01', 'forest_leaves_02'] },
   { slot: 'rock', type: 'textures', ids: ['rock_face', 'aerial_rocks_02', 'rocky_terrain_02', 'rock_wall_08'] },
   { slot: 'cliff', type: 'textures', ids: ['rock_06', 'aerial_rocks_04', 'cliff_side', 'rock_boulder_dry'] },
   { slot: 'sand', type: 'textures', ids: ['coast_sand_01', 'aerial_beach_01', 'sand_01', 'coast_sand_02'] },
   { slot: 'snow', type: 'textures', ids: ['snow_02', 'snow_03', 'snow_field_aerial'] },
   { slot: 'bark', type: 'textures', ids: ['pine_bark', 'bark_willow', 'bark_brown_02'] },
+  { slot: 'planks', type: 'textures', ids: ['weathered_planks', 'wood_planks', 'old_planks_02', 'brown_planks_03', 'wood_planks_grey'] },
   { slot: 'tree-broad', type: 'models', ids: ['island_tree_01', 'island_tree_02', 'tree_small_02', 'jacaranda_tree'] },
   { slot: 'tree-pine', type: 'models', ids: ['fir_sapling', 'pine_sapling_small', 'pine_tree_01', 'fir_tree_01'] },
   { slot: 'rocks', type: 'models', ids: ['rock_moss_set_01', 'rock_moss_set_02', 'boulder_01', 'namaqualand_boulder_02'] },

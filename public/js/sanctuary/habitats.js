@@ -7,6 +7,7 @@
 // planHabitats() decides where everything goes (pure, tested in Node); buildHabitats() makes it.
 
 import { HABITATS } from './zoo.js';
+import { barkTexture, plankTexture } from '../battle/wood.js';
 
 function rngFrom(seed) {
   let a = seed >>> 0;
@@ -139,7 +140,16 @@ export function buildHabitats(scene, plan, kit) {
   const stone = std({ map: stoneTex, roughness: 0.88 });
   const redRock = std({ map: keep(kit.noiseTexture({ base: '#9a5a3f', seed: 63, size: 256, blotches: 300, specks: 3000, tones: ['rgba(120,62,40,ALPHA)', 'rgba(170,96,60,ALPHA)', 'rgba(90,48,34,ALPHA)'] })), roughness: 0.9, flatShading: true });
   const basalt = std({ color: 0x3a3836, roughness: 0.85, flatShading: true });
-  const bark = std({ color: 0x5b4029, roughness: 0.95 });
+  // Wood that looks like wood (battle/wood.js): bark on logs and posts, weathered planks on the dock.
+  const barkMaps = barkTexture(dark);
+  const bark = std({ map: barkMaps.color, normalMap: barkMaps.normal, roughness: 0.95 });
+  const plankMaps = plankTexture('weathered');
+  const planks = std({ map: plankMaps.color, normalMap: plankMaps.normal, roughness: 0.85 });
+  kit.photoWood?.(planks); // photo planks on High/Standard, when the scenery set has them
+  const warmMaps = plankTexture('warm');
+  const warmPlanks = std({ map: warmMaps.color, normalMap: warmMaps.normal, roughness: 0.8 });
+  const paintedMaps = plankTexture('grey');
+  const paintedHull = std({ map: paintedMaps.color, normalMap: paintedMaps.normal, color: 0x5d86bd, side: THREE.DoubleSide, roughness: 0.7 });
   const fernTex = keep(kit.canvasTexture(128, 128, (g, w, h) => {
     g.clearRect(0, 0, w, h);
     g.strokeStyle = dark ? '#2f5228' : '#3f7d2f';
@@ -337,11 +347,11 @@ export function buildHabitats(scene, plan, kit) {
       }
       case 'boat': {
         const boat = new THREE.Group();
-        const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std({ color: 0x2c4a6e, side: THREE.DoubleSide, roughness: 0.7 }));
+        const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), paintedHull); // painted boards
         hull.scale.set(1.9, 0.6, 0.65);
         boat.add(hull);
         for (const x of [-0.7, 0.2, 1.0]) {
-          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 1.05 - Math.abs(x) * 0.3), std({ color: 0xc9b48c }));
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 1.05 - Math.abs(x) * 0.3), warmPlanks);
           seat.position.set(x, -0.1, 0);
           boat.add(seat);
         }
@@ -352,7 +362,7 @@ export function buildHabitats(scene, plan, kit) {
       }
       case 'pier': {
         const pier = new THREE.Group();
-        const plank = std({ color: 0x9a7a55 });
+        const plank = planks;
         for (let d = 0; d < 7; d += 0.42) {
           const b = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.07, 1.7), plank);
           b.position.set(-d, 0, 0);
@@ -375,16 +385,20 @@ export function buildHabitats(scene, plan, kit) {
         const sign = new THREE.Group();
         const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.6, 6), bark);
         post.position.y = 0.8;
-        const tex = keep(kit.canvasTexture(256, 96, (g, w, h) => {
-          g.fillStyle = '#7a5634';
-          g.fillRect(0, 0, w, h);
-          g.fillStyle = 'rgba(0,0,0,0.18)';
-          for (let y = 12; y < h; y += 18) g.fillRect(0, y, w, 2);
-          g.fillStyle = '#fbf3df';
-          g.font = 'bold 34px system-ui, sans-serif';
+        const tex = keep(kit.canvasTexture(512, 192, (g, w, h) => {
+          // A board of planks (on its side), the name carved and painted in.
+          g.save();
+          g.translate(w, 0);
+          g.rotate(Math.PI / 2);
+          g.drawImage(warmMaps.color.image, 0, 0, h, w);
+          g.restore();
+          g.font = 'bold 68px Georgia, serif';
           g.textAlign = 'center';
           g.textBaseline = 'middle';
-          g.fillText(p.name, w / 2, h / 2 + 2, w - 20);
+          g.fillStyle = 'rgba(30,18,8,0.75)'; // the carved edge
+          g.fillText(p.name, w / 2 + 2, h / 2 + 4, w - 40);
+          g.fillStyle = '#fbf0d8';
+          g.fillText(p.name, w / 2, h / 2 + 1, w - 40);
         }));
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.56, 0.06), [bark, bark, bark, bark, std({ map: tex }), std({ map: tex })]);
@@ -442,7 +456,10 @@ export function buildHabitats(scene, plan, kit) {
       if (flies) {
         flies.seeds.forEach(([a, d, h, ph], i) => {
           const t = seconds * 0.4 + ph;
-          flies.pos.set([flies.x + Math.cos(a + t * 0.3) * d + Math.sin(t * 1.7) * 0.6, flies.y + h + Math.sin(t * 2.3) * 0.4, flies.z + Math.sin(a + t * 0.3) * d + Math.cos(t * 1.3) * 0.6], i * 3);
+          // (written in place: no new array per firefly per frame)
+          flies.pos[i * 3] = flies.x + Math.cos(a + t * 0.3) * d + Math.sin(t * 1.7) * 0.6;
+          flies.pos[i * 3 + 1] = flies.y + h + Math.sin(t * 2.3) * 0.4;
+          flies.pos[i * 3 + 2] = flies.z + Math.sin(a + t * 0.3) * d + Math.cos(t * 1.3) * 0.6;
         });
         flies.pts.geometry.attributes.position.needsUpdate = true;
         flies.pts.material.opacity = 0.6 + Math.sin(seconds * 3) * 0.3;

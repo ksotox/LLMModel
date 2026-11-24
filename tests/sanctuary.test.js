@@ -236,6 +236,20 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.deepEqual(perfStep(12, 2, 2, true), { ratio: 2, drop: false }, 'fast enough: all kept');
   });
 
+  test('a new graphics level settles before frames are judged (its first frames compile shaders)', async () => {
+    const { createPerf } = await import('../public/js/battle/perf.js');
+    let drops = 0;
+    const effects = { on: true, drop() { drops++; this.on = false; } };
+    const perf = createPerf({ getPixelRatio: () => 2, setPixelRatio() {} }, () => 2, effects);
+    for (let i = 0; i < 200; i++) perf.frame(16);
+    assert.equal(drops, 0, 'fast frames keep the passes');
+    perf.settle();
+    for (let i = 0; i < 15; i++) perf.frame(120);
+    assert.equal(drops, 0, 'slow frames right after a change are not held against it');
+    for (let i = 0; i < 20; i++) perf.frame(120);
+    assert.equal(drops, 1, 'still slow once settled: the passes go');
+  });
+
   test('the High passes: only on High, and gone for good once dropped', async () => {
     const { createEffects } = await import('../public/js/battle/postfx.js');
     let plain = 0;
@@ -297,5 +311,17 @@ describe('realistic Pokémon materials', () => {
     assert.equal(surfaceKind({ types: ['Fire'], sat: 0.3, lum: 0.5 }), 'fur', 'muted colours: fur');
     assert.equal(surfaceKind({ types: ['Psychic'], sat: 0.7, lum: 0.6 }), 'skin', 'bright, saturated: skin');
     assert.equal(surfaceKind(), 'fur');
+  });
+});
+
+describe('as many frames as the screen shows', () => {
+  test('a fast screen is aimed at its own rate, without giving up much sharpness', async () => {
+    const { frameTargets, nextPixelRatio } = await import('../public/js/battle/perf.js');
+    assert.deepEqual(frameTargets(16.7), { slow: 19, fast: 13.5, floor: 0.6, target: 16.7 }, '60 Hz: as before');
+    const hz144 = frameTargets(1000 / 144);
+    assert.ok(hz144.slow < 10 && hz144.floor === 0.75, JSON.stringify(hz144));
+    assert.ok(nextPixelRatio(9.5, 2, 2, hz144) < 2, '105 fps on a 144 Hz screen: a little fewer pixels');
+    assert.equal(nextPixelRatio(9.5, 2, 2), 2, 'the same on a 60 Hz screen: nothing to do');
+    assert.ok(nextPixelRatio(40, 2, 2, hz144) >= 1.5, 'never below three quarters on a fast screen');
   });
 });

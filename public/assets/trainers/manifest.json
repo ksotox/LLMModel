@@ -1,0 +1,38 @@
+{
+  "note": "Trainer models shipped with the app at the owner's choice. Each is CC-BY-4.0 by its author on Sketchfab (credits below); the characters are Nintendo / Game Freak / The Pokémon Company IP.",
+  "trainers": [
+    {
+      "id": "builtin-ash",
+      "name": "Ash",
+      "file": "ash.glb",
+      "title": "Ash_ Ketchup_-_ Pokemon",
+      "author": "Landon101415 (https://sketchfab.com/Landon101415)",
+      "licence": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/ash--ketchup----pokemon-ea89868112cf45d99f3906dc3287c55e",
+      "rigged": false,
+      "clips": 0
+    },
+    {
+      "id": "builtin-iris",
+      "name": "Iris",
+      "file": "iris.glb",
+      "title": "Nintendo Pokemon iris",
+      "author": "ijackprovostjr (https://sketchfab.com/ijackprovostjr)",
+      "licence": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/nintendo-pokemon-iris-787115b74e87476aa9c6be3a16a8b0be",
+      "rigged": true,
+      "clips": 0
+    },
+    {
+      "id": "builtin-may",
+      "name": "May",
+      "file": "may.glb",
+      "title": "Pokemon Trainer May",
+      "author": "ijackprovostjr (https://sketchfab.com/ijackprovostjr)",
+      "licence": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/pokemon-trainer-may-e24245ba96914ff8a08acbf68f8f18d0",
+      "rigged": true,
+      "clips": 0
+    }
+  ]
+}

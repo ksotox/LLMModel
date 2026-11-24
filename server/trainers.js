@@ -1,16 +1,30 @@
-// Trainer models for the Sanctuary, uploaded by each person (glTF binary, .glb). They are kept in
-// that person's data folder (data/trainers/<user id>/) and never in the repository: a model may show
-// a character someone else owns, so it is for that person's own use. The credit a model carries
-// (glTF asset.extras: title, author, licence, source, as Sketchfab writes them) is kept and shown.
+// Trainer models for the Sanctuary and battles (glTF binary, .glb). Three come with the app (Ash, Iris,
+// May: public/assets/trainers/, CC-BY-4.0 on Sketchfab, shipped at the owner's choice) and are listed
+// first; anyone can add their own, kept in their data folder (data/trainers/<user id>/), never in the
+// repository. The credit a model carries (glTF asset.extras: title, author, licence, source, as
+// Sketchfab writes them) is kept and shown.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
 
 export const MAX_TRAINER_BYTES = 25 * 1024 * 1024;
 const ID = /^[a-z0-9]{6,40}$/;
+const BUILTIN_DIR = new URL('../public/assets/trainers/', import.meta.url);
+
+/** The trainers that come with the app ({ id: 'builtin-ash', name, file, credit…, builtin: true }). */
+export function builtinTrainers() {
+  try {
+    const { trainers } = JSON.parse(fs.readFileSync(new URL('manifest.json', BUILTIN_DIR), 'utf8'));
+    // A model without a skeleton gets one in the browser (creature/autoRig.js), so all of them walk.
+    return trainers.map((t) => ({ ...t, rigged: true, builtin: true }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Read a .glb's header and JSON chunk: { title, author, licence, source, rigged, clips }, or null when
@@ -51,7 +65,7 @@ export function createTrainersRouter({ dataDir }) {
     }).filter(Boolean).sort((a, b) => a.added.localeCompare(b.added));
   };
 
-  router.get('/', (req, res) => res.json({ trainers: list(req) }));
+  router.get('/', (req, res) => res.json({ trainers: [...builtinTrainers(), ...list(req)] }));
 
   router.post('/', upload.single('model'), (req, res) => {
     const file = req.file;
@@ -68,6 +82,11 @@ export function createTrainersRouter({ dataDir }) {
   });
 
   router.get('/:id.glb', (req, res) => {
+    const builtin = builtinTrainers().find((t) => t.id === req.params.id);
+    if (builtin) {
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.type('model/gltf-binary').sendFile(fileURLToPath(new URL(builtin.file, BUILTIN_DIR)));
+    }
     if (!ID.test(req.params.id)) throw fail(404, 'No such model');
     const file = path.join(dirOf(req), `${req.params.id}.glb`);
     if (!fs.existsSync(file)) throw fail(404, 'No such model');
@@ -76,6 +95,7 @@ export function createTrainersRouter({ dataDir }) {
   });
 
   router.delete('/:id', (req, res) => {
+    if (builtinTrainers().some((t) => t.id === req.params.id)) throw fail(400, 'The trainers that come with the app can’t be removed');
     if (!ID.test(req.params.id)) throw fail(404, 'No such model');
     for (const ext of ['.glb', '.json']) fs.rmSync(path.join(dirOf(req), `${req.params.id}${ext}`), { force: true });
     res.status(204).end();
