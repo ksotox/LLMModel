@@ -236,6 +236,20 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.deepEqual(perfStep(12, 2, 2, true), { ratio: 2, drop: false }, 'fast enough: all kept');
   });
 
+  test('a new graphics level settles before frames are judged (its first frames compile shaders)', async () => {
+    const { createPerf } = await import('../public/js/battle/perf.js');
+    let drops = 0;
+    const effects = { on: true, drop() { drops++; this.on = false; } };
+    const perf = createPerf({ getPixelRatio: () => 2, setPixelRatio() {} }, () => 2, effects);
+    for (let i = 0; i < 200; i++) perf.frame(16);
+    assert.equal(drops, 0, 'fast frames keep the passes');
+    perf.settle();
+    for (let i = 0; i < 15; i++) perf.frame(120);
+    assert.equal(drops, 0, 'slow frames right after a change are not held against it');
+    for (let i = 0; i < 20; i++) perf.frame(120);
+    assert.equal(drops, 1, 'still slow once settled: the passes go');
+  });
+
   test('the High passes: only on High, and gone for good once dropped', async () => {
     const { createEffects } = await import('../public/js/battle/postfx.js');
     let plain = 0;

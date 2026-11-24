@@ -843,7 +843,8 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   signs (carved lettering), driftwood and the beach pier; photo planks (Poly Haven, new `planks` slot) on High.
 - Frames: the Sanctuary draws between its 60 Hz steps (smooth at 120/144 Hz); `perf.js` aims at the screen's own
   refresh rate (`frameTargets`); the mirror water renders only on screen, every other frame; nameplate widths
-  cached; fireflies written in place.
+  cached; fireflies written in place. A graphics change lets the new level settle for 2 s (`perf.settle()`) before
+  its frames are judged, so High's shader-compiling first frames don't switch its passes straight off.
 
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,

@@ -380,6 +380,7 @@ export class BattleStage {
   setQuality(q) {
     this.world.setQuality(q);
     saveQuality(this.world.quality);
+    this.perf?.settle();
     this.resize();
   }
 

@@ -103,7 +103,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   const setLevel = (q) => { level = q; renderer.setPixelRatio(pixelTop()); reef.setQuality(q); effects.setLevel(q); };
   setLevel(level);
   quality.value = level;
-  quality.addEventListener('change', () => { setLevel(quality.value); saveQuality(level); resize(); });
+  quality.addEventListener('change', () => { setLevel(quality.value); saveQuality(level); perf.settle(); resize(); });
   const perf = createPerf(renderer, pixelTop, effects);
   const loadTimer = setTimeout(clearLoad, 12000);
   const resize = () => {

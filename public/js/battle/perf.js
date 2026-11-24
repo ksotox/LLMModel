@@ -55,6 +55,8 @@ export function createPerf(renderer, top, effects = null) {
   let targets = null;
   return {
     get targets() { return targets; },
+    /** A new graphics level: let it settle (shaders compile in its first frames) before judging it. */
+    settle(ms = 2000) { sum = 0; n = 0; wait = ms; },
     frame(dtMs) {
       if (dtMs > 250) return; // a hidden tab or a pause: not a measure
       sum += dtMs;

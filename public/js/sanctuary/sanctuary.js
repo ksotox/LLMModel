@@ -140,7 +140,7 @@ function start3d(root, cards, world3d) {
   const perf = createPerf(renderer, () => world.pixelTop, world.effects);
   const loadTimer = setTimeout(clearLoad, 12000);
   quality.value = world.quality;
-  quality.addEventListener('change', () => { world.setQuality(quality.value); saveQuality(world.quality); resize(); });
+  quality.addEventListener('change', () => { world.setQuality(quality.value); saveQuality(world.quality); perf.settle(); resize(); });
   const inWater = (x, z) => terrainHeight(x, z) < LAKE.level - 0.15;
   const ground = {
     heightAt: (x, z) => terrainHeight(x, z),
