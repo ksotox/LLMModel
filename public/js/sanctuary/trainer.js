@@ -51,7 +51,7 @@ export function buildTrainer(THREE) {
     for (const c of figure) c.visible = true;
   };
   /** Swap the built-in figure for a .glb at `url` (null: back to the figure). Resolves to the model's info. */
-  const load = async (url, { loader, loadModel, pickClips, realistic = false } = {}) => {
+  const load = async (url, { loader, loadModel, pickClips, realistic = false, prepare = null } = {}) => {
     unload();
     if (!url) return null;
     const loaded = await loadModel(loader, url, 1.75, { realistic });
@@ -78,6 +78,7 @@ export function buildTrainer(THREE) {
       next.driver = rigDriver(THREE, object);
     }
     next.rigged = Boolean(next.mixer || next.driver);
+    await prepare?.(object); // ready to draw before it appears (modelLoader.js warmUp)
     for (const c of figure) c.visible = false;
     avatar.add(object);
     model = next;

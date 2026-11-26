@@ -6,7 +6,7 @@
 
 import { DIFFICULTIES, ENVIRONMENTS, environmentName, saveArena, savedArena, STYLES, weatherName, WEATHERS } from './battle/arenas.js';
 import { createControls, joystick, toWorld } from './battle/controls.js';
-import { createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
+import { between, createRealtime, dodgeJumpReady, step as stepRealtime, STEP, TIME_LIMIT } from './battle/realtime.js';
 import { act, attackCost, cpuChoice, createBattle, damageFor, expectedDamage, makeFighter, MAX_ENERGY } from './battle/engine.js';
 import { clear, h, toast } from './ui.js';
 import { BATTLE_SIZES, battleBody, battleScale, bodyPlan, sizedSpecies } from './creature/body.js';
@@ -836,6 +836,8 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
     acc += dt;
     while (acc >= STEP && !battle.over) {
       acc -= STEP;
+      // Where each fighter was before this step, to draw in between steps (below).
+      for (const f of battle.fighters) f.prev = { x: f.x, y: f.y, z: f.z, facing: f.facing };
       const intents = [0, 1].map((side) => {
         if (side === 1 && mode === 'cpu') return null;
         const i = controls.read(side);
@@ -844,9 +846,15 @@ async function startRealtime(root, picks, mode, onBack, onNewOpponent = onBack) 
       });
       for (const e of stepRealtime(battle, intents)) handle(e);
     }
-    for (const f of battle.fighters) stage.setPose(f.side, { x: f.x, y: f.out ? -2 : f.y, z: f.z,
-      facing: f.facing, down: f.down > 0, speed: Math.hypot(f.vx, f.vz), dt });
-    stage.follow(f1, f2);
+    // The simulation runs 60 times a second; the screen may run at 120 or 144: each frame is drawn
+    // between the last two steps, so motion is smooth at any refresh rate (realtime.js between()).
+    const alpha = battle.over ? 1 : acc / STEP;
+    const drawn = battle.fighters.map((f) => between(f.prev ?? f, f, alpha));
+    for (const f of battle.fighters) {
+      const at = drawn[f.side];
+      stage.setPose(f.side, { x: at.x, y: f.out ? -2 : at.y, z: at.z, facing: at.facing, down: f.down > 0, speed: Math.hypot(f.vx, f.vz), dt });
+    }
+    stage.follow(drawn[f1.side], drawn[f2.side], dt);
     stage.syncShots(battle.projectiles);
     if (battle.rules.shrink) stage.setZone(battle.zone);
     plates.forEach((p) => p.update());

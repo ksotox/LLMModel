@@ -250,6 +250,39 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.equal(drops, 1, 'still slow once settled: the passes go');
   });
 
+  test('more pixels come back only after 3 easy seconds in a row (no see-saw)', async () => {
+    const { createPerf } = await import('../public/js/battle/perf.js');
+    let ratio = 1.5;
+    const changes = [];
+    const perf = createPerf({ getPixelRatio: () => ratio, setPixelRatio(r) { ratio = r; changes.push(r); } }, () => 2);
+    const second = (ms) => { for (let i = 0; i < Math.round(1000 / ms); i++) perf.frame(ms); };
+    second(16); second(16); // settling (2 s)
+    second(10); second(10);
+    assert.equal(changes.length, 0, 'two easy seconds: not yet');
+    second(10);
+    assert.equal(changes.length, 1, 'the third: a little more resolution');
+    assert.ok(ratio > 1.5);
+    second(30);
+    assert.equal(changes.length, 2, 'a slow second lowers it at once');
+    assert.ok(ratio < changes[0]);
+  });
+
+  test('warming a model up: each of its textures once, then its shaders', async () => {
+    const THREE = await import('three');
+    const { texturesOf, warmUp } = await import('../public/js/battle/modelLoader.js');
+    const map = new THREE.Texture();
+    const normal = new THREE.Texture();
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ map, normalMap: normal })));
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(), [new THREE.MeshBasicMaterial({ map }), new THREE.MeshBasicMaterial()]));
+    assert.deepEqual(new Set(texturesOf(group)), new Set([map, normal]));
+    const calls = [];
+    await warmUp({ initTexture: (t) => calls.push(t), compileAsync: async (o) => { calls.push(o); } }, group, null, null);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2], group, 'shaders last');
+    await warmUp(null, group, null, null); // no renderer (tests, a page without WebGL): nothing to do
+  });
+
   test('the High passes: only on High, and gone for good once dropped', async () => {
     const { createEffects } = await import('../public/js/battle/postfx.js');
     let plain = 0;

@@ -846,6 +846,19 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   cached; fireflies written in place. A graphics change lets the new level settle for 2 s (`perf.settle()`) before
   its frames are judged, so High's shader-compiling first frames don't switch its passes straight off.
 
+## Phase 51: No hitches when models appear; models may be committed
+- The owner lifted the "never commit models" rule (2026-11-26). Ash, Iris and May were already committed and Ash is
+  the default trainer (phase 49); the files the owner sent again were byte-for-byte the same.
+- A Pokémon or trainer arriving used to stall a frame: its first draw uploaded its textures and compiled its
+  shaders, and its generated skeleton (`autoRig`) ran in the same task. Now `modelLoader.js` `warmUp` uploads the
+  textures one per task and compiles the shaders in the background (`compileAsync`) before the model joins the
+  scene; `bringToLife` runs in its own task. Used in the Sanctuary, the Reef, battle fighters (before the battle
+  starts) and trainers (`trainer.load({ prepare })`).
+- Real-time battles draw between their 60 Hz steps (`realtime.js` `between`), like the Sanctuary, and the chase
+  camera glides by time, not by frame: smooth and the same at 60, 120 or 144 Hz.
+- `perf.js` raises the resolution only after 3 easy seconds in a row (each change resizes the buffers), and the
+  Sanctuary's nameplates write their styles only when they change.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

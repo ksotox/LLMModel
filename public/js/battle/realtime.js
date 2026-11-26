@@ -11,6 +11,13 @@
 import { createRng, matchups, sandProof, SAND_DAMAGE, weatherBoost } from './engine.js';
 
 export const STEP = 1 / 60;
+
+/** A pose `alpha` (0…1) of the way from `a` to `b` ({ x, y, z, facing }), turning the short way round. Pure. */
+export function between(a, b, alpha) {
+  const mix = (p, q) => p + (q - p) * alpha;
+  const turn = ((((b.facing - a.facing) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+  return { x: mix(a.x, b.x), y: mix(a.y, b.y), z: mix(a.z, b.z), facing: a.facing + turn * alpha };
+}
 export const TIME_LIMIT = 180; // seconds; then the side with more HP left (by share) wins
 
 const SPEED = 3.2; // units a second (the field is about 12 across)

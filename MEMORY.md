@@ -91,10 +91,10 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **PokéBattles** (`js/battle/`): `engine` and `realtime` are pure. Real-time has dodge jumps, air dashes, cast
   cues and Fire rushes. `scene`, `world`, `stadiums`, `weatherFx`, `arenas` and `surface` render the game.
   `server/battle.js` serves card rules. `server/models3d.js` caches GLBs under `data/models3d`.
-  Models are Nintendo IP (fan project): never commit them.
+  Models may be committed (owner, 2026-11-26); built-in trainers: `public/assets/trainers`.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
-  owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids and the climbable basalt ledge); `look.js`; Battle hands off via `pokedex.battleKeep`.
-- `battle/perf.js`: dynamic res. (screen's refresh rate), crash-safe start; drops `postfx.js` first. High/Std: `hdScenery.js` (Poly Haven CC0), `realisticMaterial`. Trainers: Ash/Iris/May built in (`public/assets/trainers`, CC-BY, owner's choice), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+  owner's `sanctuaryUI.js`; `habitats.js` (props, signs, solids, basalt ledge); `look.js`; Battle hands off via `pokedex.battleKeep`.
+- `battle/perf.js`: dynamic res. (refresh rate, slow to raise), crash-safe start; drops `postfx.js` first. Models `warmUp` before showing. High/Std: `hdScenery.js`, `realisticMaterial`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,

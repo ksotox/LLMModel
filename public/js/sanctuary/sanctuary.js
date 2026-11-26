@@ -104,7 +104,7 @@ export async function renderSanctuary(root) {
 }
 
 function start3d(root, cards, world3d) {
-  const [THREE, worldKit, { createModelLoader, loadModel, pickClips }, stadiumKit, surfaceKit] = world3d;
+  const [THREE, worldKit, { createModelLoader, loadModel, pickClips, warmUp }, stadiumKit, surfaceKit] = world3d;
   const { buildWorld, preferredQuality, saveQuality, terrainHeight, LAKE } = worldKit;
 
   // ---- the page ----
@@ -188,7 +188,7 @@ function start3d(root, cards, world3d) {
   const blockedFor = (x, z, mode) => (mode === 'swim' ? !inWater(x, z) : mode === 'fly' ? outside(x, z) : inWater(x, z) || solidAt(plan, x, z, 0.1) || outside(x, z));
   const models = createModelLoader();
   // A trainer model of the owner's own (uploaded in the chooser), animated on its skeleton.
-  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: world.quality !== 'basic' }).catch(() => null);
+  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: world.quality !== 'basic', prepare: (o) => warmUp(renderer, o, camera, scene) }).catch(() => null);
   wearModel(savedTrainerModel());
   const textures = new THREE.TextureLoader();
   const cardGeo = new THREE.PlaneGeometry(0.72, 1.0);
@@ -230,20 +230,26 @@ function start3d(root, cards, world3d) {
       }
       const model = alive ? await loadModel(models.loader, form?.url, c.plan.heightM, { realistic: world.quality !== 'basic', types: entry.battle?.types ?? [], measure: c.plan.measure }) : null;
       if (model && alive) {
+        // Brought to life and made ready to draw before it appears, each step in its own task, so a
+        // Pokémon arriving never stalls the frames (creature/life.js, modelLoader.js warmUp).
+        // Its own animations when it has a walk (idle when standing, walk when moving, a happy one when
+        // petted); otherwise it moves in code, the way its body plan says. Either way its eyes blink and
+        // its flames burn.
+        const clips = pickClips(model.clips);
+        await new Promise((r) => setTimeout(r, 0));
+        const anim = bringToLife(model, c.plan, { dexId: species?.dexId ?? null, quality: world.quality, animate: !clips.walk });
+        await warmUp(renderer, model.object, camera, scene);
+        if (!alive) return;
         c.group.remove(c.stand);
         c.group.add(model.object);
         c.model = model;
         if (c.plan.mode === 'swim') c.sink = model.height * 0.65; // a swimmer shows its back and head above the water
-        // Its own animations when it has a walk (idle when standing, walk when moving, a happy one when
-        // petted); otherwise it moves in code, the way its body plan says. Either way its eyes blink and
-        // its flames burn (creature/life.js).
-        const clips = pickClips(model.clips);
         if (clips.walk) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.actions = Object.fromEntries(Object.entries(clips).filter(([, clip]) => clip).map(([k, clip]) => [k, c.mixer.clipAction(clip)]));
           c.playing = null;
         }
-        c.anim = bringToLife(model, c.plan, { dexId: species?.dexId ?? null, quality: world.quality, animate: !clips.walk });
+        c.anim = anim;
         loaded++;
       }
     } catch { /* it stays a card */ } finally {
@@ -530,10 +536,13 @@ function start3d(root, cards, world3d) {
         v.set(c.rx, c.ry + (c.model?.height ?? 1) + 0.45, c.rz).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
           alpha = Math.min(1, (PLATE_RANGE - d) / 5);
-          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          const at = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          if (at !== c.plateAt) { c.plate.style.transform = at; c.plateAt = at; }
         }
       }
-      c.plate.style.opacity = String(alpha);
+      // Styles written only when they change (each write costs the page a style pass).
+      const shown = Math.round(alpha * 50) / 50;
+      if (shown !== c.plateAlpha) { c.plate.style.opacity = String(shown); c.plateAlpha = shown; }
     }
     near = nearest(creatures, player);
     // The grass bends aside around the trainer and the creatures walking nearest.
