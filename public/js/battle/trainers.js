@@ -27,13 +27,13 @@ export function trainerSpot(me, rival, { back = 1.1, aside = 1.0 } = {}) {
  * colours. `scale`: the battle's scale (body.js battleScale). Returns { avatar, ready (a promise),
  * update(dt, t), cheer(), slump(), dispose() }.
  */
-export function battleTrainer(THREE, { model = null, preset = null, scale = 1, loader, loadModel, pickClips, realistic = false } = {}) {
+export function battleTrainer(THREE, { model = null, preset = null, scale = 1, loader, loadModel, pickClips, realistic = false, prepare = null } = {}) {
   const trainer = buildTrainer(THREE);
   if (preset) trainer.dress(preset);
   // A trainer is a person: drawn on the same compressed scale as the Pokémon (body.js displayHeight).
   const height = displayHeight(1.75, BATTLE_SIZES) * scale;
   trainer.avatar.scale.setScalar(height / 1.75);
-  const ready = model?.url ? trainer.load(model.url, { loader, loadModel, pickClips, realistic }).catch(() => null) : Promise.resolve(null);
+  const ready = model?.url ? trainer.load(model.url, { loader, loadModel, pickClips, realistic, prepare }).catch(() => null) : Promise.resolve(null);
   let cheering = 0;
   let slumped = false;
   let lean = 0;

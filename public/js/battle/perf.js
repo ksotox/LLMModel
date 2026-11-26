@@ -53,10 +53,11 @@ export function createPerf(renderer, top, effects = null) {
   let wait = 2000; // let the page settle first (and learn the screen's refresh rate meanwhile)
   const settling = [];
   let targets = null;
+  let roomy = 0; // seconds in a row with room for more pixels
   return {
     get targets() { return targets; },
     /** A new graphics level: let it settle (shaders compile in its first frames) before judging it. */
-    settle(ms = 2000) { sum = 0; n = 0; wait = ms; },
+    settle(ms = 2000) { sum = 0; n = 0; wait = ms; roomy = 0; },
     frame(dtMs) {
       if (dtMs > 250) return; // a hidden tab or a pause: not a measure
       sum += dtMs;
@@ -75,8 +76,14 @@ export function createPerf(renderer, top, effects = null) {
       wait = 1000;
       const now = renderer.getPixelRatio();
       const { ratio: next, drop } = perfStep(average, now, top(), Boolean(effects?.on), targets);
+      // Each change resizes the drawing buffers (a hitch of its own), so more pixels come back only
+      // after 3 easy seconds in a row: the resolution doesn't see-saw from second to second.
+      roomy = next > now + 0.01 ? roomy + 1 : 0;
       if (drop) effects.drop();
-      else if (Math.abs(next - now) > 0.01) renderer.setPixelRatio(next);
+      else if (next < now - 0.01 || (next > now + 0.01 && roomy >= 3)) {
+        renderer.setPixelRatio(next);
+        roomy = 0;
+      }
     },
   };
 }

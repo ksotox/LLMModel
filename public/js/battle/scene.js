@@ -11,7 +11,7 @@
 // engine's events one after another.
 
 import * as THREE from 'three';
-import { breathing, createModelLoader, loadModel, pickClips } from './modelLoader.js';
+import { breathing, createModelLoader, loadModel, pickClips, warmUp } from './modelLoader.js';
 import { createMoveFx } from './moveFx.js';
 import { bringToLife } from '../creature/life.js';
 import { battleTrainer, trainerSpot } from './trainers.js';
@@ -507,6 +507,7 @@ export class BattleStage {
     // Alive: its gait (unless it has a walk of its own), blinking eyes and burning flames (creature/life.js).
     const anim = model ? bringToLife(model, info.plan, { dexId: info.dexId ?? null, quality: this.world.quality, animate: Boolean(info.plan) && !pickClips(model.clips).walk }) : null;
     const breath = model && !mixer && !anim?.anim ? breathing(model.object) : null; // a skeleton without clips still breathes
+    if (model) await warmUp(this.renderer, model.object, this.camera, this.scene); // ready to draw before the battle starts
     const fly = info.plan ? battleBody(info.plan, real ? scale : 1.05 / info.plan.heightM) : null;
     const ball = this.#pokeBall(this.mode === 'showcase' ? 0.15 : 0.13);
     ball.group.position.copy(pos).add(new THREE.Vector3(CARD_W * 0.22, 0, CARD_H * 0.3));
@@ -774,7 +775,7 @@ export class BattleStage {
     for (const tr of this.trainers ?? []) tr?.dispose();
     this.trainers = sides.map((side, slot) => {
       if (!side) return null;
-      const tr = battleTrainer(THREE, { ...side, scale: this.sizeScale ?? 1, loader: this.loader, loadModel, pickClips, realistic: this.world.quality !== 'basic' });
+      const tr = battleTrainer(THREE, { ...side, scale: this.sizeScale ?? 1, loader: this.loader, loadModel, pickClips, realistic: this.world.quality !== 'basic', prepare: (o) => warmUp(this.renderer, o, this.camera, this.scene) });
       // Yours stands to the left of your Pokémon, a little behind (the camera is behind your side); the
       // rival's stands behind theirs, a step aside.
       const at = trainerSpot(this.position(slot), this.position(1 - slot), slot === 0 ? { back: 0.35, aside: -1.5 } : { back: 1.2, aside: 0.7 });
@@ -848,7 +849,7 @@ export class BattleStage {
   }
 
   /** The chase camera: behind fighter `me`, looking past it at `foe` (smoothed). */
-  follow(me, foe) {
+  follow(me, foe, dt = 1 / 60) {
     if (!this.camBase) return;
     const dx = foe.x - me.x;
     const dz = foe.z - me.z;
@@ -858,7 +859,7 @@ export class BattleStage {
     const back = 5.4 + Math.min(2.5, d * 0.3);
     const goalBase = new THREE.Vector3(me.x - fx * back - fz * 1.6, 3.1 + Math.min(1.4, d * 0.1), me.z - fz * back + fx * 1.6);
     const goalLook = new THREE.Vector3(me.x + fx * Math.min(d, 4) * 0.55, 1.0, me.z + fz * Math.min(d, 4) * 0.55);
-    const k = this.calm ? 1 : 0.12;
+    const k = this.calm ? 1 : 1 - Math.exp(-dt * 7.7); // 0.12 a frame at 60 Hz, the same glide at 144
     this.camBase.lerp(goalBase, k);
     this.camLook.lerp(goalLook, k);
   }

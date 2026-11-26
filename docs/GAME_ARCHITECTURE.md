@@ -133,7 +133,7 @@ flowchart LR
 - **No model** (offline, or not in the list): the fighter appears as its card on the platform.
 - **Realistic look** (High/Standard): `loadModel(…, { realistic, types })` swaps each material for `realisticMaterial` (physical, surface by `surfaceKind`, relief normal map from the colour texture, rim light). Tune the surfaces in `SURFACE` in `modelLoader.js`.
 - **Animations** are found by clip name: regexes in `modelLoader.js`. For a model whose clips don't animate, widen those regexes.
-- **Rights:** models are Nintendo IP from a fan project. They are downloaded for personal use and are never committed.
+- **Models in the repo:** the owner allows committing models (2026-11-26). The trainers that come with the app (Ash, Iris, May) are in `public/assets/trainers/`; Pokémon models are still downloaded on demand into `data/models3d/` (a cache).
 - **3D Pop-out** (`popoutRender.js`) reuses `loadModel` to draw one picture per model into `data/popout/`.
 
 ## The Sanctuary (meadow)
@@ -147,7 +147,7 @@ flowchart LR
 | `sanctuary/look.js` | Mouse and stick look, with two-stage smoothing; `ease(dt, rate) = 1 - exp(-dt·rate)` (frame-rate independent) |
 | `sanctuary/trainer.js` | The trainer: the built-in figure (`buildTrainer`), or an uploaded .glb (`load(url)`), animated by its clips or by `rigDriver` (bones turned about the character's own axes) |
 | `sanctuary/rig.js` | Pure: `findRig` (bones by name), `trainerState(player)`, `gait(state, phase)` angles. New pose: add a case to `gait` |
-| `server/trainers.js` | `/api/trainers`: upload, list, serve, delete a person's own .glb trainer models (data/trainers, never committed) |
+| `server/trainers.js` | `/api/trainers`: upload, list, serve, delete a person's own .glb trainer models (uploads in data/trainers; the built-in Ash, Iris and May in public/assets/trainers) |
 | `sanctuary/sanctuaryUI.js` | The owner's module: the radial wheel (Follow / Pet / Card / Battle), the trainer chooser (`pokedex.trainer`) and the stamina ring |
 
 ### Movement model (shared idea for land and water)

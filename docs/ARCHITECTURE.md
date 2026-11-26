@@ -119,7 +119,7 @@ sequenceDiagram
 | --- | --- |
 | Cards, copies, packs, users, price history, grading reports | SQLite file in `data/` |
 | Your photos and official card images | `data/uploads/` and nearby folders |
-| Downloaded 3D models and pop-out pictures | `data/models3d/`, `data/popout/` (never committed: Nintendo IP) |
+| Downloaded 3D models and pop-out pictures | `data/models3d/`, `data/popout/` (a download cache, like the rest of `data/`) |
 | Settings such as graphics level, trainer and sound | The browser's local storage |
 | Backups (cloud server) | A nightly copy next to the app folder |
 

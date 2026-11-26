@@ -70,7 +70,7 @@ export async function renderReef(root) {
   }
 }
 
-function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { createModelLoader, loadModel, pickClips }, { preferredQuality, saveQuality }]) {
+function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { createModelLoader, loadModel, pickClips, warmUp }, { preferredQuality, saveQuality }]) {
   const el = h('div.sanc.reef');
   const plates = h('div.sanc-plates');
   const prompt = h('button.sanc-prompt', { type: 'button', hidden: true });
@@ -131,7 +131,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
 
   // The residents, at the reef's open-water spots; cards until their 3D models load.
   const models = createModelLoader();
-  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: level !== 'basic' }).catch(() => null);
+  const wearModel = (id) => trainer.load(id ? `/api/trainers/${id}.glb` : null, { loader: models.loader, loadModel, pickClips, realistic: level !== 'basic', prepare: (o) => warmUp(renderer, o, camera, scene) }).catch(() => null);
   wearModel(savedTrainerModel());
   const textures = new THREE.TextureLoader();
   const cardGeo = new THREE.PlaneGeometry(0.72, 1.0);
@@ -165,17 +165,22 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
       if (species) c.plan = bodyPlan(species, { fallbackHeight: 1 }); // its size, compressed to fit
       const model = alive ? await loadModel(models.loader, form?.url, c.plan.heightM, { realistic: level !== 'basic', types: ['Water'], measure: c.plan.measure }) : null;
       if (model && alive) {
+        // Underwater, everyone swims; eyes still blink (a fire Pokémon's flames don't live down here).
+        // Made ready to draw before it appears, so its arrival doesn't stall the frames.
+        const clips = pickClips(model.clips);
+        await new Promise((r) => setTimeout(r, 0));
+        const anim = bringToLife(model, { ...c.plan, mode: 'swim' }, { dexId: species?.dexId ?? null, quality: level, animate: !clips.walk });
+        await warmUp(renderer, model.object, camera, scene);
+        if (!alive) return;
         c.group.remove(c.stand);
         c.group.add(model.object);
         c.model = model;
-        const clips = pickClips(model.clips);
         if (clips.walk) {
           c.mixer = new THREE.AnimationMixer(model.object.children[0]);
           c.action = c.mixer.clipAction(clips.walk);
           c.action.play();
         }
-        // Underwater, everyone swims; eyes still blink (a fire Pokémon's flames don't live down here).
-        c.anim = bringToLife(model, { ...c.plan, mode: 'swim' }, { dexId: species?.dexId ?? null, quality: level, animate: !clips.walk });
+        c.anim = anim;
       }
     } catch { /* it stays a card */ } finally {
       loading--;

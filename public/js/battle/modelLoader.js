@@ -65,6 +65,37 @@ export async function loadModel(loader, url, height, { shadows = true, realistic
   }
 }
 
+/** The textures an object's materials use (each once). Pure. */
+export function texturesOf(object) {
+  const found = new Set();
+  object.traverse((o) => {
+    for (const m of [].concat(o.material ?? [])) {
+      for (const value of Object.values(m)) if (value?.isTexture) found.add(value);
+    }
+  });
+  return [...found];
+}
+
+const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Get a model ready to draw before it joins the scene, so its first frame doesn't stall the game: its
+ * textures go to the graphics card one at a time (a frame can be drawn in between) and its shaders
+ * compile in the background (three.js compileAsync, using the browser's parallel shader compiling).
+ * Call it after bringToLife (which changes materials) and before adding `object` to `scene`.
+ */
+export async function warmUp(renderer, object, camera, scene) {
+  if (!renderer?.initTexture) return;
+  try {
+    for (const texture of texturesOf(object)) {
+      renderer.initTexture(texture);
+      await nextTask();
+    }
+    if (renderer.compileAsync) await renderer.compileAsync(object, camera, scene);
+    else renderer.compile(object, camera, scene);
+  } catch { /* it compiles when first drawn instead */ }
+}
+
 /**
  * A model's idle, walk and "extra" (a happy or attack move) animations, picked by their names;
  * any can be null. With one clip only, it is the idle.

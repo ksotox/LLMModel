@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { aiIntent, ARENA_RULES, createRealtime, dodgeJumpReady, hitAmount, idle, moveSpecs, STEP, step, TIME_LIMIT } from '../public/js/battle/realtime.js';
+import { aiIntent, ARENA_RULES, between, createRealtime, dodgeJumpReady, hitAmount, idle, moveSpecs, STEP, step, TIME_LIMIT } from '../public/js/battle/realtime.js';
 
 const atk = (name, base, cost = 1, mod = null, effect = '') => ({ name, cost: Array(cost).fill('Colorless'), damage: { base, mod }, effect });
 const voltorb = { name: 'Voltorb', battle: { hp: 70, types: ['Lightning'], attacks: [atk('Rollout', 10, 1), atk('Lightning Ball', 30, 2)], weaknesses: [{ type: 'Fighting', mult: 2 }] } };
@@ -16,6 +16,18 @@ const run = (s, intents, seconds) => {
 const both = (s) => [aiIntent(s, 0), aiIntent(s, 1)];
 
 describe('real-time PokéBattles', () => {
+  test('frames are drawn between the 60 Hz steps (smooth on 120/144 Hz screens)', () => {
+    const a = { x: 0, y: 0, z: 0, facing: 3.0 };
+    const b = { x: 1, y: 0.5, z: -2, facing: -3.0 };
+    assert.deepEqual(between(a, b, 0), { x: 0, y: 0, z: 0, facing: 3.0 });
+    const mid = between(a, b, 0.5);
+    assert.equal(mid.x, 0.5);
+    assert.equal(mid.z, -1);
+    assert.ok(Math.abs(mid.facing - (3.0 + (Math.PI * 2 - 6) / 2)) < 1e-9, 'turns the short way round');
+    const end = between(a, b, 1);
+    assert.ok(Math.abs(Math.cos(end.facing) - Math.cos(-3.0)) < 1e-9 && Math.abs(Math.sin(end.facing) - Math.sin(-3.0)) < 1e-9);
+  });
+
   test('moves come from the card: attacks (ranged by type), then the ability, then a free quick strike', () => {
     const v = moveSpecs(voltorb.battle);
     assert.deepEqual(v.map((m) => [m.name, m.kind]), [['Rollout', 'projectile'], ['Lightning Ball', 'projectile'], ['Quick Strike', 'melee']]);
