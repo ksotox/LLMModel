@@ -383,8 +383,13 @@ export function buildHabitats(scene, plan, kit) {
       }
       case 'sign': {
         const sign = new THREE.Group();
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.6, 6), bark);
-        post.position.y = 0.8;
+        // Two posts at the board's ends (one in the middle would run through the name).
+        const postGeo = new THREE.CylinderGeometry(0.055, 0.065, 1.72, 6);
+        const posts = [-0.66, 0.66].map((x) => {
+          const post = new THREE.Mesh(postGeo, bark);
+          post.position.set(x, 0.86, 0);
+          return post;
+        });
         const tex = keep(kit.canvasTexture(512, 192, (g, w, h) => {
           // A board of planks (on its side), the name carved and painted in.
           g.save();
@@ -403,7 +408,7 @@ export function buildHabitats(scene, plan, kit) {
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.56, 0.06), [bark, bark, bark, bark, std({ map: tex }), std({ map: tex })]);
         board.position.y = 1.45;
-        sign.add(post, board);
+        sign.add(...posts, board);
         sign.position.copy(at(p));
         sign.rotation.y = p.turn;
         sign.userData.sign = p.name;

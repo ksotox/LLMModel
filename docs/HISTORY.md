@@ -856,6 +856,7 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   starts) and trainers (`trainer.load({ prepare })`).
 - Real-time battles draw between their 60 Hz steps (`realtime.js` `between`), like the Sanctuary, and the chase
   camera glides by time, not by frame: smooth and the same at 60, 120 or 144 Hz.
+- Habitat signs stand on two posts at the board's ends; the single middle post ran through the name.
 - `perf.js` raises the resolution only after 3 easy seconds in a row (each change resizes the buffers), and the
   Sanctuary's nameplates write their styles only when they change.
 
