@@ -18,7 +18,7 @@ import { createAmbience } from '../ambience.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { trainerState } from './rig.js';
 import { buildTrainer } from './trainer.js';
-import { createPlayer, PARA, stepPlayer } from './player.js';
+import { createPlayer, PARA, stepFlyer, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
 import { bodyPlan, sizedSpecies } from '../creature/body.js';
 import { bringToLife } from '../creature/life.js';
@@ -225,6 +225,7 @@ function start3d(root, cards, world3d) {
     c.plate = h('div.sanc-plate', spot.card.name);
     c.plate.style.opacity = '0';
     plates.append(c.plate);
+    c.rideable = () => Boolean(c.model) && c.plan.mode === 'fly'; // a flying Pokémon, its model loaded
     return c;
   });
   let loading = 0;
@@ -313,6 +314,7 @@ function start3d(root, cards, world3d) {
       else if (action === 'pet') hearts(c);
       else if (action === 'inspect') showCard(c);
       else if (action === 'battle') toBattle(c.card);
+      else if (action === 'ride') startRide(c);
     },
   });
   const paused = () => ui.isOpen() || !cardModal.hidden;
@@ -357,7 +359,44 @@ function start3d(root, cards, world3d) {
       Object.assign(player, { x, z, y: terrainHeight(x, z), mode: 'walk' });
     }
   };
+  // Riding a flying Pokémon (the wheel's Ride): it grows to carry the trainer (mount.k: its ride size)
+  // and flies where you steer it (player.js stepFlyer); E gets off, into the paraglider when high up.
+  let mount = null;
+  const RIDE_HEIGHT = 2.4; // a mount is at least this tall while ridden
+  const startRide = (c) => {
+    if (!c?.model || c.plan.mode !== 'fly' || mount || paused()) return;
+    mount = { c, grow: 0, k: Math.max(1, RIDE_HEIGHT / (c.model.height || 1)) };
+    Object.assign(c, { ridden: true, state: 'ridden', shrink: false, dropLift: 0 });
+    c.plate.style.opacity = '0';
+    c.plateAlpha = 0;
+    const y = terrainHeight(c.x, c.z);
+    Object.assign(player, { x: c.x, y, z: c.z, facing: c.facing, mode: 'ride', air: false, throttle: 0, bank: 0, vx: 0, vy: 0, vz: 0, moving: 0, mantle: null });
+    prevP.x = player.x; prevP.y = player.y; prevP.z = player.z; prevP.facing = player.facing;
+    toast(`Riding ${c.card.name} · Space to take off`);
+  };
+  const endRide = () => {
+    if (!mount) return;
+    const { c } = mount;
+    const groundY = terrainHeight(player.x, player.z);
+    const high = player.air && player.y - groundY > PARA.drop;
+    // It goes back to its own life (shrinking back, and drifting down if let go up high).
+    Object.assign(c, { ridden: false, state: 'idle', timer: 1.5, x: player.x, z: player.z, facing: player.facing, shrink: true, dropLift: player.air ? Math.max(0, player.y - groundY) : 0 });
+    c.group.rotation.set(0, c.group.rotation.y, 0);
+    mount = null;
+    if (!player.air) {
+      // Step off beside it.
+      const x = player.x + Math.cos(player.facing) * 1.4 * (c.plan.radius + 0.6);
+      const z = player.z - Math.sin(player.facing) * 1.4 * (c.plan.radius + 0.6);
+      Object.assign(player, { x, z, y: terrainHeight(x, z), mode: 'walk', vx: 0, vy: 0, vz: 0, bank: 0 });
+    } else if (high) {
+      Object.assign(player, { mode: 'paraglide', vy: 0, bank: 0 });
+    } else {
+      Object.assign(player, { mode: 'fall', vy: 0, bank: 0 });
+    }
+  };
+  const seatAtMount = new THREE.Vector3();
   const interact = () => {
+    if (mount) { endRide(); return; }
     if (player.mode === 'lift') { if (liftHigh()) jumpPressed = true; return; }
     if (atLift && !near && !paused()) { startLift(atLift); return; }
     if (atDive && !near && !paused()) { location.hash = '#/sanctuary/reef'; return; }
@@ -402,6 +441,7 @@ function start3d(root, cards, world3d) {
   const travel = (i) => {
     const to = stops[i];
     if (!to || paused()) return;
+    if (mount) endRide();
     stop = i;
     Object.assign(player, { x: to.x, z: to.z, y: terrainHeight(to.x, to.z), vx: 0, vz: 0, vy: 0, mode: 'walk', mantle: null, coyote: 0, buffer: 0, bank: 0 });
     ride = null;
@@ -426,16 +466,18 @@ function start3d(root, cards, world3d) {
   prompt.addEventListener('click', interact);
   let sprintToggle = false;
   let jumpHeldTouch = false;
+  let diveTouch = false; // riding a flying Pokémon: the Dive button
   if (touch) {
     el.append(joystick((x, y) => { stick.x = x; stick.y = y; }),
       h('div.sanc-touch',
         h('button.btn', { type: 'button', onpointerdown: (e) => { e.preventDefault(); jumpPressed = true; jumpHeldTouch = true; }, onpointerup: () => { jumpHeldTouch = false; }, onpointercancel: () => { jumpHeldTouch = false; } }, 'Jump'),
+        h('button.btn.touch-dive', { type: 'button', onpointerdown: (e) => { e.preventDefault(); diveTouch = true; }, onpointerup: () => { diveTouch = false; }, onpointercancel: () => { diveTouch = false; } }, 'Dive'),
         h('button.btn', { type: 'button', onclick: (e) => { sprintToggle = !sprintToggle; e.currentTarget.classList.toggle('primary', sprintToggle); } }, 'Sprint')));
   }
 
   // ---- gamepad: left stick walk, right stick look, A jump (hold: glide), B or RT sprint, X meet,
   // Start trainer; on the wheel the D-pad picks (up Follow, right Pet, down Card, left Battle), B closes.
-  const pad = { memory: {}, x: 0, y: 0, jumpHeld: false, sprint: false };
+  const pad = { memory: {}, x: 0, y: 0, jumpHeld: false, sprint: false, down: false };
   const wheelOrder = { 12: 'follow', 15: 'pet', 13: 'inspect', 14: 'battle' };
   const readPad = (dt) => {
     const g = readGamepad(0, pad.memory);
@@ -456,6 +498,7 @@ function start3d(root, cards, world3d) {
     pad.x = g.lx;
     pad.y = -g.ly;
     pad.jumpHeld = g.held.has(0);
+    pad.down = g.held.has(6); // LT: dive (riding)
     pad.sprint = g.held.has(1) || g.held.has(7);
   };
 
@@ -515,7 +558,15 @@ function start3d(root, cards, world3d) {
       const fx = -Math.sin(yaw);
       const fz = -Math.cos(yaw);
       if (player.mode === 'lift' && ride) stepLift(STEP, jumpPressed && !paused());
-      else {
+      else if (player.mode === 'ride' && mount) {
+        stepFlyer(player, {
+          steer: { f: Math.max(-1, Math.min(1, f)), r: Math.max(-1, Math.min(1, r)) },
+          jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
+          down: !paused() && (is('ControlLeft', 'ControlRight', 'KeyC') || diveTouch || pad.down),
+          sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
+        }, STEP, ground);
+        Object.assign(mount.c, { x: player.x, y: player.y, z: player.z, facing: player.facing });
+      } else {
         stepPlayer(player, {
           x: fx * f - fz * r, z: fz * f + fx * r,
           sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
@@ -524,7 +575,7 @@ function start3d(root, cards, world3d) {
         }, STEP, ground);
       }
       jumpPressed = false;
-      for (const c of creatures) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: blockedFor, waterLevel: LAKE.level });
+      for (const c of creatures) if (!c.ridden) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: blockedFor, waterLevel: LAKE.level });
     }
 
     // Drawn between the last two steps (the simulation runs 60 times a second, the screen may run at
@@ -559,19 +610,40 @@ function start3d(root, cards, world3d) {
     wing.group.rotation.y = P.facing;
     wing.update(dt, { open: player.mode === 'paraglide', bank: player.bank ?? 0, t, speed: player.moving });
     lift.update(t, ride ? { s: ride.ps + (ride.s - ride.ps) * alpha, up: ride.up } : null);
+    // Riding: the Pokémon (grown to carry you) where you are, pitching with the climb and rolling into
+    // turns; the trainer astride its back.
+    let rideTop = 0;
+    avatar.rotation.order = mount ? 'YXZ' : 'XYZ';
+    if (mount) {
+      const { c } = mount;
+      mount.grow = approach(mount.grow, 1, dt, 2.5, 2.5);
+      const k = 1 + (mount.k - 1) * mount.grow;
+      const pitch = player.air ? -Math.atan2(player.vy, Math.max(2, player.moving)) * 0.7 : 0;
+      const roll = player.air ? (player.bank ?? 0) * 0.5 : 0;
+      c.group.scale.setScalar(k);
+      c.group.rotation.order = 'YXZ';
+      c.group.rotation.set(pitch, P.facing, roll);
+      c.group.position.set(P.x, P.y, P.z);
+      c.group.updateMatrixWorld(true);
+      const hgt = c.model.height || 1;
+      seatAtMount.set(0, hgt * 0.62, -hgt * 0.04).applyMatrix4(c.group.matrixWorld);
+      avatar.position.set(seatAtMount.x, seatAtMount.y - SEAT_HIPS, seatAtMount.z);
+      avatar.rotation.set(pitch, P.facing, roll);
+      rideTop = seatAtMount.y - P.y;
+    }
     // High up, the haze thins so the view opens out.
     if (scene.fog) scene.fog.density = fogBase * (1 - 0.6 * Math.min(1, Math.max(0, (P.y - 8) / 40)));
     world.followSun(P.x, P.y, P.z); // the sharp shadows stay round the trainer
 
     // The camera orbits behind the trainer, and stays above the ground. In the air (the lift, the
     // paraglider) it pulls back further and swings round behind the way you're going, unless you look round.
-    const flying = player.mode === 'paraglide' || player.mode === 'lift';
+    const flying = player.mode === 'paraglide' || player.mode === 'lift' || (player.mode === 'ride' && player.air);
     airZoom = approach(airZoom, flying ? 1 : 0, dt, 1.5, 1.5);
     if (flying && Math.abs(look.pending[0]) + Math.abs(look.stage[0]) < 0.002) {
       const behind = P.facing + Math.PI;
       look.yaw += ((((behind - look.yaw) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * ease(dt, 1.1);
     }
-    const reachOut = distance * (1 + airZoom * 0.8);
+    const reachOut = distance * (1 + airZoom * 0.8) + rideTop * 1.3;
     const cp = Math.cos(pitch);
     const ox = Math.sin(look.yaw) * cp * reachOut;
     const oy = Math.sin(pitch) * reachOut;
@@ -583,12 +655,12 @@ function start3d(root, cards, world3d) {
       if (solidAt(plan, P.x + ox * k, P.z + oz * k, 0.2)) { want = Math.max(0.25, k - 0.12); break; }
     }
     boom = approach(boom, want, dt, 20, 3);
-    v.set(P.x + ox * boom, P.y + 1.5 + oy * boom, P.z + oz * boom);
+    v.set(P.x + ox * boom, P.y + 1.5 + rideTop + oy * boom, P.z + oz * boom);
     // Kept above the ground and the lake, by an eased lift (no hop over each bump).
     camLift = approach(camLift, Math.max(0, ground.heightAt(v.x, v.z) + 0.4 - v.y, LAKE.level + 0.3 - v.y), dt, 3, 20);
     v.y += camLift;
     camera.position.lerp(v, ease(dt, 14)); // the same glide at any frame rate
-    camera.lookAt(P.x, P.y + 1.4, P.z);
+    camera.lookAt(P.x, P.y + 1.4 + rideTop, P.z);
 
     // The creatures, their models (the nearest few) and their nameplates.
     const W = el.clientWidth;
@@ -600,8 +672,26 @@ function start3d(root, cards, world3d) {
       const happy = c.petted ? Math.abs(Math.sin(c.petted * 10)) * Math.min(0.35, 0.1 + c.plan.heightM * 0.2) : 0;
       // A card (before its model loads) hops along; a model stands where the creature is: on the ground,
       // in the air, or at the lake's surface, and its animator moves its body and limbs.
+      if (c.ridden) {
+        // (Placed with the trainer above.) Its wings work with the flight: hard climbing or hovering, wide
+        // fast beats; diving or going fast, wings held out to glide.
+        const effort = player.air ? Math.max(0.05, Math.min(1.5, 1 + player.vy * 0.09 - Math.max(0, player.moving - 9) * 0.07 + Math.max(0, 4 - player.moving) * 0.1)) : null;
+        c.anim?.update(dt, { speed: player.moving / (mount?.k ?? 1), air: Boolean(player.air), effort });
+        if (c.mixer) {
+          const want = (player.air || player.moving > 0.3 ? c.actions.walk : c.actions.idle) ?? c.actions.idle ?? c.actions.walk;
+          if (want && want !== c.playing) { want.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.25).play(); c.playing?.fadeOut(0.25); c.playing = want; }
+          c.mixer.update(dt);
+        }
+        continue;
+      }
+      if (c.shrink) {
+        const s = approach(c.group.scale.x, 1, dt, 2, 2);
+        c.group.scale.setScalar(Math.abs(s - 1) < 0.005 ? 1 : s);
+        if (c.group.scale.x === 1) c.shrink = false;
+      }
+      if (c.dropLift > 0.01) c.dropLift *= Math.exp(-dt * 0.6); else c.dropLift = 0;
       const stand = c.model ? 0 : Math.sin(c.hop) * 0.22;
-      c.group.position.set(c.rx, c.ry + stand + happy, c.rz);
+      c.group.position.set(c.rx, c.ry + stand + happy + (c.dropLift ?? 0), c.rz);
       c.group.rotation.y = c.model ? c.rf : Math.atan2(camera.position.x - c.rx, camera.position.z - c.rz); // a card faces you
       if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed, air: c.air });
       if (c.mixer && d < 30) {
@@ -629,7 +719,8 @@ function start3d(root, cards, world3d) {
       const shown = Math.round(alpha * 50) / 50;
       if (shown !== c.plateAlpha) { c.plate.style.opacity = String(shown); c.plateAlpha = shown; }
     }
-    near = player.mode === 'lift' || player.mode === 'paraglide' ? null : nearest(creatures, player);
+    near = player.mode === 'lift' || player.mode === 'paraglide' || mount ? null : nearest(creatures, player);
+    if (near?.ridden) near = null;
     atLift = null;
     if (player.mode === 'walk' && !near) {
       if (Math.hypot(player.x - liftStops.up.x, player.z - liftStops.up.z) < 3.5) atLift = 'up';
@@ -660,14 +751,15 @@ function start3d(root, cards, world3d) {
     pushers.push(Object.assign(pusherPool[0], { x: player.x, z: player.z, radius: 0.7, strength: player.mode === 'walk' ? 1 : 0 }));
     for (const c of creatures) {
       if (pushers.length >= 6) break;
-      if (c.plan.mode === 'swim' || c.air || Math.hypot(c.x - player.x, c.z - player.z) > 20) continue;
+      if (c.ridden || c.plan.mode === 'swim' || c.air || Math.hypot(c.x - player.x, c.z - player.z) > 20) continue;
       pushers.push(Object.assign(pusherPool[pushers.length], { x: c.x, z: c.z, radius: Math.max(0.5, c.plan.radius * 1.6), strength: 1 }));
     }
     world.setGrassPushers?.(pushers);
     atDive = player.mode === 'swim' && Math.hypot(player.x - LAKE.x, player.z - LAKE.z) < LAKE.r * 0.6;
     // The page is touched only when something on it changes (each change costs a style pass).
     const key = touch ? 'Tap' : 'E';
-    const say = near ? `${key} · ${near.card.name}`
+    const say = mount ? (player.air && player.y - terrainHeight(player.x, player.z) > PARA.drop ? `${key} · Jump off and paraglide 🪂` : `${key} · Get off ${mount.c.card.name}`)
+      : near ? `${key} · ${near.card.name}`
       : atLift === 'up' ? `${key} · Ride the ski lift up ⛰` : atLift === 'down' ? `${key} · Ride the ski lift down`
         : player.mode === 'lift' && liftHigh() ? `${touch ? 'Tap' : 'Space'} · Jump off and paraglide 🪂`
           : atDive ? `${key} · Dive to the Reef 🌊` : null;
@@ -711,5 +803,5 @@ function start3d(root, cards, world3d) {
   };
   window.addEventListener('hashchange', leave);
   // For the walkthrough test: where things are.
-  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects, lift: { line: lift.line, stops: liftStops, start: startLift, get ride() { return ride; } } };
+  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects, lift: { line: lift.line, stops: liftStops, start: startLift, get ride() { return ride; } }, riding: { start: startRide, end: endRide, get mount() { return mount; } } };
 }

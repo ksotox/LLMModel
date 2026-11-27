@@ -46,7 +46,8 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
     onclick: () => { const c = active; closeRadial(); if (c) onRadialAction(action, c); },
   }, label);
   const follow = button('pos-top', 'follow', 'Follow');
-  const radial = h('div.radial-menu', { role: 'menu', hidden: true }, title, follow, button('pos-right', 'pet', 'Pet'), button('pos-bottom', 'inspect', 'Card'), button('pos-left', 'battle', 'Battle'));
+  const ride = button('pos-ride', 'ride', '🪽 Ride'); // flying Pokémon only
+  const radial = h('div.radial-menu', { role: 'menu', hidden: true }, title, follow, button('pos-right', 'pet', 'Pet'), button('pos-bottom', 'inspect', 'Card'), button('pos-left', 'battle', 'Battle'), ride);
 
   const fill = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -133,6 +134,7 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
       active = creature;
       title.textContent = creature.card.name;
       follow.textContent = creature.state === 'follow' ? 'Stay' : 'Follow';
+      ride.hidden = !creature.rideable?.();
       radial.hidden = false;
       follow.focus();
     },

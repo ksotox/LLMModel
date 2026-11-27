@@ -144,6 +144,7 @@ flowchart LR
 | `sanctuary/player.js` | `MOVE` constants; `stepPlayer`: walk, sprint, jump with coyote time and a jump buffer, glider, stamina, slope limit, solid slide, wading and swimming at the lake; `PARA`, `stepParaglide`: the paraglider (300 m in the air) |
 | `sanctuary/skiLift.js` | The ski lift (world.js `LIFT`: base at the plaza's east edge, top on the highest summit east; flat pads in `terrainHeight`): `liftLine` (towers so chairs clear the ground), `seatAt`/`chairAt`, `buildSkiLift` (stations, towers, rope, instanced chairs). The Sanctuary's `lift` player mode rides a seat |
 | `sanctuary/paraglider.js` | The paraglider's canopy (cells, lines), inflating, banking and breathing |
+| Riding (`sanctuary.js` `startRide`/`endRide`, `player.js` `FLY`/`stepFlyer`) | The wheel's Ride on a flying Pokémon (`c.rideable`): it grows to 2.4 m (`mount.k`), leaves the wander simulation (`c.ridden`), and flies where steered (throttle, bank, climb, dive, clearance, landing); its animator gets `effort` (`body.js` `creaturePose`: wing beat size, `animate.js`: beat rate); the trainer sits astride (`rig.js` `ride`) |
 | `sanctuary/zoo.js` | `HABITATS` (8: id, types, centre, radius), `habitatFor(card)`, `layoutHabitats`, `stepCreature` (wander, follow, idle, look at the trainer) |
 | `sanctuary/habitats.js` | `planHabitats` (pure: where props go), `solidAt` (collision), `buildHabitats` (three.js props and signs) |
 | `sanctuary/look.js` | Mouse and stick look, with two-stage smoothing; `ease(dt, rate) = 1 - exp(-dt·rate)` (frame-rate independent) |

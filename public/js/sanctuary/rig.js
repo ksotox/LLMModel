@@ -61,6 +61,7 @@ export function trainerState(p, prev = null) {
   if (p.mode === 'glide') return 'glide';
   if (p.mode === 'lift') return 'sit';
   if (p.mode === 'paraglide') return 'paraglide';
+  if (p.mode === 'ride') return 'ride';
   if (p.mode === 'fall') return p.vy > 0.5 ? 'jump' : 'fall';
   const speed = p.moving ?? 0;
   if (speed > 5.5 || (prev === 'run' && speed > 4.4)) return 'run';
@@ -119,6 +120,15 @@ export function gait(state, phase, speed = 1, t = 0, bank = 0) {
         lean: -0.1, thighL: 1.2, thighR: 1.2, kneeL: 1.0, kneeR: 1.0,
         armOutL: 2.2 - Math.max(0, -pull) * 0.7, armOutR: 2.2 - Math.max(0, pull) * 0.7,
         armL: 0.3, armR: 0.3, forearmL: 0.5, forearmR: 0.5, head: 0.05,
+      });
+      break;
+    }
+    case 'ride': { // astride a flying Pokémon: knees gripping, leaning forward, into the turns
+      const into = Math.max(-1, Math.min(1, bank));
+      Object.assign(pose, {
+        lean: 0.35 + Math.abs(into) * 0.1, thighL: 1.15, thighR: 1.15, kneeL: 1.5, kneeR: 1.5,
+        armL: 0.95 - into * 0.15, armR: 0.95 + into * 0.15, armOutL: 0.25, armOutR: 0.25, forearmL: 0.7, forearmR: 0.7,
+        head: -0.15,
       });
       break;
     }

@@ -905,6 +905,19 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   for the owner (`POKEDEX_TAILSCALE=0` skips it). Behind the tunnel, `TRUST_PROXY=loopback` gives the
   visitor's real address. USER_GUIDE: "Your own website (anyone can sign up)".
 
+## Phase 55: Riding flying Pokémon
+- The owner asked to ride flying Pokémon round the map and up and down the mountain, fully animated.
+- The creature wheel shows **🪽 Ride** on flyers (`plan.mode === 'fly'`, model loaded). The Pokémon grows smoothly to
+  carry the trainer (at least 2.4 m tall, the owner's choice), shrinks back afterwards, and leaves the wander
+  simulation while ridden (`c.ridden`).
+- `player.js` `FLY` / `stepFlyer` (pure, tested): a throttle (W/S, hovering when slow), A/D bank, Space climbs, Ctrl
+  or C dives, Shift boosts; it skims over the land and the lake, lands when slow near the ground (then walks), takes
+  off again, a 140 m ceiling and 300 m of air. E gets off; up high, into the paraglider.
+- Animated: the mount pitches with the climb and rolls into turns; `creaturePose` / `animate.js` take an `effort`
+  (wide fast wing beats climbing or hovering, wings held out to glide when diving or fast); its blinking and flames
+  carry on. The trainer sits astride (`rig.js` `ride`, leaning into turns), clip-animated models too.
+- Touch: a Dive button while riding; gamepad A climbs, LT dives, RT boosts.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
