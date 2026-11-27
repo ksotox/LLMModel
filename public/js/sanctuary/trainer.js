@@ -42,6 +42,7 @@ export function buildTrainer(THREE) {
   // ---- a model of the owner's own (uploaded in the trainer picker; server/trainers.js) ----
   let model = null; // { object, mixer, actions, driver }
   let phase = 0;
+  let stride = 2.2; // the stride's rate, eased (no jump in the legs' rhythm when walk turns to run)
   let playing = null;
   const unload = () => {
     if (!model) return;
@@ -90,7 +91,9 @@ export function buildTrainer(THREE) {
    */
   const play = (state, speed, dt, t) => {
     if (!model) return false;
-    phase += dt * (state === 'run' ? 9 : state === 'swim' ? 3 : 2.2 + speed * 1.2);
+    const rate = state === 'run' ? 9 : state === 'swim' ? 3 : 2.2 + speed * 1.2;
+    stride += (rate - stride) * (1 - Math.exp(-dt * 6));
+    phase += dt * stride;
     if (model.mixer) {
       const moving = ['walk', 'run', 'swim'].includes(state);
       const named = model.actions[state];

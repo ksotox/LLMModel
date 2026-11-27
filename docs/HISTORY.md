@@ -860,6 +860,22 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - `perf.js` raises the resolution only after 3 easy seconds in a row (each change resizes the buffers), and the
   Sanctuary's nameplates write their styles only when they change.
 
+## Phase 52: Smooth running, turning and swimming
+- The owner saw the Sanctuary jitter when running and turning, and the Reef too.
+- Turning while sprinting re-aims the velocity, so the speed dipped under the run threshold and the trainer's
+  animation flipped between run and walk every few frames: `rig.js` `trainerState(p, prev)` now has a margin
+  (run 5.5 → 4.4 m/s), and the stride's rhythm eases. The simple figure's stride was `sin(t × (6 + speed))`, so
+  any speed change jumped its legs: it now adds up a phase.
+- The camera's pull-in past trees and rocks and its lift over the ground are eased (`look.js` `approach`: in
+  fast, out slowly) instead of jumping; the Reef's camera the same between floor and surface.
+- The Reef now draws between its 60 Hz steps (swimmer, creatures, camera), as the meadow does.
+- Shadows follow the trainer in whole texels (`world.js` `snapToTexel`, `followSun`): no shimmer.
+- Models load in the background from the start, nearest first, one at a time in idle time, and never start
+  while sprinting or gliding. `warmUp` no longer uses three.js `compileAsync`, which can throw inside its timer
+  (a material without a program) and then never finish, leaving that model as a card for good.
+- The loops no longer make garbage or touch the page every frame (pushers, prompt, stamina ring, battle camera).
+- F3 (or `?fps`) shows frame times: fps, the slowest frame and the long frames (`battle/frameMeter.js`).
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

@@ -8,9 +8,10 @@
 import { clear, h } from '../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
+import { createFrameMeter } from '../battle/frameMeter.js';
 import { createEffects } from '../battle/postfx.js';
 import { createAmbience } from '../ambience.js';
-import { addLook, createLook, ease, stepLook } from './look.js';
+import { addLook, approach, createLook, ease, stepLook } from './look.js';
 import { createSwimmer, stepSwimmer } from './player.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { buildTrainer } from './trainer.js';
@@ -105,6 +106,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   quality.value = level;
   quality.addEventListener('change', () => { setLevel(quality.value); saveQuality(level); perf.settle(); resize(); });
   const perf = createPerf(renderer, pixelTop, effects);
+  const meter = createFrameMeter(el); // F3: frame times
   const loadTimer = setTimeout(clearLoad, 12000);
   const resize = () => {
     const w = Math.max(1, el.clientWidth);
@@ -293,7 +295,14 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   const STEP = 1 / 60;
   const v = new THREE.Vector3();
   const blocked = (x, y, z) => blockedBy(reef.layout.obstacles, x, y, z, 0.6);
+  // Drawn between the last two 60 Hz steps (like the meadow): smooth at any refresh rate.
+  const prevS = { x: swimmer.x, y: swimmer.y, z: swimmer.z, facing: swimmer.facing };
+  const S = { x: swimmer.x, y: swimmer.y, z: swimmer.z, facing: swimmer.facing };
+  const turnMix = (a, b, k) => a + ((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * k;
+  let lift = 0; // the camera's eased push up off the reef floor (or down from the surface)
+  let shownPrompt = null;
   renderer.setAnimationLoop((now) => {
+    meter.frame(now - last);
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const t = now / 1000;
@@ -303,6 +312,8 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     acc += dt;
     while (acc >= STEP) {
       acc -= STEP;
+      prevS.x = swimmer.x; prevS.y = swimmer.y; prevS.z = swimmer.z; prevS.facing = swimmer.facing;
+      for (const c of creatures) { c.px = c.x; c.py = c.y; c.pz = c.z; c.pf = c.facing; c.ph = c.hop; }
       const is = (...codes) => codes.some((c) => keys.has(c));
       const f = paused() ? 0 : (is('KeyW', 'ArrowUp') ? 1 : 0) - (is('KeyS', 'ArrowDown') ? 1 : 0) + stick.y + pad.y;
       const r = paused() ? 0 : (is('KeyD', 'ArrowRight') ? 1 : 0) - (is('KeyA', 'ArrowLeft') ? 1 : 0) + stick.x + pad.x;
@@ -316,48 +327,64 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     surfaced = swimmer.atSurface && swimmer.vy >= 0 && (keys.has('Space') || keys.has('KeyE') || stick.up > 0 || pad.up > 0) ? surfaced + dt : 0;
     if (surfaced > 0.6) { toMeadow(); return; }
 
-    avatar.position.set(swimmer.x, swimmer.y - 1, swimmer.z);
-    avatar.rotation.set(1.1, swimmer.facing, 0, 'YXZ'); // lying forward, swimming
+    const alpha = acc / STEP;
+    S.x = prevS.x + (swimmer.x - prevS.x) * alpha;
+    S.y = prevS.y + (swimmer.y - prevS.y) * alpha;
+    S.z = prevS.z + (swimmer.z - prevS.z) * alpha;
+    S.facing = turnMix(prevS.facing, swimmer.facing, alpha);
+    avatar.position.set(S.x, S.y - 1, S.z);
+    avatar.rotation.set(1.1, S.facing, 0, 'YXZ'); // lying forward, swimming
     const kick = Math.sin(t * (4 + swimmer.moving * 1.5)) * Math.min(1, 0.3 + swimmer.moving / 4);
     legs[0].rotation.x = kick * 0.6;
     legs[1].rotation.x = -kick * 0.6;
     arms[0].rotation.x = -2.6 + Math.sin(t * 2.2) * 0.5;
     arms[1].rotation.x = -2.6 - Math.sin(t * 2.2) * 0.5;
     trainer.play('swim', swimmer.moving, dt, t); // the owner's model, if one is chosen
-    reef.sun.position.set(swimmer.x + 8, 30, swimmer.z - 6);
-    reef.sun.target.position.set(swimmer.x, 0, swimmer.z);
+    reef.sun.position.set(S.x + 8, 30, S.z - 6);
+    reef.sun.target.position.set(S.x, 0, S.z);
 
     const cp = Math.cos(look.pitch);
-    v.set(swimmer.x + Math.sin(look.yaw) * cp * distance, swimmer.y + 0.6 + Math.sin(look.pitch) * distance, swimmer.z + Math.cos(look.yaw) * cp * distance);
-    v.y = Math.min(REEF.top - 0.3, Math.max(v.y, reef.heightAt(v.x, v.z) + 0.6));
+    v.set(S.x + Math.sin(look.yaw) * cp * distance, S.y + 0.6 + Math.sin(look.pitch) * distance, S.z + Math.cos(look.yaw) * cp * distance);
+    // Kept between the floor and the surface by an eased push (no hop over each coral head).
+    const push = Math.max(0, reef.heightAt(v.x, v.z) + 0.6 - v.y) + Math.min(0, REEF.top - 0.3 - v.y);
+    lift = approach(lift, push, dt, push < 0 ? 20 : 3, push > 0 ? 20 : 3);
+    v.y += lift;
     camera.position.lerp(v, ease(dt, 12));
-    camera.lookAt(swimmer.x, swimmer.y + 0.4, swimmer.z);
+    camera.lookAt(S.x, S.y + 0.4, S.z);
 
     const W = el.clientWidth;
     const H = el.clientHeight;
     for (const c of creatures) {
-      const d = Math.max(0, Math.hypot(c.x - swimmer.x, c.y - swimmer.y, c.z - swimmer.z) - c.plan.radius);
+      const rx = (c.px ?? c.x) + (c.x - (c.px ?? c.x)) * alpha;
+      const ry = (c.py ?? c.y) + (c.y - (c.py ?? c.y)) * alpha;
+      const rz = (c.pz ?? c.z) + (c.z - (c.pz ?? c.z)) * alpha;
+      const hop = Math.abs(c.hop - (c.ph ?? c.hop)) < 1 ? (c.ph ?? c.hop) + (c.hop - (c.ph ?? c.hop)) * alpha : c.hop; // (it wraps at π)
+      const d = Math.max(0, Math.hypot(rx - S.x, ry - S.y, rz - S.z) - c.plan.radius);
       if (c.petted > 0) c.petted = Math.max(0, c.petted - dt);
-      c.group.position.set(c.x, c.y + Math.sin(c.hop) * 0.12 + (c.petted ? Math.sin(c.petted * 12) * 0.25 : 0), c.z);
-      c.group.rotation.y = c.model ? c.facing : Math.atan2(camera.position.x - c.x, camera.position.z - c.z);
+      c.group.position.set(rx, ry + Math.sin(hop) * 0.12 + (c.petted ? Math.sin(c.petted * 12) * 0.25 : 0), rz);
+      c.group.rotation.y = c.model ? turnMix(c.pf ?? c.facing, c.facing, alpha) : Math.atan2(camera.position.x - rx, camera.position.z - rz);
       if (c.petted && c.model) c.group.rotation.y += c.petted * 8; // a happy spin
       if (!c.asked && d < 30 && loading < 2) wantModel(c);
       if (c.mixer && d < 30) c.mixer.update(dt);
       if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed });
-      let alpha = 0;
+      let shown = 0;
       if (d < 14) {
-        v.set(c.x, c.y + (c.model?.height ?? 1) + 0.3, c.z).project(camera);
+        v.set(rx, ry + (c.model?.height ?? 1) + 0.3, rz).project(camera);
         if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
-          alpha = Math.min(1, (14 - d) / 5);
-          c.plate.style.transform = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          shown = Math.min(1, (14 - d) / 5);
+          const at = `translate(${Math.round((v.x * 0.5 + 0.5) * W - (c.plateW ??= c.plate.offsetWidth) / 2)}px, ${Math.round((-v.y * 0.5 + 0.5) * H - 24)}px)`;
+          if (at !== c.plateAt) { c.plate.style.transform = at; c.plateAt = at; }
         }
       }
-      c.plate.style.opacity = String(alpha);
+      shown = Math.round(shown * 50) / 50;
+      if (shown !== c.plateAlpha) { c.plate.style.opacity = String(shown); c.plateAlpha = shown; }
     }
     near = nearest(creatures, swimmer, 3.4);
     if (near && Math.abs(near.y - swimmer.y) > 3) near = null;
-    prompt.hidden = !near || paused();
-    if (near) prompt.textContent = `${touch ? 'Tap' : 'F'} · ${near.card.name}`;
+    const hidePrompt = !near || paused();
+    if (prompt.hidden !== hidePrompt) prompt.hidden = hidePrompt;
+    const say = near ? `${touch ? 'Tap' : 'F'} · ${near.card.name}` : null;
+    if (say && say !== shownPrompt) { prompt.textContent = say; shownPrompt = say; }
     ui.updateStamina(swimmer.stamina, swimmer.exhausted);
     ambience.update({ speed: swimmer.moving, depth: 1 - swimmer.y / REEF.top });
     reef.update(t, camera, swimmer);
@@ -383,6 +410,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     reef.dispose();
     models.dispose();
     scene.traverse((o) => { o.geometry?.dispose?.(); for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); } });
+    meter.dispose();
     renderer.dispose();
   };
   window.addEventListener('hashchange', leave);

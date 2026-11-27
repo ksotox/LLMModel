@@ -91,8 +91,18 @@ export async function warmUp(renderer, object, camera, scene) {
       renderer.initTexture(texture);
       await nextTask();
     }
-    if (renderer.compileAsync) await renderer.compileAsync(object, camera, scene);
-    else renderer.compile(object, camera, scene);
+    // Shaders: three.js's compile() starts them (with the browser's parallel compiling it doesn't wait
+    // for them); then wait until each reports ready. (Not compileAsync: it throws inside its timer when a
+    // material has no program, and then never finishes.) At most 3 s: past that it is drawn anyway.
+    const materials = renderer.compile(object, camera, scene);
+    const until = performance.now() + 3000;
+    while (materials?.size && performance.now() < until) {
+      for (const m of materials) {
+        const program = renderer.properties?.get(m)?.currentProgram;
+        if (!program || program.isReady?.() !== false) materials.delete(m);
+      }
+      if (materials.size) await new Promise((resolve) => setTimeout(resolve, 16));
+    }
   } catch { /* it compiles when first drawn instead */ }
 }
 

@@ -32,3 +32,12 @@ export function stepLook(look, dt, rate = 30) {
   look.pitch = Math.min(look.max, Math.max(look.min, look.pitch + dpitch));
   return look;
 }
+
+/**
+ * Move `current` towards `target` by time: quickly when the target is below the current value
+ * (`down` per second) and slowly when it is above (`up` per second). The camera's boom uses it to
+ * come in at once when something stands in the way and to go back out gently: never in one jump.
+ */
+export function approach(current, target, dt, down = 20, up = 4) {
+  return current + (target - current) * ease(dt, target < current ? down : up);
+}

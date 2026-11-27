@@ -9,8 +9,9 @@
 import { clear, h } from './../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
 import { addTraversalLedge, buildHabitats, planHabitats, solidAt } from './habitats.js';
-import { addLook, createLook, ease, stepLook } from './look.js';
+import { addLook, approach, createLook, ease, stepLook } from './look.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
+import { createFrameMeter } from '../battle/frameMeter.js';
 import { createAmbience } from '../ambience.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { trainerState } from './rig.js';
@@ -138,6 +139,7 @@ function start3d(root, cards, world3d) {
     || (document.documentElement.dataset.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   const world = buildWorld({ scene, renderer, camera, dark, mode: 'sanctuary', quality: markLoad(preferredQuality(renderer)) });
   const perf = createPerf(renderer, () => world.pixelTop, world.effects);
+  const meter = createFrameMeter(el); // F3: frame times
   const loadTimer = setTimeout(clearLoad, 12000);
   quality.value = world.quality;
   quality.addEventListener('change', () => { world.setQuality(quality.value); saveQuality(world.quality); perf.settle(); resize(); });
@@ -214,6 +216,7 @@ function start3d(root, cards, world3d) {
   });
   let loading = 0;
   let loaded = 0;
+  let queued = false; // a background load is waiting for idle time
   const wantModel = async (c) => {
     c.asked = true;
     loading++;
@@ -431,7 +434,16 @@ function start3d(root, cards, world3d) {
   const STEP = 1 / 60;
   const v = new THREE.Vector3();
   const prevP = { x: player.x, y: player.y, z: player.z, facing: player.facing };
+  let trainerAnim = 'idle';
+  const P = { x: player.x, y: player.y, z: player.z, facing: player.facing }; // the trainer as drawn (between steps)
+  let boom = 1; // how far out the camera is (0…1 of its distance): in at once when something is in the way, out gently
+  let lift = 0; // how far the camera is raised to stay above the ground, eased the same way
+  let figurePhase = 0;
+  const pushers = [];
+  const pusherPool = Array.from({ length: 6 }, () => ({}));
+  let shownPrompt = null;
   renderer.setAnimationLoop((now) => {
+    meter.frame(now - last);
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const t = now / 1000;
@@ -467,7 +479,7 @@ function start3d(root, cards, world3d) {
     const alpha = acc / STEP;
     const mix = (a, b) => a + (b - a) * alpha;
     const turnMix = (a, b) => a + ((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * alpha;
-    const P = { x: mix(prevP.x, player.x), y: mix(prevP.y, player.y), z: mix(prevP.z, player.z), facing: turnMix(prevP.facing, player.facing) };
+    P.x = mix(prevP.x, player.x); P.y = mix(prevP.y, player.y); P.z = mix(prevP.z, player.z); P.facing = turnMix(prevP.facing, player.facing);
     for (const c of creatures) {
       c.rx = mix(c.px ?? c.x, c.x); c.ry = mix(c.py ?? c.y, c.y); c.rz = mix(c.pz ?? c.z, c.z); c.rf = turnMix(c.pf ?? c.facing, c.facing);
     }
@@ -475,32 +487,35 @@ function start3d(root, cards, world3d) {
     // The trainer: stride, arms, glider.
     avatar.position.set(P.x, P.y, P.z);
     avatar.rotation.y = P.facing;
-    const stride = player.mode === 'walk' ? Math.sin(t * (6 + player.moving)) * Math.min(1, player.moving / 4) : 0;
+    figurePhase += dt * (6 + player.moving); // (a phase that adds up: a speed change never jumps the legs)
+    const stride = player.mode === 'walk' ? Math.sin(figurePhase) * Math.min(1, player.moving / 4) : 0;
     legs[0].rotation.x = stride * 0.7;
     legs[1].rotation.x = -stride * 0.7;
     const reach = player.mode === 'mantle' ? -1.8 : player.mode === 'glide' ? Math.PI : null;
     arms[0].rotation.x = reach ?? -stride * 0.6;
     arms[1].rotation.x = reach ?? stride * 0.6;
     glider.visible = player.mode === 'glide';
-    trainer.play(trainerState(player), player.moving, dt, t); // the owner's model, if one is chosen
+    trainerAnim = trainerState(player, trainerAnim);
+    trainer.play(trainerAnim, player.moving, dt, t); // the owner's model, if one is chosen
     avatar.rotation.x = player.mode === 'glide' || player.mode === 'mantle' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
-    world.sun.target.position.set(P.x, P.y, P.z); // the sharp shadows stay round the trainer
-    world.sun.position.copy(world.sun.target.position).addScaledVector(sunDir, 30);
+    world.followSun(P.x, P.y, P.z); // the sharp shadows stay round the trainer
 
     // The camera orbits behind the trainer, and stays above the ground.
     const cp = Math.cos(pitch);
-    v.set(P.x + Math.sin(yaw) * cp * distance, P.y + 1.5 + Math.sin(pitch) * distance, P.z + Math.cos(yaw) * cp * distance);
-    // Pulled in when a tree, rock or ruin stands between the trainer and the camera.
-    for (let k = 0.2; k <= 1; k += 0.1) {
-      const cx = P.x + (v.x - P.x) * k;
-      const cz = P.z + (v.z - P.z) * k;
-      if (solidAt(plan, cx, cz, 0.2)) {
-        const back = Math.max(0.25, k - 0.12);
-        v.set(P.x + (v.x - P.x) * back, P.y + 1.5 + (v.y - P.y - 1.5) * back, P.z + (v.z - P.z) * back);
-        break;
-      }
+    const ox = Math.sin(yaw) * cp * distance;
+    const oy = Math.sin(pitch) * distance;
+    const oz = Math.cos(yaw) * cp * distance;
+    // Pulled in when a tree, rock or ruin stands between the trainer and the camera: the boom comes in
+    // fast and goes back out slowly, so passing trees never make the view jump in and out.
+    let want = 1;
+    for (let k = 0.2; k <= 1; k += 0.05) {
+      if (solidAt(plan, P.x + ox * k, P.z + oz * k, 0.2)) { want = Math.max(0.25, k - 0.12); break; }
     }
-    v.y = Math.max(v.y, ground.heightAt(v.x, v.z) + 0.4, LAKE.level + 0.3);
+    boom = approach(boom, want, dt, 20, 3);
+    v.set(P.x + ox * boom, P.y + 1.5 + oy * boom, P.z + oz * boom);
+    // Kept above the ground and the lake, by an eased lift (no hop over each bump).
+    lift = approach(lift, Math.max(0, ground.heightAt(v.x, v.z) + 0.4 - v.y, LAKE.level + 0.3 - v.y), dt, 3, 20);
+    v.y += lift;
     camera.position.lerp(v, ease(dt, 14)); // the same glide at any frame rate
     camera.lookAt(P.x, P.y + 1.4, P.z);
 
@@ -530,7 +545,6 @@ function start3d(root, cards, world3d) {
         }
         c.mixer.update(dt);
       }
-      if (!c.asked && d < MODEL_RANGE + c.plan.heightM * 2 && loading < 2 && loaded + loading < MAX_MODELS) wantModel(c);
       let alpha = 0;
       if (d < PLATE_RANGE) {
         v.set(c.rx, c.ry + (c.model?.height ?? 1) + 0.45, c.rz).project(camera);
@@ -545,27 +559,50 @@ function start3d(root, cards, world3d) {
       if (shown !== c.plateAlpha) { c.plate.style.opacity = String(shown); c.plateAlpha = shown; }
     }
     near = nearest(creatures, player);
+    // Models load in the background from the start, nearest first and one at a time, in the browser's
+    // idle time, so they're ready before you get there; none starts while you sprint or fly (a model's
+    // setup still takes the page a moment).
+    if (!loading && !queued && loaded < MAX_MODELS && !(player.moving > 6 || player.mode === 'glide')) {
+      let pick = null;
+      let best = Infinity;
+      for (const c of creatures) {
+        if (c.asked) continue;
+        const d = Math.hypot(c.x - player.x, c.z - player.z) - c.plan.heightM * 2;
+        if (d < best) { best = d; pick = c; }
+      }
+      if (pick) {
+        queued = true;
+        const start = () => { queued = false; if (alive && !pick.asked) wantModel(pick); };
+        if (best < MODEL_RANGE) start(); // close by: now
+        else if (window.requestIdleCallback) requestIdleCallback(start, { timeout: 2000 });
+        else setTimeout(start, 200);
+      }
+    }
     // The grass bends aside around the trainer and the creatures walking nearest.
-    const pushers = [{ x: player.x, z: player.z, radius: 0.7, strength: player.mode === 'walk' ? 1 : 0 }];
+    // (The same few objects every frame: no garbage for the collector to pause the game over.)
+    pushers.length = 0;
+    pushers.push(Object.assign(pusherPool[0], { x: player.x, z: player.z, radius: 0.7, strength: player.mode === 'walk' ? 1 : 0 }));
     for (const c of creatures) {
       if (pushers.length >= 6) break;
       if (c.plan.mode === 'swim' || c.air || Math.hypot(c.x - player.x, c.z - player.z) > 20) continue;
-      pushers.push({ x: c.x, z: c.z, radius: Math.max(0.5, c.plan.radius * 1.6), strength: 1 });
+      pushers.push(Object.assign(pusherPool[pushers.length], { x: c.x, z: c.z, radius: Math.max(0.5, c.plan.radius * 1.6), strength: 1 }));
     }
     world.setGrassPushers?.(pushers);
     atDive = player.mode === 'swim' && Math.hypot(player.x - LAKE.x, player.z - LAKE.z) < LAKE.r * 0.6;
-    prompt.hidden = (!near && !atDive) || paused();
-    if (near) prompt.textContent = `${touch ? 'Tap' : 'E'} · ${near.card.name}`;
-    else if (atDive) prompt.textContent = `${touch ? 'Tap' : 'E'} · Dive to the Reef 🌊`;
+    // The page is touched only when something on it changes (each change costs a style pass).
+    const hidePrompt = (!near && !atDive) || paused();
+    if (prompt.hidden !== hidePrompt) prompt.hidden = hidePrompt;
+    const say = near ? `${touch ? 'Tap' : 'E'} · ${near.card.name}` : atDive ? `${touch ? 'Tap' : 'E'} · Dive to the Reef 🌊` : null;
+    if (say && say !== shownPrompt) { prompt.textContent = say; shownPrompt = say; }
     ambience.update({ nearWater: Math.max(0, 1 - Math.max(0, Math.hypot(player.x - LAKE.x, player.z - LAKE.z) - LAKE.r) / 14) });
     ui.updateStamina(player.stamina, player.exhausted);
-    el.dataset.mode = player.mode;
-    el.dataset.near = near?.card.name ?? '';
+    if (el.dataset.mode !== player.mode) el.dataset.mode = player.mode;
+    const nearName = near?.card.name ?? '';
+    if (el.dataset.near !== nearName) el.dataset.near = nearName;
     habitats.update(t);
     world.update(t);
     world.render();
   });
-  const sunDir = world.sun.position.clone().normalize();
 
   leave = () => {
     if (!alive) return;
@@ -589,6 +626,7 @@ function start3d(root, cards, world3d) {
       o.geometry?.dispose?.();
       for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); }
     });
+    meter.dispose();
     renderer.dispose();
   };
   window.addEventListener('hashchange', leave);
