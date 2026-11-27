@@ -130,7 +130,7 @@ export function battleScale(heights, { maxHeight = 2.4 } = {}) {
  * `wing` is the beat now; `wingAmp` its size, so the animator can lag it down the wing (the tip
  * follows the shoulder); `wingFold` 0–1 tucks the wings in (a flyer resting on the ground).
  */
-export function creaturePose(plan, phase, { move = 0, t = 0, air = false } = {}) {
+export function creaturePose(plan, phase, { move = 0, t = 0, air = false, effort = null } = {}) {
   const s = Math.sin(phase);
   const c = Math.cos(phase);
   const breathe = Math.sin(t * 1.8) * 0.012;
@@ -170,7 +170,8 @@ export function creaturePose(plan, phase, { move = 0, t = 0, air = false } = {})
       break;
     case 'fly':
       if (air) {
-        const amp = 0.75 + m * 0.2;
+        // `effort` (ridden: 0 gliding with the wings held out … 1 cruising … 1.5 climbing hard).
+        const amp = (0.75 + m * 0.2) * (effort == null ? 1 : Math.max(0.1, Math.min(1.3, effort)));
         Object.assign(p, {
           wing: s * amp, wingAmp: amp, lift: -s * 0.04, pitch: m * 0.3, roll: Math.sin(t * 0.7) * 0.06,
           thighL: -0.5, thighR: -0.5, kneeL: 0.8, kneeR: 0.8, tail: Math.sin(phase * 0.5) * 0.15,

@@ -146,12 +146,14 @@ export function createAnimator(object, plan) {
     hasBones,
     wings: wings.length,
     gesture(seconds = 0.55) { gestureT = seconds; },
-    update(dt, { speed = 0, air = false, posing = true } = {}) {
+    update(dt, { speed = 0, air = false, posing = true, effort = null } = {}) {
       t += dt;
       gestureT = Math.max(0, gestureT - dt);
-      phase = (phase + dt * gaitRate(plan, speed) * Math.PI * 2) % (Math.PI * 200);
+      // (A ridden flyer's effort quickens or slows its wing beat as well as widening it.)
+      const beat = effort == null ? 1 : 0.45 + Math.max(0, Math.min(1.5, effort)) * 0.55;
+      phase = (phase + dt * gaitRate(plan, speed) * beat * Math.PI * 2) % (Math.PI * 200);
       const move = Math.min(1, speed / Math.max(0.1, plan.runSpeed));
-      const p = creaturePose(plan, phase, { move, t, air });
+      const p = creaturePose(plan, phase, { move, t, air, effort });
       if (gestureT > 0) {
         // An attack: both arms thrown forward and back again.
         const k = Math.sin((1 - gestureT / 0.55) * Math.PI);

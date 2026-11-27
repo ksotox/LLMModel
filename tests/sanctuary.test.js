@@ -88,6 +88,37 @@ describe('Sanctuary: the trainer’s movement', () => {
     assert.ok(Math.hypot(p.x, p.z) <= r0 + 1e-6, 'not further out on foot');
   });
 
+  test('riding a flying Pokémon: take off, bank, climb, keep clear of the land, land and walk', async () => {
+    const { FLY, stepFlyer } = await import('../public/js/sanctuary/player.js');
+    const hills = { heightAt: (x) => (x > 40 ? 20 : 0), waterAt: () => null, radius: 78 };
+    const p = { ...createPlayer({ x: 0, z: 0 }), mode: 'ride', air: false, throttle: 0, bank: 0 };
+    stepFlyer(p, { steer: { f: 1, r: 0 } }, 1 / 60, hills);
+    assert.equal(p.air, false, 'on the ground W walks it');
+    for (let i = 0; i < 30; i++) stepFlyer(p, { steer: { f: 0, r: 0 }, jumpHeld: true }, 1 / 60, hills);
+    assert.equal(p.air, true, 'Space takes off');
+    for (let i = 0; i < 120; i++) stepFlyer(p, { steer: { f: 0, r: 0 }, jumpHeld: true }, 1 / 60, hills);
+    assert.ok(p.y > 6 && p.vy > FLY.climb * 0.8, `Space climbs (${p.y.toFixed(1)} m)`);
+    const heading = p.facing;
+    for (let i = 0; i < 120; i++) stepFlyer(p, { steer: { f: 1, r: 1 } }, 1 / 60, hills);
+    assert.ok(p.facing < heading - 0.8, 'D banks it round to the right');
+    assert.ok(p.throttle > 0.9 && p.moving > FLY.cruise, 'W opens the throttle');
+    // Diving at the hills: it skims over them instead of going in.
+    Object.assign(p, { x: 30, z: 0, facing: Math.PI / 2, vx: FLY.fast, vz: 0 });
+    for (let i = 0; i < 300; i++) {
+      stepFlyer(p, { steer: { f: 0, r: 0 }, down: true }, 1 / 60, hills);
+      assert.ok(p.y >= hills.heightAt(p.x) + FLY.clearance - 1e-9, 'never into the ground');
+    }
+    assert.ok(p.air, 'fast, it stays up');
+    // Slowing right down near the ground: it lands, then walks.
+    for (let i = 0; i < 600 && p.air; i++) stepFlyer(p, { steer: { f: -1, r: 0 }, down: true }, 1 / 60, hills);
+    assert.equal(p.air, false, 'slow and low: it lands');
+    assert.equal(p.y, hills.heightAt(p.x));
+    // The ceiling and the edge of the air.
+    Object.assign(p, { air: true, y: 139, vy: 10, x: 299, z: 0, facing: Math.PI / 2, throttle: 1 });
+    for (let i = 0; i < 60; i++) stepFlyer(p, { steer: { f: 1, r: 0 }, jumpHeld: true }, 1 / 60, hills);
+    assert.ok(p.y <= FLY.ceiling && Math.hypot(p.x, p.z) <= FLY.airRadius + 1e-9);
+  });
+
   test('the trainer mantles onto the authored slab and stands on its visible top', async () => {
     const { addTraversalLedge } = await import('../public/js/sanctuary/habitats.js');
     const plan = [{ kind: 'slab', x: 0, z: 0, turn: 0, size: 1 }];

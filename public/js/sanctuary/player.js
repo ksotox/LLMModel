@@ -23,6 +23,13 @@ export const MOVE = {
  * flying Pokémon). It flies itself at a steady airspeed and sinks slowly; W speeds up (sinking more),
  * S flares (slower, sinking less), A/D bank it into a turn. No stamina. `airRadius`: how far it goes.
  */
+/**
+ * Riding a flying Pokémon: a throttle (W up, S down to a hover), A/D bank into turns, Space climbs,
+ * Ctrl or C dives, Shift boosts. It keeps clear of the land and the lake, lands when slow near the
+ * ground (then it walks), and takes off again with Space. `ceiling`: metres above the meadow.
+ */
+export const FLY = { slow: 2.5, cruise: 11, fast: 17, boost: 1.35, climb: 6.5, dive: 10, turn: 1.5, clearance: 1.4, ceiling: 140, walk: 3.2, airRadius: 300 };
+
 export const PARA = { drop: 6, speed: 9, fast: 12, slow: 6.2, sink: 1.1, fastSink: 2.1, slowSink: 0.75, turn: 0.95, airRadius: 300 };
 
 export function createPlayer({ x = 0, z = 4 } = {}) {
@@ -211,6 +218,73 @@ export function stepParaglide(p, input, dt, ground) {
     Object.assign(p, { y: water - MOVE.swimDepth, vy: 0, mode: 'swim', bank: 0 });
   } else if (p.y <= here) {
     Object.assign(p, { y: here, vy: 0, mode: 'walk', bank: 0, vx: p.vx * 0.5, vz: p.vz * 0.5 });
+  }
+  p.moving = Math.hypot(p.vx, p.vz);
+  return p;
+}
+
+/**
+ * One step of riding a flying Pokémon (see FLY). `p.air`: flying (true) or walking on the ground;
+ * `p.throttle` 0…1; `p.bank` −1…1. input: { steer { f, r }, jumpHeld (climb), down (dive), sprint
+ * (boost) }. Pure.
+ */
+export function stepFlyer(p, input, dt, ground) {
+  const steer = input.steer ?? { f: 0, r: 0 };
+  const f = Math.max(-1, Math.min(1, steer.f ?? 0));
+  const turn = Math.max(-1, Math.min(1, steer.r ?? 0));
+  p.mode = 'ride';
+  p.throttle = Math.max(0, Math.min(1, (p.throttle ?? 0.5) + f * dt * 0.7));
+  p.bank = (p.bank ?? 0) + (turn * (p.air ? 1 : 0.4) - (p.bank ?? 0)) * clamp01(dt * 3);
+  p.facing -= p.bank * FLY.turn * dt * (p.air ? 1 : 1.6);
+  const floorAt = (x, z) => {
+    const land = ground.heightAt(x, z);
+    const water = ground.waterAt?.(x, z);
+    return water != null ? Math.max(land, water) : land;
+  };
+  if (!p.air && input.jumpHeld) { p.air = true; p.vy = Math.max(p.vy, 4); p.throttle = Math.max(p.throttle, 0.35); }
+  let speed;
+  if (p.air) {
+    speed = FLY.slow + (FLY.fast - FLY.slow) * p.throttle;
+    if (input.sprint) speed *= FLY.boost;
+    const vyWant = (input.jumpHeld ? FLY.climb : 0) - (input.down ? FLY.dive : 0);
+    p.vy += (vyWant - p.vy) * clamp01(dt * 2.5);
+  } else {
+    speed = Math.max(0, f) * FLY.walk; // on the ground it walks (W forward)
+    p.vy = 0;
+  }
+  const k = clamp01(dt * (p.air ? 1.8 : 6));
+  p.vx += (Math.sin(p.facing) * speed - p.vx) * k;
+  p.vz += (Math.cos(p.facing) * speed - p.vz) * k;
+  let nx = p.x + p.vx * dt;
+  let nz = p.z + p.vz * dt;
+  const radius = ground.airRadius ?? FLY.airRadius;
+  if (!p.air) {
+    // On foot (the mount walking): the walking area's edge, as for the trainer.
+    const limit = Math.max(ground.radius ?? radius, Math.hypot(p.x, p.z));
+    const r0 = Math.hypot(nx, nz);
+    if (r0 > limit) { nx *= limit / r0; nz *= limit / r0; }
+    if (ground.solid?.(nx, nz)) { nx = p.x; nz = p.z; p.vx = 0; p.vz = 0; }
+  }
+  const r = Math.hypot(nx, nz);
+  if (r > radius) { nx *= radius / r; nz *= radius / r; }
+  p.x = nx;
+  p.z = nz;
+  const floor = floorAt(p.x, p.z);
+  if (p.air) {
+    p.y += p.vy * dt;
+    p.y = Math.min(p.y, FLY.ceiling);
+    if (p.y < floor + FLY.clearance) {
+      // Down near the ground: slow and not climbing, it lands (not on the lake); otherwise it skims up.
+      const water = ground.waterAt?.(p.x, p.z) != null;
+      if (!water && Math.hypot(p.vx, p.vz) < 4.5 && !input.jumpHeld) {
+        Object.assign(p, { air: false, y: ground.heightAt(p.x, p.z), vy: 0, throttle: 0, bank: 0 });
+      } else {
+        p.y = floor + FLY.clearance;
+        p.vy = Math.max(p.vy, 0);
+      }
+    }
+  } else {
+    p.y = ground.heightAt(p.x, p.z);
   }
   p.moving = Math.hypot(p.vx, p.vz);
   return p;
