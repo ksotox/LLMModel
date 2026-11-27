@@ -20,7 +20,7 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `.previous`, moves `data/`, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
 - **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: updates, nightly
   backups; `HOST=127.0.0.1` + `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop `remoteUrl` opens it;
-  Public: `CLOUDFLARE_TUNNEL_TOKEN`, `ALLOW_SIGNUP`, `SETUP_CODE`.
+  Public: Funnel `POKEDEX_PUBLIC=1` or `CLOUDFLARE_TUNNEL_TOKEN`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
 ## Architecture (where to look)

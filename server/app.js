@@ -11,7 +11,7 @@ import { EbayClient, EbayNotApproved, searchQuery, soldSearchUrl } from './ebay.
 import { PriceTrackerClient } from './priceTracker.js';
 import { PriceTrackerService } from './priceTrackerService.js';
 import { direction, gradeFromTitle, listingMatchesCard, soldStats } from './soldStats.js';
-import { createAuth, hashPassword, checkPassword, publicUser, validateProfile } from './auth.js';
+import { createAuth, hashPassword, checkPassword, publicUser, validateProfile, visitorKey } from './auth.js';
 import { CONDITIONS, openDb, PACK_KINDS, STATUSES, VARIANTS } from './db.js';
 import { identifyCard } from './identify.js';
 import { createGradingRouter, initializeGradingTable, sweepGradingOrphans } from './grading/router.js';
@@ -462,7 +462,9 @@ export function createApp({
     if (!requireLogin || !allowSignup) throw new HttpError(403, 'New accounts are not open here. Ask the owner for a profile.');
     const hour = Date.now() - 60 * 60 * 1000;
     while (signups.length && signups[0].at < hour) signups.shift();
-    if (signups.filter((s) => s.ip === req.ip).length >= 5 || signups.length >= 60) {
+    // (Per visitor when the address is known; always at most 60 an hour in all.)
+    const visitor = visitorKey(req.ip);
+    if ((visitor && signups.filter((s) => s.ip === visitor).length >= 5) || signups.length >= 60) {
       throw new HttpError(429, 'Too many new accounts just now. Try again in an hour.');
     }
     const { username, display_name, password } = req.body ?? {};
@@ -471,7 +473,7 @@ export function createApp({
     if (store.countUsers() === 0) throw new HttpError(409, 'The owner hasn’t set the app up yet.');
     if (store.getUserByName(username.trim())) throw new HttpError(409, 'That username is taken');
     const id = store.createUser({ username: username.trim(), display_name: String(display_name || username).trim(), password_hash: await hashPassword(password) });
-    signups.push({ at: Date.now(), ip: req.ip });
+    signups.push({ at: Date.now(), ip: visitor });
     auth.startSession(res, id);
     res.status(201).json({ user: meJson({ id }) });
   });

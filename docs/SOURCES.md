@@ -76,7 +76,7 @@ The service gets the user's two photos and the card's locally cached official pi
 | --- | --- | --- |
 | Oracle Cloud Always Free (suggested) | [oracle.com/cloud/free](https://www.oracle.com/cloud/free/) | A free always-on Ubuntu machine (any Ubuntu/Debian machine works) |
 | NodeSource | `https://deb.nodesource.com/setup_22.x` | Node.js 22 for Ubuntu/Debian, when it isn't installed yet |
-| Tailscale | `https://tailscale.com/install.sh`, [docs](https://tailscale.com/kb/1312/serve) | Private network between your devices; `tailscale serve` gives the app an HTTPS address with its own certificate; Tailscale SSH lets `cloud-move.ps1` copy the collection without keys |
+| Tailscale | `https://tailscale.com/install.sh`, [docs](https://tailscale.com/kb/1312/serve) | Private network between your devices; `tailscale serve` gives the app an HTTPS address with its own certificate; Tailscale SSH lets `cloud-move.ps1` copy the collection without keys; `tailscale funnel` ([docs](https://tailscale.com/kb/1223/funnel)) makes that address public (`POKEDEX_PUBLIC=1`) |
 | Cloudflare Tunnel (cloudflared) | `https://pkg.cloudflare.com/cloudflared` (apt), [docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) | The owner's own public website: `cloud-setup.sh` with `CLOUDFLARE_TUNNEL_TOKEN` runs `cloudflared service install`; the tunnel's public hostname points at `localhost:3000`, so the server opens no ports and Cloudflare provides HTTPS |
 | GitHub raw files | `https://raw.githubusercontent.com/ksotox/LLMModel/main/...` | The setup scripts and `desktop/launcher.mjs` (then updated like the desktop app) |
 

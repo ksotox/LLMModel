@@ -190,3 +190,43 @@ describe('a public site: anyone can sign up; the owner needs the setup code; fai
     assert.notEqual(lookups[0], 429);
   });
 });
+
+describe('behind a proxy that passes no visitor address (a free Tailscale Funnel address)', () => {
+  let mock;
+  let dataDir;
+  let server;
+  let base;
+  before(async () => {
+    mock = await startMockSources();
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-funnel-'));
+    const app = createApp({ dataDir, catalog: mockCatalog(mock), allowSignup: true, setupCode: 'kiwi-42' });
+    server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    server.on('close', () => app.locals.store.close());
+    base = `http://127.0.0.1:${server.address().port}`;
+  });
+  after(async () => {
+    await new Promise((r) => server.close(r));
+    await mock.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+  const call = async (method, p, body) => {
+    const res = await fetch(base + p, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return res.status;
+  };
+
+  test('every visitor looks like 127.0.0.1: limits go by username and the total, not by that one address', async () => {
+    assert.equal(await call('POST', '/api/auth/setup', { username: 'owner', password: 'owner12345', setup_code: 'kiwi-42' }), 201);
+    const statuses = [];
+    for (let i = 0; i < 7; i++) statuses.push(await call('POST', '/api/auth/register', { username: `trainer${i}`, password: 'password1' }));
+    assert.deepEqual(statuses, Array(7).fill(201), 'seven people sign up in the same hour');
+    for (let i = 0; i < 6; i++) await call('POST', '/api/auth/login', { username: 'trainer0', password: 'wrong-one' });
+    assert.equal(await call('POST', '/api/auth/login', { username: 'trainer0', password: 'password1' }), 429, 'guessing at one account locks that account for a while');
+    assert.equal(await call('POST', '/api/auth/login', { username: 'trainer1', password: 'password1' }), 200, 'but not everyone else');
+  });
+
+  test('visitorKey: loopback addresses are no visitor', async () => {
+    const { visitorKey } = await import('../server/auth.js');
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1', '', undefined]) assert.equal(visitorKey(ip), null, String(ip));
+    assert.equal(visitorKey('203.0.113.7'), '203.0.113.7');
+  });
+});

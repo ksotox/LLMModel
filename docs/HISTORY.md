@@ -918,6 +918,17 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   carry on. The trainer sits astride (`rig.js` `ride`, leaning into turns), clip-animated models too.
 - Touch: a Dive button while riding; gamepad A climbs, LT dives, RT boosts.
 
+## Phase 56: A free public address with no domain (Tailscale Funnel)
+- The owner chose the cheapest hosting: their Oracle Always Free server and a free public address, no domain.
+- `cloud-setup.sh` `POKEDEX_PUBLIC=1`: `tailscale funnel --bg 3000` makes the server's `https://pokedex.<tailnet>.ts.net`
+  address public (its own certificate, no open ports), opens sign-up and prints the setup code, as the Cloudflare
+  tunnel path does. USER_GUIDE: "A free public address, no domain" (Oracle steps; idle reclaim; Pay As You Go).
+- Behind a proxy that passes no visitor address, every visitor looks like 127.0.0.1: `auth.js` `visitorKey` drops
+  loopback addresses, so the sign-in lockout goes by username only and sign-up by the total (60 an hour) only;
+  per-visitor limits stay where a real address arrives.
+- A `node_modules` symlink slipped into phase 54's commit (a side checkout's link); removed, and `.gitignore` now
+  ignores `node_modules` as a file too.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
