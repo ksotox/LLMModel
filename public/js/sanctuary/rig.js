@@ -49,16 +49,20 @@ export function findRig(names) {
 /** Enough of a human rig to walk with? */
 export const isHumanRig = (rig) => Boolean(rig.thighL && rig.thighR && rig.armL && rig.armR);
 
-/** The trainer's animation state from the Sanctuary's player (or the Reef's swimmer). */
-export function trainerState(p) {
+/**
+ * The trainer's animation state from the Sanctuary's player (or the Reef's swimmer). `prev`: the state
+ * last time. Walk and run have a margin between starting and stopping (hysteresis), so a sprint that
+ * dips a little while turning doesn't flip the animation between run and walk every few frames.
+ */
+export function trainerState(p, prev = null) {
   if (!p) return 'idle';
   if (p.mode === 'mantle') return 'mantle';
   if (p.mode === 'swim') return 'swim';
   if (p.mode === 'glide') return 'glide';
   if (p.mode === 'fall') return p.vy > 0.5 ? 'jump' : 'fall';
   const speed = p.moving ?? 0;
-  if (speed > 5.5) return 'run';
-  if (speed > 0.4) return 'walk';
+  if (speed > 5.5 || (prev === 'run' && speed > 4.4)) return 'run';
+  if (speed > 0.4 || ((prev === 'walk' || prev === 'run') && speed > 0.25)) return 'walk';
   return 'idle';
 }
 

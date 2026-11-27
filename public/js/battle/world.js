@@ -48,6 +48,25 @@ export function saveQuality(q) {
 
 // ---- small deterministic noise for textures and terrain ----
 
+/**
+ * `p` ({ x, y, z }) moved onto the shadow map's texel grid, as seen along the light's direction `dir`
+ * (unit { x, y, z }): a shadow camera that follows a moving player in whole texels draws the same
+ * shadow edges every frame instead of shimmering. Pure.
+ */
+export function snapToTexel(p, dir, texel) {
+  const up0 = Math.abs(dir.y) > 0.99 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+  const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
+  const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
+  const r0 = cross(up0, dir);
+  const rl = Math.hypot(r0.x, r0.y, r0.z) || 1;
+  const r = { x: r0.x / rl, y: r0.y / rl, z: r0.z / rl };
+  const u = cross(dir, r);
+  const a = Math.round(dot(p, r) / texel) * texel;
+  const b = Math.round(dot(p, u) / texel) * texel;
+  const c = dot(p, dir);
+  return { x: a * r.x + b * u.x + c * dir.x, y: a * r.y + b * u.y + c * dir.y, z: a * r.z + b * u.z + c * dir.z };
+}
+
 export function rng(seed) {
   let a = seed >>> 0;
   return () => {
@@ -1319,8 +1338,16 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   let mirrorFrame = 0;
   let mirrorDrawn = false;
 
+  const shadowDir = sun.position.clone().normalize();
   return {
     sun,
+    /** Keep the sharp shadows round (x, y, z), moving the shadow camera in whole texels (no shimmer). */
+    followSun(x, y, z) {
+      const texel = (sun.shadow.camera.right - sun.shadow.camera.left) / sun.shadow.mapSize.x;
+      const at = snapToTexel({ x, y, z }, shadowDir, texel);
+      sun.target.position.set(at.x, at.y, at.z);
+      sun.position.copy(sun.target.position).addScaledVector(shadowDir, 30);
+    },
     leaves, // the leaf-card material (it sways with the world's clock): for the Sanctuary's habitats
     environment: look ? environment : 'meadow',
     weather: WEATHER_LOOK[weather] ? weather : 'clear',

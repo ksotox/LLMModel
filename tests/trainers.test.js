@@ -135,6 +135,12 @@ describe('skeleton animation made in code (rig.js)', () => {
     assert.equal(trainerState({ mode: 'fall', vy: -3 }), 'fall');
     assert.equal(trainerState({ mode: 'glide' }), 'glide');
     assert.equal(trainerState({ mode: 'swim' }), 'swim');
+    // Hysteresis: a sprint that dips while turning stays a run; a walk slowing down stays a walk.
+    assert.equal(trainerState({ mode: 'walk', moving: 5 }, 'run'), 'run');
+    assert.equal(trainerState({ mode: 'walk', moving: 5 }, 'walk'), 'walk');
+    assert.equal(trainerState({ mode: 'walk', moving: 4.2 }, 'run'), 'walk');
+    assert.equal(trainerState({ mode: 'walk', moving: 0.3 }, 'walk'), 'walk');
+    assert.equal(trainerState({ mode: 'walk', moving: 0.3 }, 'idle'), 'idle');
   });
 
   test('a stride swings the legs and arms in opposition and bends the knees backwards', async () => {

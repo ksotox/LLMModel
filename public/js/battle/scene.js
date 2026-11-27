@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { breathing, createModelLoader, loadModel, pickClips, warmUp } from './modelLoader.js';
+import { createFrameMeter } from './frameMeter.js';
 import { createMoveFx } from './moveFx.js';
 import { bringToLife } from '../creature/life.js';
 import { battleTrainer, trainerSpot } from './trainers.js';
@@ -192,6 +193,7 @@ export class BattleStage {
     this.flashEl = document.createElement('div');
     this.flashEl.className = 'stage-flash';
     host.append(this.renderer.domElement, this.vignette, this.flashEl, this.overlay);
+    this.meter = createFrameMeter(host); // F3: frame times
     this.calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.shakeAmount = 0;
 
@@ -291,6 +293,7 @@ export class BattleStage {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const now = performance.now();
     this.perf.frame(now - (this.lastFrame ?? now));
+    if (this.lastFrame != null) this.meter?.frame(now - this.lastFrame);
     this.lastFrame = now;
     this.beforeFrame?.(dt); // a real-time battle advances here, once per drawn frame
     for (const tw of [...this.tweens]) {
@@ -857,8 +860,9 @@ export class BattleStage {
     const fx = dx / d;
     const fz = dz / d;
     const back = 5.4 + Math.min(2.5, d * 0.3);
-    const goalBase = new THREE.Vector3(me.x - fx * back - fz * 1.6, 3.1 + Math.min(1.4, d * 0.1), me.z - fz * back + fx * 1.6);
-    const goalLook = new THREE.Vector3(me.x + fx * Math.min(d, 4) * 0.55, 1.0, me.z + fz * Math.min(d, 4) * 0.55);
+    // (Reused vectors: this runs every frame.)
+    const goalBase = (this.goalBase ??= new THREE.Vector3()).set(me.x - fx * back - fz * 1.6, 3.1 + Math.min(1.4, d * 0.1), me.z - fz * back + fx * 1.6);
+    const goalLook = (this.goalLook ??= new THREE.Vector3()).set(me.x + fx * Math.min(d, 4) * 0.55, 1.0, me.z + fz * Math.min(d, 4) * 0.55);
     const k = this.calm ? 1 : 1 - Math.exp(-dt * 7.7); // 0.12 a frame at 60 Hz, the same glide at 144
     this.camBase.lerp(goalBase, k);
     this.camLook.lerp(goalLook, k);
@@ -1102,6 +1106,7 @@ export class BattleStage {
     this.renderer.setAnimationLoop(null);
     this.observer.disconnect();
     this.world.dispose();
+    this.meter?.dispose();
     this.controls?.dispose();
     this.draco.dispose();
     this.scene.traverse((o) => {

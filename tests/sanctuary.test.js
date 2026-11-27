@@ -277,10 +277,60 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     group.add(new THREE.Mesh(new THREE.BoxGeometry(), [new THREE.MeshBasicMaterial({ map }), new THREE.MeshBasicMaterial()]));
     assert.deepEqual(new Set(texturesOf(group)), new Set([map, normal]));
     const calls = [];
-    await warmUp({ initTexture: (t) => calls.push(t), compileAsync: async (o) => { calls.push(o); } }, group, null, null);
+    let ready = false;
+    const program = { isReady: () => ready };
+    const renderer = {
+      initTexture: (t) => calls.push(t),
+      compile: (o) => { calls.push(o); setTimeout(() => { ready = true; }, 30); return new Set(o.children.map((c) => [].concat(c.material)).flat()); },
+      properties: { get: (m) => ({ currentProgram: m.isMeshBasicMaterial && !m.map ? undefined : program }) },
+    };
+    const t0 = Date.now();
+    await warmUp(renderer, group, null, null);
+    assert.ok(ready && Date.now() - t0 >= 25, 'it waits for the shaders, and a material without a program doesn\'t stop it');
     assert.equal(calls.length, 3);
     assert.equal(calls[2], group, 'shaders last');
     await warmUp(null, group, null, null); // no renderer (tests, a page without WebGL): nothing to do
+  });
+
+  test('the camera boom comes in fast and goes back out slowly, the same at any frame rate', async () => {
+    const { approach } = await import('../public/js/sanctuary/look.js');
+    let a = 1;
+    for (let i = 0; i < 6; i++) a = approach(a, 0.3, 1 / 60, 20, 3); // a tree comes between: 0.1 s
+    assert.ok(a < 0.5, `in quickly (${a})`);
+    let b = 0.3;
+    for (let i = 0; i < 6; i++) b = approach(b, 1, 1 / 60, 20, 3);
+    assert.ok(b < 0.5 && b > 0.3, `out gently (${b})`);
+    let c60 = 0.3;
+    for (let i = 0; i < 60; i++) c60 = approach(c60, 1, 1 / 60);
+    let c144 = 0.3;
+    for (let i = 0; i < 144; i++) c144 = approach(c144, 1, 1 / 144);
+    assert.ok(Math.abs(c60 - c144) < 1e-9, 'one second at 60 Hz is one second at 144 Hz');
+  });
+
+  test('the shadow camera follows in whole texels (no shimmer)', async () => {
+    const { snapToTexel } = await import('../public/js/battle/world.js');
+    const l = Math.hypot(0.5, 1, 0.3);
+    const dir = { x: 0.5 / l, y: 1 / l, z: 0.3 / l };
+    const a = snapToTexel({ x: 3.001, y: 0.5, z: -2 }, dir, 0.02);
+    const b = snapToTexel({ x: 3.004, y: 0.5, z: -2 }, dir, 0.02);
+    // (Only movement along the light's own direction remains, which doesn't move the shadow map.)
+    const d = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+    const across = Math.hypot(d.y * dir.z - d.z * dir.y, d.z * dir.x - d.x * dir.z, d.x * dir.y - d.y * dir.x);
+    assert.ok(across < 1e-9, 'a move smaller than a texel leaves the shadow map where it is');
+    assert.ok(Math.hypot(a.x - 3.001, a.y - 0.5, a.z + 2) < 0.02, 'and stays within a texel of the trainer');
+  });
+
+  test('frame statistics: fps, slowest frame and long frames', async () => {
+    const { frameStats } = await import('../public/js/battle/frameMeter.js');
+    const ms = Array(140).fill(6.9);
+    ms[50] = 20; // one hitch at 144 Hz
+    ms[90] = 14;
+    const s = frameStats(ms);
+    assert.equal(s.refresh, 6.9);
+    assert.equal(s.long, 2);
+    assert.equal(s.worst, 20);
+    assert.ok(s.fps > 130 && s.fps < 145);
+    assert.deepEqual(frameStats([]), { fps: 0, worst: 0, p95: 0, long: 0, refresh: 0 });
   });
 
   test('the High passes: only on High, and gone for good once dropped', async () => {

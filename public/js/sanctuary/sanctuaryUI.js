@@ -39,6 +39,7 @@ export function savedTrainer(storage = globalThis.localStorage) {
  */
 export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage = globalThis.localStorage }) {
   let active = null;
+  let lastStamina = null;
   const title = h('div.radial-center');
   const button = (pos, action, label) => h('button.radial-btn', {
     type: 'button', class: pos, role: 'menuitem', 'data-action': action,
@@ -139,6 +140,10 @@ export function initSanctuaryUI(host, { onSelectTrainer, onRadialAction, storage
     isOpen: () => !radial.hidden || !modal.hidden,
     openTrainerModal: () => { modal.hidden = false; refresh(); },
     updateStamina(stamina, exhausted) {
+      // Touched only on a change (this runs every frame).
+      const shown = `${Math.round(stamina * 2) / 2}|${exhausted}`;
+      if (shown === lastStamina) return;
+      lastStamina = shown;
       ring.toggleAttribute('hidden', stamina >= 99.5);
       const circumference = 113.1;
       fill.style.strokeDashoffset = String(circumference * (1 - stamina / 100));
