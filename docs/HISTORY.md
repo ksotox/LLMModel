@@ -892,6 +892,19 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
   Trainers sit (`rig.js` poses `sit`, `paraglide`), also models with their own clips (`trainer.js` poses them in code).
 - The camera pulls back and swings round behind in the air, and the haze thins high up.
 
+## Phase 54: Your own public website: anyone can sign up
+- The owner wants a real HTTPS website anyone can open, with a Cloudflare domain and their PC off.
+- `POST /api/auth/register` (with `ALLOW_SIGNUP=1`): anyone creates an account (not the owner), at most 5 an
+  hour per visitor and 60 in all; the sign-in screen offers "Create an account".
+- `SETUP_CODE`: on a public site the owner profile needs the code the setup script prints, so a stranger
+  can't claim the app first.
+- Fair use for other accounts: `USER_STORAGE_MB` of photos (500) and `USER_PRICE_LOOKUPS` live price lookups a
+  day (25; PokemonPriceTracker and eBay refreshes). The owner has no limits.
+- `scripts/cloud-setup.sh` with `CLOUDFLARE_TUNNEL_TOKEN`: installs cloudflared as a service for the owner's
+  tunnel (its public hostname → `localhost:3000`), opens sign-up and prints the setup code; Tailscale stays
+  for the owner (`POKEDEX_TAILSCALE=0` skips it). Behind the tunnel, `TRUST_PROXY=loopback` gives the
+  visitor's real address. USER_GUIDE: "Your own website (anyone can sign up)".
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

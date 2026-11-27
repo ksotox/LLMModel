@@ -18,9 +18,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - **Desktop app (Windows):** `desktop/install.ps1` builds `Pokedex.exe` (csc.exe) into `%LOCALAPPDATA%\Pokedex`; it runs
   `launcher.mjs` (self-updating): newest commit via `.git/info/refs`, codeload zip, swap `LLMModel-main` (keeps
   `.previous`, moves `data/`, rolls back if it won't start), IPC (`/api/desktop`), Edge `--app` window.
-- **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: auto-updates, nightly
+- **Cloud (PC off):** `scripts/cloud-setup.sh` (systemd `pokedex` = `launcher.mjs --server`: updates, nightly
   backups; `HOST=127.0.0.1` + `TRUST_PROXY=loopback` behind `tailscale serve`). Desktop `remoteUrl` opens it;
-  `cloud-move.ps1` copies `data\`. Not yet run on real Oracle/Tailscale.
+  Public: `CLOUDFLARE_TUNNEL_TOKEN`, `ALLOW_SIGNUP`, `SETUP_CODE`.
 - `npm run check:live`: checks every real source. Data lives in `DATA_DIR` (default `./data`): back it up.
 
 ## Architecture (where to look)

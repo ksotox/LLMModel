@@ -13,6 +13,14 @@
 #
 # Settings (optional, set before running): POKEDEX_NAME (the server's name on Tailscale, default
 # "pokedex"), POKEDEX_PORT (default 3000), POKEDEX_APP_DIR (default ~/LLMModel-main).
+#
+# Your own public website (README "Your own website"): with CLOUDFLARE_TUNNEL_TOKEN set (a tunnel made
+# in the Cloudflare dashboard, its public hostname pointing at http://localhost:3000), it also installs
+# cloudflared, opens sign-up to anyone (POKEDEX_SIGNUP=0 to keep it closed) and prints the setup code
+# the owner profile needs. POKEDEX_DOMAIN: your address, only to print it. POKEDEX_TAILSCALE=0 skips
+# Tailscale (it is still the easiest way to reach the server yourself).
+#
+#   curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | CLOUDFLARE_TUNNEL_TOKEN=eyJ... POKEDEX_DOMAIN=pokedex.example.com bash
 set -euo pipefail
 
 REPO=ksotox/LLMModel
@@ -29,6 +37,14 @@ fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 [ "$(id -u)" != 0 ] || fail "Run this as your normal user (for example ubuntu), not as root: it uses sudo where needed."
 command -v apt-get >/dev/null || fail "This script is for Ubuntu or Debian."
 command -v sudo >/dev/null || fail "sudo is needed."
+
+TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+DOMAIN="${POKEDEX_DOMAIN:-}"
+TAILSCALE="${POKEDEX_TAILSCALE:-1}"
+# A line NAME=value in the server's settings file, replaced or added.
+set_env() {
+  if grep -q "^$1=" "$INSTALL_DIR/pokedex.env"; then sed -i "s|^$1=.*|$1=$2|" "$INSTALL_DIR/pokedex.env"; else echo "$1=$2" >> "$INSTALL_DIR/pokedex.env"; fi
+}
 
 step "1/5 Node.js 22"
 node_ok() { command -v node >/dev/null && node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 5) ? 0 : 1)'; }
@@ -63,6 +79,11 @@ if [ ! -f "$INSTALL_DIR/pokedex.env" ]; then
 EOF
 fi
 chmod 600 "$INSTALL_DIR/pokedex.env"
+if [ -n "$TOKEN" ]; then
+  # A public website: anyone can make an account; the owner profile needs this setup code.
+  set_env ALLOW_SIGNUP "$([ "${POKEDEX_SIGNUP:-1}" = 0 ] && echo 0 || echo 1)"
+  grep -q '^SETUP_CODE=' "$INSTALL_DIR/pokedex.env" || set_env SETUP_CODE "$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+fi
 
 step "3/5 Starting it with the machine (service \"pokedex\")"
 sudo tee /etc/systemd/system/pokedex.service >/dev/null <<EOF
@@ -98,16 +119,36 @@ echo
 [ "${ok:-}" = 1 ] || { tail -n 30 "$INSTALL_DIR/launcher.log" 2>/dev/null || true; fail "The Pokédex didn't start. The lines above (from $INSTALL_DIR/launcher.log) say why."; }
 echo "The Pokédex is running on this machine."
 
-step "4/5 Tailscale (your private network)"
-command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
-echo "If a link appears, open it and sign in with the same account you'll use on your PC and iPhone."
-sudo tailscale up --ssh --hostname="$NAME"
+if [ "$TAILSCALE" != 0 ]; then
+  step "4/5 Tailscale (your private network)"
+  command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
+  echo "If a link appears, open it and sign in with the same account you'll use on your PC and iPhone."
+  sudo tailscale up --ssh --hostname="$NAME"
 
-step "5/5 Your Pokédex's HTTPS address"
-echo "If Tailscale asks you to enable HTTPS for your network, open the link it shows and turn it on."
-sudo tailscale serve --bg "$PORT"
-DNS="$(tailscale status --json | node -e 'let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => console.log(JSON.parse(s).Self.DNSName.replace(/\.$/, "")))')"
+  step "5/5 Your Pokédex's HTTPS address"
+  echo "If Tailscale asks you to enable HTTPS for your network, open the link it shows and turn it on."
+  sudo tailscale serve --bg "$PORT"
+  DNS="$(tailscale status --json | node -e 'let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => console.log(JSON.parse(s).Self.DNSName.replace(/\.$/, "")))')"
+fi
 
+if [ -n "$TOKEN" ]; then
+  step "Your own website (a Cloudflare tunnel)"
+  if ! command -v cloudflared >/dev/null; then
+    sudo mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+    echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+    sudo apt-get update -y && sudo apt-get install -y cloudflared
+  fi
+  # (Re)connect this machine to your tunnel; it starts with the machine.
+  sudo cloudflared service uninstall >/dev/null 2>&1 || true
+  sudo cloudflared service install "$TOKEN"
+  CODE="$(sed -n 's/^SETUP_CODE=//p' "$INSTALL_DIR/pokedex.env")"
+  printf '\n\033[1;32mYour website:\033[0m \033[1mhttps://%s\033[0m\n' "${DOMAIN:-<the public hostname you gave the tunnel>}"
+  printf 'Open it and create the owner profile with this setup code:  \033[1m%s\033[0m\n' "$CODE"
+  echo "(Anyone else signs up with \"Create an account\". To close sign-up: set ALLOW_SIGNUP=0 in $INSTALL_DIR/pokedex.env and sudo systemctl restart pokedex.)"
+fi
+
+[ "$TAILSCALE" != 0 ] || { echo "Done."; exit 0; }
 printf '\n\033[1;32mDone.\033[0m Your Pokédex is at:  \033[1mhttps://%s\033[0m\n' "$DNS"
 cat <<EOF
 

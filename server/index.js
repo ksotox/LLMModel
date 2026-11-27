@@ -44,7 +44,15 @@ const desktop = process.send && process.env.POKEDEX_DESKTOP
   }
   : null;
 
-const app = createApp({ dataDir, catalog, desktop });
+const app = createApp({
+  dataDir, catalog, desktop,
+  // A public website (scripts/cloud-setup.sh with a Cloudflare tunnel): open sign-up, the owner's setup
+  // code, and fair-use limits for everyone else's accounts.
+  allowSignup: process.env.ALLOW_SIGNUP === '1',
+  setupCode: process.env.SETUP_CODE || null,
+  userStorageMb: Number(process.env.USER_STORAGE_MB ?? 500),
+  userPriceLookups: Number(process.env.USER_PRICE_LOOKUPS ?? 25),
+});
 // Behind a proxy on the same machine (the cloud setup's `tailscale serve`): trust its X-Forwarded-*
 // headers, so HTTPS requests are seen as HTTPS (Secure session cookie) and the right host is checked.
 if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY);

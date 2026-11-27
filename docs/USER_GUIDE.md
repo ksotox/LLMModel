@@ -544,6 +544,32 @@ What the server does by itself:
 
 Use one place for your cards: the cloud server and the app on your PC are two separate collections.
 
+### Your own website (anyone can sign up)
+A public address such as `https://pokedex.example.com`, open to anyone, with your PC off. Visitors make their own accounts (each gets their own collection, Sanctuary and battles); your collection stays yours. It runs on the same always-on server, with a **Cloudflare tunnel** in front: Cloudflare gives it HTTPS and keeps the server itself closed to the internet.
+
+**What you need:**
+- **A server:** the always-on server above. The AWS free plan covers it until 22 December 2026; after that, a t4g.small costs about $12 a month. An Oracle Cloud "Always Free" machine costs nothing (`cloud-move.ps1` moves your collection over).
+- **A domain on Cloudflare:** buy one in the Cloudflare dashboard (**Domain Registration → Register Domains**, about $10 a year for a `.com`), or move one you have to Cloudflare.
+- **A free Cloudflare account.**
+
+**Steps:**
+1. In the Cloudflare dashboard, open **Zero Trust → Networks → Tunnels → Create a tunnel**, choose **Cloudflared**, and name it `pokedex`.
+2. On the install page, copy the long **token** (the text after `--token` in any of the commands). Don't run those commands: the setup script does it.
+3. Under **Public Hostname**, add your address (for example `pokedex` on `example.com`) with service **HTTP** and URL `localhost:3000`. Save.
+4. On the server, run the setup command with your token and address:
+   ```
+   curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | CLOUDFLARE_TUNNEL_TOKEN=paste-your-token POKEDEX_DOMAIN=pokedex.example.com bash
+   ```
+   It installs the app and Cloudflare's connector as services that start with the machine. It also opens sign-up and prints a **setup code**.
+5. Open your address. The first screen creates **your** owner profile, and it needs that setup code, so nobody else can claim it.
+6. Visitors choose **Create an account** on the sign-in screen.
+
+**Keeping it fair:**
+- Each visitor's account can keep **500 MB** of photos and make **25 live price lookups a day**. Saved prices are always free, and the owner profile has no limits.
+- Change the limits in `~/pokedex/pokedex.env` (`USER_STORAGE_MB`, `USER_PRICE_LOOKUPS`), then run `sudo systemctl restart pokedex`.
+- To close sign-up again, set `ALLOW_SIGNUP=0` in the same file and restart.
+- Your PokemonPriceTracker and eBay keys stay on the server and are never shown to visitors.
+
 ---
 
 ## 12. Using it on your phone

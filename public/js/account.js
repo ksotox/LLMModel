@@ -17,8 +17,12 @@ function authCard(title, intro, form) {
       h('h1', title), h('p.muted', intro), form));
 }
 
-/** First start: create the owner profile (an existing collection becomes theirs). */
-export function renderSetup(root, onDone) {
+/**
+ * First start: create the owner profile (an existing collection becomes theirs). `needCode`: a public
+ * site asks for the setup code the server's setup script printed.
+ */
+export function renderSetup(root, onDone, { needCode = false } = {}) {
+  const code = h('input', { type: 'text', autocomplete: 'one-time-code', required: true, spellcheck: false });
   const username = h('input', { type: 'text', autocomplete: 'username', required: true, minLength: 3 });
   const display = h('input', { type: 'text', autocomplete: 'nickname', placeholder: 'Shown in the app' });
   const password = h('input', { type: 'password', autocomplete: 'new-password', required: true, minLength: 6 });
@@ -27,19 +31,44 @@ export function renderSetup(root, onDone) {
     onsubmit: async (e) => {
       e.preventDefault();
       try {
-        const { user } = await api.setup({ username: username.value, display_name: display.value || username.value, password: password.value });
+        const { user } = await api.setup({ username: username.value, display_name: display.value || username.value, password: password.value, ...(needCode ? { setup_code: code.value.trim() } : {}) });
+        onDone(user);
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    },
+  }, needCode ? field('Setup code (shown by the setup script on the server)', code) : '',
+  field('Username', username), field('Display name', display), field('Password (6+ characters)', password), error,
+  h('button.btn.primary.block', { type: 'submit' }, 'Create my profile'));
+  clear(root, authCard('Welcome!', 'Create your profile to start. Any cards already in the app become yours, and you can add profiles for others later.', form));
+  username.focus();
+}
+
+/** A public site: anyone creates an account of their own (`back`: to the sign-in screen). */
+export function renderRegister(root, onDone, back) {
+  const username = h('input', { type: 'text', autocomplete: 'username', required: true, minLength: 3 });
+  const display = h('input', { type: 'text', autocomplete: 'nickname', placeholder: 'Shown in the app' });
+  const password = h('input', { type: 'password', autocomplete: 'new-password', required: true, minLength: 6 });
+  const error = h('p.form-error', { role: 'alert' });
+  const form = h('form.form', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      try {
+        const { user } = await api.register({ username: username.value, display_name: display.value || username.value, password: password.value });
         onDone(user);
       } catch (err) {
         error.textContent = err.message;
       }
     },
   }, field('Username', username), field('Display name', display), field('Password (6+ characters)', password), error,
-  h('button.btn.primary.block', { type: 'submit' }, 'Create my profile'));
-  clear(root, authCard('Welcome!', 'Create your profile to start. Any cards already in the app become yours, and you can add profiles for others later.', form));
+  h('button.btn.primary.block', { type: 'submit' }, 'Create my account'),
+  h('p.auth-switch', 'Already have one? ', h('button.link', { type: 'button', onclick: back }, 'Sign in')));
+  clear(root, authCard('Create an account', 'Your own collection, Sanctuary and battles. Free.', form));
   username.focus();
 }
 
-export function renderLogin(root, onDone) {
+/** Sign in (`signup`: offer "Create an account" too, on a public site). */
+export function renderLogin(root, onDone, { signup = false } = {}) {
   const username = h('input', { type: 'text', autocomplete: 'username', required: true });
   const password = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const error = h('p.form-error', { role: 'alert' });
@@ -54,7 +83,8 @@ export function renderLogin(root, onDone) {
         password.select();
       }
     },
-  }, field('Username', username), field('Password', password), error, h('button.btn.primary.block', { type: 'submit' }, 'Sign in'));
+  }, field('Username', username), field('Password', password), error, h('button.btn.primary.block', { type: 'submit' }, 'Sign in'),
+  signup ? h('p.auth-switch', 'New here? ', h('button.link', { type: 'button', onclick: () => renderRegister(root, onDone, () => renderLogin(root, onDone, { signup })) }, 'Create an account')) : '');
   clear(root, authCard('Sign in', 'Each profile has its own collection.', form));
   username.focus();
 }

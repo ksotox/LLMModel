@@ -742,6 +742,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); out
 body.signed-out .nav, body.signed-out .account { display: none; }
 .auth-page { min-height: calc(100vh - 200px); display: grid; place-items: center; }
 .auth-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow); }
+.auth-switch { margin: 14px 0 0; text-align: center; color: var(--muted); font-size: 0.92rem; }
+.auth-switch .link { background: none; border: 0; padding: 0; color: var(--accent, #2563eb); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font-weight: 800; color: var(--accent); }
 .auth-card .form { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
 .btn.block { width: 100%; }

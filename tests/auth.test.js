@@ -51,7 +51,7 @@ describe('profiles and signing in', () => {
 
   test('before setup: nothing but the setup screen is reachable', async () => {
     const anon = browser();
-    assert.deepEqual((await anon('GET', '/api/auth/state')).body, { setupNeeded: true, requireLogin: true, user: null });
+    assert.deepEqual((await anon('GET', '/api/auth/state')).body, { setupNeeded: true, setupCode: false, signup: false, requireLogin: true, user: null });
     assert.equal((await anon('GET', '/api/cards')).status, 401);
     assert.equal((await anon('GET', '/api/meta')).status, 200, 'public: the desktop launcher checks it');
     assert.equal((await anon('GET', '/api/meta')).body.stats, null, 'but without collection details');
@@ -103,5 +103,90 @@ describe('profiles and signing in', () => {
     assert.equal((await owner('DELETE', `/api/users/${misty.id}`)).status, 204);
     assert.equal((await guest('GET', '/api/cards')).status, 401, 'its session is gone');
     assert.equal((await owner('DELETE', `/api/users/${users.find((u) => u.username === 'ash').id}`)).status, 400, 'not yourself');
+  });
+});
+
+describe('a public site: anyone can sign up; the owner needs the setup code; fair-use limits', () => {
+  let mock;
+  let dataDir;
+  let server;
+  let app;
+  let base;
+  before(async () => {
+    mock = await startMockSources();
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokedex-public-'));
+    app = createApp({ dataDir, catalog: mockCatalog(mock), allowSignup: true, setupCode: 'grape-7-sky', userStorageMb: 0.01, userPriceLookups: 2 });
+    app.set('trust proxy', 'loopback'); // (behind cloudflared on the same machine)
+    server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    server.on('close', () => app.locals.store.close());
+    base = `http://127.0.0.1:${server.address().port}`;
+  });
+  after(async () => {
+    await new Promise((r) => server.close(r));
+    await mock.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+  const browser = (ip = '203.0.113.7') => {
+    let cookie = '';
+    return async (method, p, body, { form } = {}) => {
+      const res = await fetch(base + p, {
+        method,
+        headers: { 'x-forwarded-for': ip, ...(cookie ? { cookie } : {}), ...(body && !form ? { 'content-type': 'application/json' } : {}) },
+        body: form ?? (body ? JSON.stringify(body) : undefined),
+      });
+      const set = res.headers.get('set-cookie');
+      if (set) cookie = set.split(';')[0].endsWith('=') ? '' : set.split(';')[0];
+      return { status: res.status, body: await res.json().catch(() => null) };
+    };
+  };
+
+  test('the owner profile needs the setup code', async () => {
+    const stranger = browser();
+    assert.deepEqual((await stranger('GET', '/api/auth/state')).body, { setupNeeded: true, setupCode: true, signup: true, requireLogin: true, user: null });
+    assert.equal((await stranger('POST', '/api/auth/setup', { username: 'sneaky', password: 'secret123' })).status, 403);
+    assert.equal((await stranger('POST', '/api/auth/setup', { username: 'sneaky', password: 'secret123', setup_code: 'grape-7-skz' })).status, 403);
+    assert.equal((await stranger('POST', '/api/auth/register', { username: 'early', password: 'secret123' })).status, 409, 'no accounts before the owner');
+    const owner = browser('198.51.100.1');
+    assert.equal((await owner('POST', '/api/auth/setup', { username: 'ash', password: 'pikachu123', setup_code: 'grape-7-sky' })).status, 201);
+  });
+
+  test('anyone can create an account: signed in, not the owner, with a collection of their own', async () => {
+    const misty = browser('203.0.113.8');
+    const r = await misty('POST', '/api/auth/register', { username: 'misty', display_name: 'Misty', password: 'staryu123' });
+    assert.equal(r.status, 201);
+    const me = (await misty('GET', '/api/auth/me')).body;
+    assert.equal(me.username, 'misty');
+    assert.ok(!me.is_owner);
+    assert.deepEqual((await misty('GET', '/api/cards')).body.cards ?? (await misty('GET', '/api/cards')).body, []);
+    assert.equal((await misty('GET', '/api/users')).status, 403, 'not the owner');
+    assert.equal((await browser('203.0.113.9')('POST', '/api/auth/register', { username: 'misty', password: 'another12' })).status, 409, 'names are taken once');
+    assert.equal((await browser('203.0.113.9')('POST', '/api/auth/register', { username: 'x', password: 'short' })).status, 400);
+  });
+
+  test('sign-ups are limited per visitor (the real address, behind the proxy)', async () => {
+    const statuses = [];
+    for (let i = 0; i < 6; i++) statuses.push((await browser('192.0.2.50')('POST', '/api/auth/register', { username: `bot${i}`, password: 'password1' })).status);
+    assert.deepEqual(statuses, [201, 201, 201, 201, 201, 429]);
+    assert.equal((await browser('192.0.2.51')('POST', '/api/auth/register', { username: 'brock', password: 'onix12345' })).status, 201, 'another visitor still can');
+  });
+
+  test('accounts have a photo storage cap and a daily cap on live price lookups; the owner has neither', async () => {
+    const gary = browser('203.0.113.20');
+    await gary('POST', '/api/auth/register', { username: 'gary', password: 'eevee12345' });
+    const photo = (kb) => {
+      const form = new FormData();
+      form.append('cards', JSON.stringify([{ name: 'Pidgey', photoField: 'photo_0' }]));
+      form.append('photo_0', new Blob([Buffer.alloc(kb * 1024, 1)], { type: 'image/jpeg' }), 'p.jpg');
+      return form;
+    };
+    assert.equal((await gary('POST', '/api/cards', null, { form: photo(6) })).status, 201, 'under the cap');
+    const full = await gary('POST', '/api/cards', null, { form: photo(6) });
+    assert.equal(full.status, 413, 'over the cap');
+    assert.match(full.body.error, /storage is full/);
+    const cardId = (await gary('GET', '/api/cards')).body.cards?.[0]?.id ?? (await gary('GET', '/api/cards')).body[0].id;
+    const lookups = [];
+    for (let i = 0; i < 3; i++) lookups.push((await gary('POST', `/api/cards/${cardId}/pricetracker/refresh`)).status);
+    assert.equal(lookups[2], 429, 'the third live lookup today is refused');
+    assert.notEqual(lookups[0], 429);
   });
 });
