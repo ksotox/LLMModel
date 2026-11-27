@@ -4,7 +4,8 @@
 // the air, a short grace time after leaving an edge, a remembered jump press).
 //
 //   ground: { heightAt(x, z), waterAt(x, z) → the water's level there or null, radius, solid?(x, z), ledge? }
-//   input:  { x, z } direction in the world (length up to 1), sprint, jump (pressed this step), jumpHeld
+//   input:  { x, z } direction in the world (length up to 1), sprint, jump (pressed this step), jumpHeld,
+//           steer { f, r } (the raw forward and right keys, for the paraglider)
 
 export const MOVE = {
   walk: 4.2, sprint: 7.6, swim: 2.4, glide: 6.8,
@@ -16,6 +17,13 @@ export const MOVE = {
   staminaMax: 100, sprintDrain: 15, glideDrain: 11, regen: 24, regenDelay: 0.6, recovered: 30,
   mantleTime: 0.26, mantleReach: 0.65,
 };
+
+/**
+ * The paraglider (opened with Space when 6 m or more above the ground: off the summit, the ski lift, a
+ * flying Pokémon). It flies itself at a steady airspeed and sinks slowly; W speeds up (sinking more),
+ * S flares (slower, sinking less), A/D bank it into a turn. No stamina. `airRadius`: how far it goes.
+ */
+export const PARA = { drop: 6, speed: 9, fast: 12, slow: 6.2, sink: 1.1, fastSink: 2.1, slowSink: 0.75, turn: 0.95, airRadius: 300 };
 
 export function createPlayer({ x = 0, z = 4 } = {}) {
   return { x, y: 0, z, vx: 0, vy: 0, vz: 0, facing: Math.PI, mode: 'walk', stamina: MOVE.staminaMax, exhausted: false, rest: 0, coyote: 0, buffer: 0, moving: 0, mantle: null };
@@ -80,6 +88,7 @@ export function stepPlayer(p, input, dt, ground) {
       return stepMantle(p, dt, ground);
     }
   }
+  if (p.mode === 'paraglide' && !swimming && !onGround) return stepParaglide(p, input, dt, ground);
   if (swimming) p.mode = 'swim';
   else if (onGround) p.mode = 'walk';
   else if (p.mode !== 'glide') p.mode = 'fall';
@@ -88,6 +97,12 @@ export function stepPlayer(p, input, dt, ground) {
     p.mode = 'fall';
     p.buffer = 0;
     p.coyote = 0;
+  }
+  // High up, Space held on the way down opens the paraglider.
+  if ((p.mode === 'fall' || p.mode === 'glide') && input.jumpHeld && p.vy <= 0 && p.y - floor > PARA.drop) {
+    p.mode = 'paraglide';
+    p.bank = 0;
+    return stepParaglide(p, input, dt, ground);
   }
   // The glider opens when Space is held on the way down, and folds on landing, release or exhaustion.
   if (p.mode === 'fall' && input.jumpHeld && p.vy < -0.5 && !p.exhausted && p.y - floor > 0.6) p.mode = 'glide';
@@ -131,8 +146,10 @@ export function stepPlayer(p, input, dt, ground) {
   if (blocks(nx, nz)) {
     if (!blocks(nx, p.z)) { nz = p.z; p.vz = 0; } else if (!blocks(p.x, nz)) { nx = p.x; p.vx = 0; } else { nx = p.x; nz = p.z; p.vx = 0; p.vz = 0; }
   }
+  // On foot, the Sanctuary's edge; landed further out (from the air), you can walk back in but no further out.
   const r = Math.hypot(nx, nz);
-  if (ground.radius && r > ground.radius) { nx *= ground.radius / r; nz *= ground.radius / r; }
+  const limit = Math.max(ground.radius ?? 0, Math.hypot(p.x, p.z));
+  if (ground.radius && r > limit) { nx *= limit / r; nz *= limit / r; }
   p.x = nx;
   p.z = nz;
 
@@ -158,6 +175,44 @@ export function stepPlayer(p, input, dt, ground) {
     const turn = ((want - p.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     p.facing += turn * clamp01(dt * 12);
   }
+  return p;
+}
+
+/** One step of the paraglider (see PARA). Pure. */
+export function stepParaglide(p, input, dt, ground) {
+  const steer = input.steer ?? { f: 0, r: 0 };
+  const f = Math.max(-1, Math.min(1, steer.f ?? 0));
+  const turn = Math.max(-1, Math.min(1, steer.r ?? 0));
+  p.mode = 'paraglide';
+  p.bank = (p.bank ?? 0) + (turn - (p.bank ?? 0)) * clamp01(dt * 2.5);
+  p.facing -= p.bank * PARA.turn * dt; // (right turns the heading clockwise, seen from above)
+  const speed = f >= 0 ? PARA.speed + (PARA.fast - PARA.speed) * f : PARA.speed + (PARA.slow - PARA.speed) * -f;
+  const sink = f >= 0 ? PARA.sink + (PARA.fastSink - PARA.sink) * f : PARA.sink + (PARA.slowSink - PARA.sink) * -f;
+  const k = clamp01(dt * 1.5);
+  p.vx += (Math.sin(p.facing) * speed - p.vx) * k;
+  p.vz += (Math.cos(p.facing) * speed - p.vz) * k;
+  p.vy += (-sink + (ground.liftAt?.(p.x, p.z) ?? 0) - p.vy) * clamp01(dt * 2);
+  let nx = p.x + p.vx * dt;
+  let nz = p.z + p.vz * dt;
+  const radius = ground.airRadius ?? PARA.airRadius;
+  const r = Math.hypot(nx, nz);
+  if (r > radius) { nx *= radius / r; nz *= radius / r; }
+  p.x = nx;
+  p.z = nz;
+  p.y += p.vy * dt;
+  // Stamina comes back while flying (the wing does the work).
+  p.rest += dt;
+  if (p.rest >= MOVE.regenDelay) p.stamina = Math.min(MOVE.staminaMax, p.stamina + MOVE.regen * dt);
+  if (p.exhausted && p.stamina >= MOVE.recovered) p.exhausted = false;
+  // Landing: on the ground (feet first, slowing to a run) or in the lake.
+  const here = supportAt(ground, p.x, p.z, p.y);
+  const water = ground.waterAt?.(p.x, p.z) ?? null;
+  if (water != null && water - here > MOVE.swimDepth && p.y <= water - MOVE.swimDepth) {
+    Object.assign(p, { y: water - MOVE.swimDepth, vy: 0, mode: 'swim', bank: 0 });
+  } else if (p.y <= here) {
+    Object.assign(p, { y: here, vy: 0, mode: 'walk', bank: 0, vx: p.vx * 0.5, vz: p.vz * 0.5 });
+  }
+  p.moving = Math.hypot(p.vx, p.vz);
   return p;
 }
 

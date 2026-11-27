@@ -677,6 +677,20 @@ try {
       await shot(`37-sanctuary-${name}`);
     }
   }
+  // The ski lift: E at the base station rides a chair up the mountain; Space jumps off into the
+  // paraglider, which flies down and lands.
+  await sanc(() => { const s = document.querySelector('.sanc').sanctuary; const st = s.lift.stops.up; Object.assign(s.player, { x: st.x - 1.2, z: st.z, vx: 0, vz: 0 }); });
+  await page.locator('.sanc-prompt', { hasText: 'Ride the ski lift up' }).waitFor({ timeout: 60000 });
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => document.querySelector('.sanc').sanctuary.player.mode === 'lift', null, { timeout: 30000 });
+  await sanc(() => { const r = document.querySelector('.sanc').sanctuary.lift.ride; r.s = r.ps = 100; }); // (fast-forward up the line)
+  await page.locator('.sanc-prompt', { hasText: 'Jump off and paraglide' }).waitFor({ timeout: 60000 });
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('.sanc').sanctuary.player.mode === 'paraglide', null, { timeout: 60000 });
+  await page.keyboard.up('Space');
+  assert.equal(await sanc(() => document.querySelector('.sanc').sanctuary.lift.ride), null, 'off the chair');
+  await sanc(() => { const s = document.querySelector('.sanc').sanctuary; s.player.y -= 3; }); // (most of the way down)
+  await page.waitForFunction(() => ['walk', 'swim'].includes(document.querySelector('.sanc').sanctuary.player.mode), null, { timeout: 120000 });
   // Keys 1–8 travel to a habitat (2: the woods).
   await page.keyboard.press('Digit2');
   await page.locator('.sanc-toast', { hasText: 'Woods' }).waitFor();

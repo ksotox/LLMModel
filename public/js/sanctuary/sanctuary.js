@@ -10,13 +10,15 @@ import { clear, h } from './../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
 import { addTraversalLedge, buildHabitats, planHabitats, solidAt } from './habitats.js';
 import { addLook, approach, createLook, ease, stepLook } from './look.js';
+import { buildSkiLift, LIFT_SPEED, seatAt } from './skiLift.js';
+import { buildParaglider } from './paraglider.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
 import { createFrameMeter } from '../battle/frameMeter.js';
 import { createAmbience } from '../ambience.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { trainerState } from './rig.js';
 import { buildTrainer } from './trainer.js';
-import { createPlayer, stepPlayer } from './player.js';
+import { createPlayer, PARA, stepPlayer } from './player.js';
 import { createCreature, HABITATS, layoutHabitats, nearest, stepCreature } from './zoo.js';
 import { bodyPlan, sizedSpecies } from '../creature/body.js';
 import { bringToLife } from '../creature/life.js';
@@ -162,7 +164,18 @@ function start3d(root, cards, world3d) {
     ...(() => { const m = stadiumKit.palmMaterials({ time: sway, keep: (o) => o }); return { palmTrunk: m.trunkMat, palmFrond: m.frondMat, palmFrondDepth: m.frondDepth }; })(),
     contactShadows: surfaceKit.contactShadows, contactTexture: surfaceKit.contactTexture, addSurfaceDepth: surfaceKit.addSurfaceDepth,
   });
-  ground.solid = (x, z) => solidAt(walkingPlan, x, z);
+  // The ski lift up the mountain to the east, and the paraglider to fly back down (skiLift.js, paraglider.js).
+  const lift = buildSkiLift(THREE, worldKit.LIFT, { heightAt: terrainHeight, planks: worldKit.plankTexture('weathered'), dark });
+  scene.add(lift.group);
+  const wing = buildParaglider(THREE);
+  scene.add(wing.group);
+  const liftSolids = lift.solids;
+  ground.solid = (x, z) => solidAt(walkingPlan, x, z) || liftSolids.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + 0.3);
+  ground.airRadius = 300; // the paraglider (and a flying Pokémon) go anywhere within this
+  // A warm updraft over the warm rocks: circle in it to climb.
+  const warm = HABITATS.find((hab) => hab.id === 'rocks');
+  ground.liftAt = (x, z) => (warm ? 1.9 * Math.max(0, 1 - Math.hypot(x - warm.x, z - warm.z) / 16) : 0);
+  const liftStops = { up: seatAt(lift.line, 0, true), down: seatAt(lift.line, lift.line.length, false) };
   const resize = () => {
     const w = Math.max(1, el.clientWidth);
     const hgt = Math.max(1, el.clientHeight);
@@ -313,7 +326,40 @@ function start3d(root, cards, world3d) {
   let near = null;
   // Swimming out to the middle of the lake: E dives down to the Reef.
   let atDive = false;
+  // The ski lift: E at either station rides a chair up (or down); on the way, Space jumps off into the
+  // paraglider when it's high enough. `ride`: { s (metres along the line), ps (before this step), up }.
+  let atLift = null;
+  let ride = null;
+  const SEAT_HIPS = 0.88; // the trainer's hips above their feet, sitting on the seat
+  const startLift = (dir) => {
+    ride = { s: dir === 'up' ? 0 : lift.line.length, up: dir === 'up' };
+    ride.ps = ride.s;
+    Object.assign(player, { mode: 'lift', vx: 0, vy: 0, vz: 0, moving: 0, mantle: null, bank: 0 });
+  };
+  const liftHigh = () => ride && player.y - terrainHeight(player.x, player.z) > PARA.drop;
+  const stepLift = (dt, jump) => {
+    ride.ps = ride.s;
+    ride.s = Math.max(0, Math.min(lift.line.length, ride.s + (ride.up ? 1 : -1) * LIFT_SPEED * dt));
+    const seat = seatAt(lift.line, ride.s, ride.up);
+    Object.assign(player, { x: seat.x, y: seat.y - SEAT_HIPS, z: seat.z, facing: seat.heading, vx: 0, vy: 0, vz: 0, moving: 0 });
+    if (jump && liftHigh()) {
+      // Off the chair: falling for a moment until the paraglider (Space still held) opens.
+      ride = null;
+      Object.assign(player, { mode: 'fall', vy: -0.2, vx: Math.sin(seat.heading) * LIFT_SPEED, vz: Math.cos(seat.heading) * LIFT_SPEED });
+      return;
+    }
+    if (ride.up ? ride.s >= lift.line.length : ride.s <= 0) {
+      // Off at the station: a few steps on past the deck, onto the summit's pad (or back towards the plaza).
+      const end = ride.up ? lift.line.heads.at(-1) : lift.line.heads[0];
+      const x = end.x + Math.sin(seat.heading) * 6; // (the seat faces the way it travels)
+      const z = end.z + Math.cos(seat.heading) * 6;
+      ride = null;
+      Object.assign(player, { x, z, y: terrainHeight(x, z), mode: 'walk' });
+    }
+  };
   const interact = () => {
+    if (player.mode === 'lift') { if (liftHigh()) jumpPressed = true; return; }
+    if (atLift && !near && !paused()) { startLift(atLift); return; }
     if (atDive && !near && !paused()) { location.hash = '#/sanctuary/reef'; return; }
     if (near && !paused()) ui.openRadial(near);
   };
@@ -357,7 +403,8 @@ function start3d(root, cards, world3d) {
     const to = stops[i];
     if (!to || paused()) return;
     stop = i;
-    Object.assign(player, { x: to.x, z: to.z, y: terrainHeight(to.x, to.z), vx: 0, vz: 0, vy: 0, mode: 'walk', mantle: null, coyote: 0, buffer: 0 });
+    Object.assign(player, { x: to.x, z: to.z, y: terrainHeight(to.x, to.z), vx: 0, vz: 0, vy: 0, mode: 'walk', mantle: null, coyote: 0, buffer: 0, bank: 0 });
+    ride = null;
     look.yaw = Math.atan2(-to.x, -to.z); // looking on into the habitat (away from the plaza)
     toast(`→ ${to.name}`);
   };
@@ -437,7 +484,9 @@ function start3d(root, cards, world3d) {
   let trainerAnim = 'idle';
   const P = { x: player.x, y: player.y, z: player.z, facing: player.facing }; // the trainer as drawn (between steps)
   let boom = 1; // how far out the camera is (0…1 of its distance): in at once when something is in the way, out gently
-  let lift = 0; // how far the camera is raised to stay above the ground, eased the same way
+  let camLift = 0; // how far the camera is raised to stay above the ground, eased the same way
+  let airZoom = 0; // 0 on the ground … 1 in the air (the camera pulls back further)
+  const fogBase = scene.fog?.density ?? 0;
   let figurePhase = 0;
   const pushers = [];
   const pusherPool = Array.from({ length: 6 }, () => ({}));
@@ -465,11 +514,15 @@ function start3d(root, cards, world3d) {
       // Forward is away from the camera.
       const fx = -Math.sin(yaw);
       const fz = -Math.cos(yaw);
-      stepPlayer(player, {
-        x: fx * f - fz * r, z: fz * f + fx * r,
-        sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
-        jump: jumpPressed && !paused(), jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
-      }, STEP, ground);
+      if (player.mode === 'lift' && ride) stepLift(STEP, jumpPressed && !paused());
+      else {
+        stepPlayer(player, {
+          x: fx * f - fz * r, z: fz * f + fx * r,
+          sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
+          jump: jumpPressed && !paused(), jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
+          steer: { f: Math.max(-1, Math.min(1, f)), r: Math.max(-1, Math.min(1, r)) },
+        }, STEP, ground);
+      }
       jumpPressed = false;
       for (const c of creatures) stepCreature(c, STEP, player, rand, { heightAt: ground.heightAt, blocked: blockedFor, waterLevel: LAKE.level });
     }
@@ -491,20 +544,38 @@ function start3d(root, cards, world3d) {
     const stride = player.mode === 'walk' ? Math.sin(figurePhase) * Math.min(1, player.moving / 4) : 0;
     legs[0].rotation.x = stride * 0.7;
     legs[1].rotation.x = -stride * 0.7;
-    const reach = player.mode === 'mantle' ? -1.8 : player.mode === 'glide' ? Math.PI : null;
+    const seated = player.mode === 'lift' || player.mode === 'paraglide';
+    if (seated) { legs[0].rotation.x = -1.35; legs[1].rotation.x = -1.35 + Math.sin(t * 1.3) * 0.1; }
+    const reach = player.mode === 'mantle' ? -1.8 : player.mode === 'glide' ? Math.PI : player.mode === 'paraglide' ? 2.7 : player.mode === 'lift' ? -0.45 : null;
     arms[0].rotation.x = reach ?? -stride * 0.6;
     arms[1].rotation.x = reach ?? stride * 0.6;
     glider.visible = player.mode === 'glide';
     trainerAnim = trainerState(player, trainerAnim);
-    trainer.play(trainerAnim, player.moving, dt, t); // the owner's model, if one is chosen
+    trainer.play(trainerAnim, player.moving, dt, t, player.bank ?? 0); // the owner's model, if one is chosen
     avatar.rotation.x = player.mode === 'glide' || player.mode === 'mantle' ? 0.25 : player.mode === 'swim' ? 0.5 : 0;
+    avatar.rotation.z = player.mode === 'paraglide' ? -(player.bank ?? 0) * 0.3 : 0; // swinging out in a turn
+    // The paraglider over the harness, and the ski lift's chairs (the ridden one drawn between steps too).
+    wing.group.position.set(P.x, P.y + SEAT_HIPS, P.z);
+    wing.group.rotation.y = P.facing;
+    wing.update(dt, { open: player.mode === 'paraglide', bank: player.bank ?? 0, t, speed: player.moving });
+    lift.update(t, ride ? { s: ride.ps + (ride.s - ride.ps) * alpha, up: ride.up } : null);
+    // High up, the haze thins so the view opens out.
+    if (scene.fog) scene.fog.density = fogBase * (1 - 0.6 * Math.min(1, Math.max(0, (P.y - 8) / 40)));
     world.followSun(P.x, P.y, P.z); // the sharp shadows stay round the trainer
 
-    // The camera orbits behind the trainer, and stays above the ground.
+    // The camera orbits behind the trainer, and stays above the ground. In the air (the lift, the
+    // paraglider) it pulls back further and swings round behind the way you're going, unless you look round.
+    const flying = player.mode === 'paraglide' || player.mode === 'lift';
+    airZoom = approach(airZoom, flying ? 1 : 0, dt, 1.5, 1.5);
+    if (flying && Math.abs(look.pending[0]) + Math.abs(look.stage[0]) < 0.002) {
+      const behind = P.facing + Math.PI;
+      look.yaw += ((((behind - look.yaw) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * ease(dt, 1.1);
+    }
+    const reachOut = distance * (1 + airZoom * 0.8);
     const cp = Math.cos(pitch);
-    const ox = Math.sin(yaw) * cp * distance;
-    const oy = Math.sin(pitch) * distance;
-    const oz = Math.cos(yaw) * cp * distance;
+    const ox = Math.sin(look.yaw) * cp * reachOut;
+    const oy = Math.sin(pitch) * reachOut;
+    const oz = Math.cos(look.yaw) * cp * reachOut;
     // Pulled in when a tree, rock or ruin stands between the trainer and the camera: the boom comes in
     // fast and goes back out slowly, so passing trees never make the view jump in and out.
     let want = 1;
@@ -514,8 +585,8 @@ function start3d(root, cards, world3d) {
     boom = approach(boom, want, dt, 20, 3);
     v.set(P.x + ox * boom, P.y + 1.5 + oy * boom, P.z + oz * boom);
     // Kept above the ground and the lake, by an eased lift (no hop over each bump).
-    lift = approach(lift, Math.max(0, ground.heightAt(v.x, v.z) + 0.4 - v.y, LAKE.level + 0.3 - v.y), dt, 3, 20);
-    v.y += lift;
+    camLift = approach(camLift, Math.max(0, ground.heightAt(v.x, v.z) + 0.4 - v.y, LAKE.level + 0.3 - v.y), dt, 3, 20);
+    v.y += camLift;
     camera.position.lerp(v, ease(dt, 14)); // the same glide at any frame rate
     camera.lookAt(P.x, P.y + 1.4, P.z);
 
@@ -558,7 +629,12 @@ function start3d(root, cards, world3d) {
       const shown = Math.round(alpha * 50) / 50;
       if (shown !== c.plateAlpha) { c.plate.style.opacity = String(shown); c.plateAlpha = shown; }
     }
-    near = nearest(creatures, player);
+    near = player.mode === 'lift' || player.mode === 'paraglide' ? null : nearest(creatures, player);
+    atLift = null;
+    if (player.mode === 'walk' && !near) {
+      if (Math.hypot(player.x - liftStops.up.x, player.z - liftStops.up.z) < 3.5) atLift = 'up';
+      else if (Math.hypot(player.x - liftStops.down.x, player.z - liftStops.down.z) < 3.5) atLift = 'down';
+    }
     // Models load in the background from the start, nearest first and one at a time, in the browser's
     // idle time, so they're ready before you get there; none starts while you sprint or fly (a model's
     // setup still takes the page a moment).
@@ -590,9 +666,13 @@ function start3d(root, cards, world3d) {
     world.setGrassPushers?.(pushers);
     atDive = player.mode === 'swim' && Math.hypot(player.x - LAKE.x, player.z - LAKE.z) < LAKE.r * 0.6;
     // The page is touched only when something on it changes (each change costs a style pass).
-    const hidePrompt = (!near && !atDive) || paused();
+    const key = touch ? 'Tap' : 'E';
+    const say = near ? `${key} · ${near.card.name}`
+      : atLift === 'up' ? `${key} · Ride the ski lift up ⛰` : atLift === 'down' ? `${key} · Ride the ski lift down`
+        : player.mode === 'lift' && liftHigh() ? `${touch ? 'Tap' : 'Space'} · Jump off and paraglide 🪂`
+          : atDive ? `${key} · Dive to the Reef 🌊` : null;
+    const hidePrompt = !say || paused();
     if (prompt.hidden !== hidePrompt) prompt.hidden = hidePrompt;
-    const say = near ? `${touch ? 'Tap' : 'E'} · ${near.card.name}` : atDive ? `${touch ? 'Tap' : 'E'} · Dive to the Reef 🌊` : null;
     if (say && say !== shownPrompt) { prompt.textContent = say; shownPrompt = say; }
     ambience.update({ nearWater: Math.max(0, 1 - Math.max(0, Math.hypot(player.x - LAKE.x, player.z - LAKE.z) - LAKE.r) / 14) });
     ui.updateStamina(player.stamina, player.exhausted);
@@ -631,5 +711,5 @@ function start3d(root, cards, world3d) {
   };
   window.addEventListener('hashchange', leave);
   // For the walkthrough test: where things are.
-  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects };
+  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects, lift: { line: lift.line, stops: liftStops, start: startLift, get ride() { return ride; } } };
 }

@@ -876,6 +876,22 @@ Tests cover each fix, and the credit-drain test fails without its fix. 102 tests
 - The loops no longer make garbage or touch the page every frame (pushers, prompt, stamina ring, battle camera).
 - F3 (or `?fps`) shows frame times: fps, the slowest frame and the long frames (`battle/frameMeter.js`).
 
+## Phase 53: A ski lift up the mountain, and a paraglider back down
+- The owner asked for a ski lift up the mountain and paragliding down to the plaza and round the map.
+- `world.js` `LIFT`: the base is at the plaza's east edge (between the warm rocks and the lake), the top on the
+  highest summit 190–240 m east (about 58 m up). `terrainHeight` flattens a pad round each station (the raw land is
+  `rawHeight`); the forest keeps 9 m clear of the line.
+- `skiLift.js`: wooden stations with roofs and bullwheels, steel towers placed by `liftLine` so the chairs ride
+  8 m over the land (they come down to knee height at the decks), the haul rope, and instanced chairs going round.
+  E at a station rides a chair (`lift` mode, seated pose); Space on the way up jumps off into the paraglider.
+- `player.js` `PARA` / `stepParaglide`: opened with Space held while falling 6 m or more up; it flies at 9 m/s and
+  sinks 1.1 m/s (W faster, S slower, A/D bank), climbs over the warm rocks, goes anywhere within 300 m, uses no
+  stamina and lands by itself. On foot, a trainer landed outside the meadow can walk back in but no further out.
+  The short stamina glider stays for low drops.
+- `paraglider.js`: the canopy (22 ribbed cells, lines to the harness) inflates, banks into turns and breathes.
+  Trainers sit (`rig.js` poses `sit`, `paraglide`), also models with their own clips (`trainer.js` poses them in code).
+- The camera pulls back and swings round behind in the air, and the haze thins high up.
+
 ## Environment limits seen during development
 The cloud sandbox could reach only GitHub (including raw files) and the npm registry. TCGdex, eBay,
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested

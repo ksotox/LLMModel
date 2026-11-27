@@ -59,6 +59,8 @@ export function trainerState(p, prev = null) {
   if (p.mode === 'mantle') return 'mantle';
   if (p.mode === 'swim') return 'swim';
   if (p.mode === 'glide') return 'glide';
+  if (p.mode === 'lift') return 'sit';
+  if (p.mode === 'paraglide') return 'paraglide';
   if (p.mode === 'fall') return p.vy > 0.5 ? 'jump' : 'fall';
   const speed = p.moving ?? 0;
   if (speed > 5.5 || (prev === 'run' && speed > 4.4)) return 'run';
@@ -71,7 +73,7 @@ export function trainerState(p, prev = null) {
  * angles in radians, forward-positive: { lean, hipsBob, thighL, thighR, kneeL, kneeR, armL, armR,
  * forearmL, forearmR, armOutL, armOutR, head }. Missing parts are 0.
  */
-export function gait(state, phase, speed = 1, t = 0) {
+export function gait(state, phase, speed = 1, t = 0, bank = 0) {
   const s = Math.sin(phase);
   const c = Math.cos(phase);
   const breathe = Math.sin(t * 1.7) * 0.03;
@@ -104,6 +106,22 @@ export function gait(state, phase, speed = 1, t = 0) {
     case 'glide': // holding the glider's bar overhead, legs trailing
       Object.assign(pose, { lean: 0.15, thighL: -0.15, thighR: -0.1, kneeL: 0.3, kneeR: 0.2, armOutL: 2.6, armOutR: 2.6, forearmL: 0.2, forearmR: 0.2, head: -0.15 });
       break;
+    case 'sit': // on the ski lift's chair: knees bent over the seat's edge, legs swinging a little
+      Object.assign(pose, {
+        lean: -0.05, thighL: 1.45, thighR: 1.45,
+        kneeL: 1.35 + Math.sin(t * 1.3) * 0.12, kneeR: 1.35 + Math.sin(t * 1.3 + 1.1) * 0.12,
+        armL: 0.45, armR: 0.45, forearmL: 0.9, forearmR: 0.9,
+      });
+      break;
+    case 'paraglide': { // seated in the harness, hands up on the brakes: the inside one pulled down in a turn
+      const pull = Math.max(-1, Math.min(1, bank));
+      Object.assign(pose, {
+        lean: -0.1, thighL: 1.2, thighR: 1.2, kneeL: 1.0, kneeR: 1.0,
+        armOutL: 2.2 - Math.max(0, -pull) * 0.7, armOutR: 2.2 - Math.max(0, pull) * 0.7,
+        armL: 0.3, armR: 0.3, forearmL: 0.5, forearmR: 0.5, head: 0.05,
+      });
+      break;
+    }
     case 'swim': // breaststroke arms, a flutter kick
       Object.assign(pose, {
         thighL: Math.sin(phase * 2) * 0.35, thighR: -Math.sin(phase * 2) * 0.35,

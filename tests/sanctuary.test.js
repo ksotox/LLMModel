@@ -41,14 +41,14 @@ describe('Sanctuary: the trainer’s movement', () => {
     assert.equal(p.mode, 'walk');
   });
 
-  test('the glider: holding jump while falling from a height slows the fall and uses stamina', () => {
-    const cliff = { heightAt: (x) => (x < 0 ? 30 : 0), waterAt: () => null, radius: 200 };
+  test('the glider: holding jump while falling from a low height (under the paraglider’s 6 m) slows the fall and uses stamina', () => {
+    const cliff = { heightAt: (x) => (x < 0 ? 5.5 : 0), waterAt: () => null, radius: 200 };
     const fall = createPlayer({ x: -0.5, z: 0 });
-    fall.y = 30;
+    fall.y = 5.5;
     let fallTime = 0;
     while (fall.y > 0 && fallTime < 20) { stepPlayer(fall, { ...none, x: 1 }, 1 / 60, cliff); fallTime += 1 / 60; }
     const glide = createPlayer({ x: -0.5, z: 0 });
-    glide.y = 30;
+    glide.y = 5.5;
     let glideTime = 0;
     let glided = false;
     while (glide.y > 0 && glideTime < 60) { stepPlayer(glide, { ...none, x: 1, jumpHeld: true }, 1 / 60, cliff); glideTime += 1 / 60; glided ||= glide.mode === 'glide'; if (glide.mode === 'glide') assert.ok(glide.vy >= -MOVE.glideFall - 1e-9); }
@@ -56,6 +56,36 @@ describe('Sanctuary: the trainer’s movement', () => {
     assert.ok(glideTime > fallTime * 2, `gliding ${glideTime.toFixed(1)} s vs falling ${fallTime.toFixed(1)} s`);
     assert.ok(glide.x > fall.x + 10, 'and carries much further');
     assert.ok(glide.stamina < MOVE.staminaMax);
+  });
+
+  test('the paraglider: opened high up, it sinks slowly, turns, uses no stamina and lands', async () => {
+    const { PARA } = await import('../public/js/sanctuary/player.js');
+    const hill = { heightAt: () => 0, waterAt: () => null, radius: 78 };
+    const p = createPlayer({ x: 0, z: 0 });
+    p.y = 40;
+    p.mode = 'fall';
+    stepPlayer(p, { ...none, jumpHeld: true }, 1 / 60, hill);
+    assert.equal(p.mode, 'paraglide', 'Space held 40 m up opens it');
+    let t = 0;
+    while (t < 12) { stepPlayer(p, { ...none, steer: { f: 0, r: 0 } }, 1 / 60, hill); t += 1 / 60; }
+    assert.ok(Math.abs(p.vy + PARA.sink) < 0.05, `it settles to its sink rate (${p.vy.toFixed(2)})`);
+    assert.ok(Math.abs(p.moving - PARA.speed) < 0.3, 'and its airspeed');
+    assert.ok(Math.hypot(p.x, p.z) > 78, 'past the edge of the walking area: the air is wider');
+    const heading = p.facing;
+    for (let i = 0; i < 120; i++) stepPlayer(p, { ...none, steer: { f: 0, r: 1 } }, 1 / 60, hill);
+    assert.ok(p.facing < heading - 0.5, 'D banks it round to the right');
+    const fast = { ...p };
+    stepPlayer(Object.assign(createPlayer(), p), { ...none, steer: { f: 0, r: 0 } }, 1 / 60, hill);
+    for (let i = 0; i < 180; i++) stepPlayer(fast, { ...none, steer: { f: 1, r: 0 } }, 1 / 60, hill);
+    assert.ok(fast.vy < -PARA.sink - 0.5 && fast.moving > PARA.speed + 2, 'W: faster, sinking more');
+    assert.equal(p.stamina, MOVE.staminaMax, 'no stamina used');
+    while (p.mode === 'paraglide' && t < 120) { stepPlayer(p, { ...none, steer: { f: 0, r: 0 } }, 1 / 60, hill); t += 1 / 60; }
+    assert.equal(p.mode, 'walk', 'it lands on its feet');
+    assert.equal(p.y, 0);
+    // Landed outside the walking area: you can walk back in, but no further out.
+    const r0 = Math.hypot(p.x, p.z);
+    for (let i = 0; i < 60; i++) stepPlayer(p, { ...none, x: p.x / r0, z: p.z / r0 }, 1 / 60, hill);
+    assert.ok(Math.hypot(p.x, p.z) <= r0 + 1e-6, 'not further out on foot');
   });
 
   test('the trainer mantles onto the authored slab and stands on its visible top', async () => {

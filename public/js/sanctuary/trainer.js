@@ -6,6 +6,9 @@ import { autoRig } from '../creature/autoRig.js';
 import { findRig, gait, isHumanRig } from './rig.js';
 import { MOVE } from './player.js';
 
+/** States the trainer is seated in, posed in code even on a model with its own clips. */
+const SEATED = new Set(['sit', 'paraglide', 'ride']);
+
 /**
  * Build it with `THREE`. Returns { avatar, legs, arms, glider, dress(preset), load(url, opts), play(state,
  * speed, dt, t), hasModel, rigged }: `load` swaps in a model of the owner's own, `play` animates it.
@@ -75,6 +78,9 @@ export function buildTrainer(THREE) {
     if (Object.entries(clips).some(([key, clip]) => key !== 'extra' && clip)) {
       next.mixer = new THREE.AnimationMixer(object.children[0]);
       for (const [k, clip] of Object.entries(clips)) if (k !== 'extra' && clip) next.actions[k] = next.mixer.clipAction(clip);
+      // Seated poses (the ski lift, the paraglider, a flying Pokémon) aren't among a model's clips: those
+      // are posed in code on its skeleton instead.
+      next.poser = rigDriver(THREE, object);
     } else {
       next.driver = rigDriver(THREE, object);
     }
@@ -89,12 +95,16 @@ export function buildTrainer(THREE) {
    * Animate the movement state selected by rig.js trainerState.
    * `speed`: metres a second; `dt`: seconds; `t`: the clock. Returns false when there's no model.
    */
-  const play = (state, speed, dt, t) => {
+  const play = (state, speed, dt, t, bank = 0) => {
     if (!model) return false;
+    const seated = SEATED.has(state);
     const rate = state === 'run' ? 9 : state === 'swim' ? 3 : 2.2 + speed * 1.2;
     stride += (rate - stride) * (1 - Math.exp(-dt * 6));
     phase += dt * stride;
-    if (model.mixer) {
+    if (model.mixer && seated && model.poser) {
+      if (playing) { model.mixer.stopAllAction(); playing = null; }
+      model.poser.pose(gait(state, phase, 0, t, bank));
+    } else if (model.mixer) {
       const moving = ['walk', 'run', 'swim'].includes(state);
       const named = model.actions[state];
       const want = named ?? (moving ? model.actions.walk : model.actions.idle) ?? model.actions.idle ?? model.actions.walk;
@@ -112,7 +122,7 @@ export function buildTrainer(THREE) {
       if (want && state === 'mantle' && want === named) want.setEffectiveTimeScale(want.getClip().duration / MOVE.mantleTime);
       model.mixer.update(dt);
     } else if (model.driver) {
-      const g = gait(state, phase, Math.min(1, speed / 4), t);
+      const g = gait(state, phase, Math.min(1, speed / 4), t, bank);
       model.driver.pose(g);
       model.object.position.y = g.hipsBob;
     } else {
