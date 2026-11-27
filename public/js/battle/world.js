@@ -14,6 +14,8 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { buildStadium, lookFor, starField } from './stadiums.js';
 import { addSurfaceDepth, contactShadows, contactTexture, leafCards, leafClusterTexture, needleClusterTexture, skirtGeometry, skyEnvironment } from './surface.js';
 import { barkTexture } from './wood.js';
+
+export { plankTexture } from './wood.js';
 import { buildWeather, WEATHER_LOOK } from './weatherFx.js';
 import { addCaustics, buildReef } from '../reef/reef.js';
 import { createEffects, MIRROR_GLSL, planarMirror } from './postfx.js';
@@ -153,11 +155,8 @@ const inLake = (x, z, pad = 0) => lakeDistance(x, z) < LAKE.r * 1.3 + pad;
 /** The Sanctuary's lake shore: sand out to this far from the lake's middle. */
 export const SHORE_SAND = LAKE.r * 1.75;
 
-/**
- * The land, one surface from the arena to the peaks: flat around the arena, a softly uneven meadow,
- * rolling hills, then ridged mountains far out; with a hollow for the lake.
- */
-export function terrainHeight(x, z, flat = 16) {
+/** The land before the lift's pads are flattened into it (terrainHeight below). */
+function rawHeight(x, z, flat = 16) {
   const d = Math.hypot(x, z);
   let h = (fbm(x * 0.035, z * 0.035, 4) - 0.48) * 1.8 * smooth(flat, flat + 14, d);
   h += smooth(flat + 14, 110, d) * (fbm(x * 0.011 + 7.3, z * 0.011 - 2.1, 5) - 0.4) * 16;
@@ -171,6 +170,48 @@ export function terrainHeight(x, z, flat = 16) {
   }
   const lake = 1 - smooth(LAKE.r * 0.5, LAKE.r * 1.3, lakeDistance(x, z));
   return h * (1 - lake) - 2.4 * lake;
+}
+
+/**
+ * The Sanctuary's ski lift: from the plaza's east edge (between the warm rocks and the lake shore) up to
+ * the highest summit found to the east, 190–240 m out. Each station stands on a flat pad of the land
+ * (`pad` metres across its flat middle). { base, top: { x, y, z }, pad }.
+ */
+export const LIFT = (() => {
+  const base = { x: 62, z: 4 };
+  let top = null;
+  for (let r = 190; r <= 240; r += 5) {
+    for (let a = -0.3; a <= 0.301; a += 0.05) {
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      const y = rawHeight(x, z);
+      if (!top || y > top.y) top = { x, y, z };
+    }
+  }
+  return { base: { ...base, y: rawHeight(base.x, base.z) }, top, pad: 9 };
+})();
+
+/** Distance from (x, z) to the lift's line (between its two stations, in plan). Pure. */
+export function liftLineDistance(x, z) {
+  const { base, top } = LIFT;
+  const dx = top.x - base.x;
+  const dz = top.z - base.z;
+  const k = Math.max(0, Math.min(1, ((x - base.x) * dx + (z - base.z) * dz) / (dx * dx + dz * dz)));
+  return Math.hypot(x - base.x - dx * k, z - base.z - dz * k);
+}
+
+/**
+ * The land, one surface from the arena to the peaks: flat around the arena, a softly uneven meadow,
+ * rolling hills, then ridged mountains far out; with a hollow for the lake, and flat pads for the ski
+ * lift's two stations.
+ */
+export function terrainHeight(x, z, flat = 16) {
+  let h = rawHeight(x, z, flat);
+  for (const s of [LIFT.base, LIFT.top]) {
+    const d = Math.hypot(x - s.x, z - s.z);
+    if (d < LIFT.pad * 2.4) h += (s.y - h) * (1 - smooth(LIFT.pad, LIFT.pad * 2.4, d));
+  }
+  return h;
 }
 
 /**
@@ -557,7 +598,7 @@ function pineGeometry(dark) {
  * A forest stretching away to the hills, in clumps with meadows between: broadleaf trees and pines,
  * each one shape instanced many times. Returns a group of the two instanced meshes.
  */
-function forest(count, { minR, maxR, dark, seed = 61, leaves = null }) {
+function forest(count, { minR, maxR, dark, seed = 61, leaves = null, clear = null }) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
   const pineMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
   const broad = new THREE.InstancedMesh(broadleafGeometry(dark), mat, count);
@@ -591,6 +632,7 @@ function forest(count, { minR, maxR, dark, seed = 61, leaves = null }) {
     if (z > 0 && Math.abs(x) < d * 0.6) continue; // the view behind the camera stays open
     if (fbm(x * 0.02, z * 0.02) < 0.5) continue; // woods in clumps, meadows between
     if (inLake(x, z, 3)) continue;
+    if (clear?.(x, z)) continue; // (the ski lift's line)
     const y = terrainHeight(x, z);
     if (y < -0.5 || y > 30) continue; // not in hollows, nor on the bare rock and snow up high
     p.set(x, y - 0.2, z);
@@ -1229,7 +1271,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   scene.add(trees);
   bigSurfaces.push(trees);
 
-  woods = forest(1400, { minR: 40, maxR: 190, dark, leaves });
+  woods = forest(1400, { minR: 40, maxR: 190, dark, leaves, clear: mode === 'sanctuary' ? (x, z) => liftLineDistance(x, z) < 9 : null });
   scene.add(woods);
   bigSurfaces.push(woods);
   mistBanks = mist(dark, track(cloudPuffTexture()), view);

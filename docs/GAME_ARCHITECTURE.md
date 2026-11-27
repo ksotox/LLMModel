@@ -141,7 +141,9 @@ flowchart LR
 | File | Owns |
 | --- | --- |
 | `sanctuary/sanctuary.js` | The page and its frame loop. It builds the world (`buildWorld({ mode: 'sanctuary' })`), habitats, creatures and the trainer, and handles input, camera, travel keys 1–8, the dive prompt and ambience. Exposes `el.sanctuary` for tests |
-| `sanctuary/player.js` | `MOVE` constants; `stepPlayer`: walk, sprint, jump with coyote time and a jump buffer, glider, stamina, slope limit, solid slide, wading and swimming at the lake |
+| `sanctuary/player.js` | `MOVE` constants; `stepPlayer`: walk, sprint, jump with coyote time and a jump buffer, glider, stamina, slope limit, solid slide, wading and swimming at the lake; `PARA`, `stepParaglide`: the paraglider (300 m in the air) |
+| `sanctuary/skiLift.js` | The ski lift (world.js `LIFT`: base at the plaza's east edge, top on the highest summit east; flat pads in `terrainHeight`): `liftLine` (towers so chairs clear the ground), `seatAt`/`chairAt`, `buildSkiLift` (stations, towers, rope, instanced chairs). The Sanctuary's `lift` player mode rides a seat |
+| `sanctuary/paraglider.js` | The paraglider's canopy (cells, lines), inflating, banking and breathing |
 | `sanctuary/zoo.js` | `HABITATS` (8: id, types, centre, radius), `habitatFor(card)`, `layoutHabitats`, `stepCreature` (wander, follow, idle, look at the trainer) |
 | `sanctuary/habitats.js` | `planHabitats` (pure: where props go), `solidAt` (collision), `buildHabitats` (three.js props and signs) |
 | `sanctuary/look.js` | Mouse and stick look, with two-stage smoothing; `ease(dt, rate) = 1 - exp(-dt·rate)` (frame-rate independent) |
