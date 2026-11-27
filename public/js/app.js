@@ -17,6 +17,7 @@ const main = document.getElementById('view');
 let renderSeq = 0;
 let currentUser = null;
 let loginRequired = true;
+let signupOpen = false; // a public site: "Create an account" on the sign-in screen
 
 function navigate(hash) {
   if (location.hash === hash) route();
@@ -116,7 +117,7 @@ function signedOut() {
   currentUser = null;
   document.body.classList.add('signed-out');
   clear(account);
-  renderLogin(main, (user) => signedIn(user));
+  renderLogin(main, (user) => signedIn(user), { signup: signupOpen });
 }
 
 window.addEventListener('signin-needed', () => {
@@ -131,9 +132,10 @@ window.addEventListener('signin-needed', () => {
     state = { requireLogin: false, user: null };
   }
   loginRequired = state.requireLogin;
+  signupOpen = Boolean(state.signup);
   if (state.setupNeeded) {
     document.body.classList.add('signed-out');
-    renderSetup(main, (user) => signedIn(user));
+    renderSetup(main, (user) => signedIn(user), { needCode: Boolean(state.setupCode) });
   } else if (loginRequired && !state.user) {
     signedOut();
   } else {

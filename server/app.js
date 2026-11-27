@@ -50,6 +50,13 @@ class HttpError extends Error {
   }
 }
 
+/** Whether two secrets match (in constant time). */
+function sameSecret(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
 export function createApp({
   dataDir,
   catalog = new CardCatalog(),
@@ -61,6 +68,12 @@ export function createApp({
   aiModels = null, // AI model files for the browser (default: server/aiModels.js MANIFEST, cached in dataDir)
   requireLogin = true, // false: one built-in profile, no sign-in (tests, scripts)
   secureCookie = false,
+  // A public site (README "Your own website"): anyone may create an account; the owner profile needs
+  // the setup code; other accounts get a storage cap (MB of photos) and a daily cap on live price lookups.
+  allowSignup = false,
+  setupCode = null,
+  userStorageMb = 500,
+  userPriceLookups = 25,
 } = {}) {
   const dirs = {
     cards: path.join(dataDir, 'uploads', 'cards'),
@@ -111,6 +124,37 @@ export function createApp({
     const name = `${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}${IMAGE_EXT[file.mimetype]}`;
     fs.writeFileSync(path.join(dirs[kind], name), file.buffer);
     return `uploads/${kind}/${name}`;
+  };
+
+  // Fair use on a public site: photos a non-owner account may keep (MB), and live price lookups a day.
+  const isOwner = (req) => Boolean(store.getUser(req.user.id)?.is_owner);
+  const storageUsed = (userId) => {
+    let bytes = 0;
+    const rows = [
+      ...store.db.prepare('SELECT photo_path FROM cards WHERE user_id = ? AND photo_path IS NOT NULL').all(userId),
+      ...store.db.prepare('SELECT photo_path FROM packs WHERE user_id = ? AND photo_path IS NOT NULL').all(userId),
+    ];
+    for (const { photo_path } of rows) {
+      try { bytes += fs.statSync(path.join(dataDir, photo_path)).size; } catch { /* gone */ }
+    }
+    return bytes;
+  };
+  const checkStorage = (req, files) => {
+    if (!requireLogin || !userStorageMb || isOwner(req)) return;
+    const incoming = files.reduce((sum, f) => sum + (f?.size ?? f?.buffer?.length ?? 0), 0);
+    if (!incoming) return;
+    if (storageUsed(req.user.id) + incoming > userStorageMb * 1024 * 1024) {
+      throw new HttpError(413, `Your photo storage is full (${userStorageMb} MB). Delete some photos (or cards in the trash) to add more.`);
+    }
+  };
+  const countLookup = (req) => {
+    if (!requireLogin || !userPriceLookups || isOwner(req)) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = `lookups:${req.user.id}`;
+    if (store.usage(key, day).requests >= userPriceLookups) {
+      throw new HttpError(429, `You've used today's ${userPriceLookups} live price lookups. Saved prices still show; more tomorrow.`);
+    }
+    store.addUsage(key, day, 0);
   };
 
   const removeFile = (rel) => {
@@ -361,7 +405,7 @@ export function createApp({
     req.user = requireLogin ? auth.userFor(req) : localUser;
     next();
   });
-  const PUBLIC_API = new Set(['GET /api/meta', 'GET /api/desktop', 'GET /api/auth/state', 'POST /api/auth/setup', 'POST /api/auth/login', 'POST /api/auth/logout']);
+  const PUBLIC_API = new Set(['GET /api/meta', 'GET /api/desktop', 'GET /api/auth/state', 'POST /api/auth/setup', 'POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout']);
   app.use(['/api', '/media'], (req, res, next) => {
     if (req.user || PUBLIC_API.has(`${req.method} ${req.baseUrl}${req.path}`)) return next();
     res.status(401).json({ error: 'Please sign in', signIn: true });
@@ -394,17 +438,40 @@ export function createApp({
   const meJson = (user) => publicUser(store.getUser(user.id));
 
   app.get('/api/auth/state', (req, res) => {
-    res.json({ setupNeeded: requireLogin && store.countUsers() === 0, requireLogin, user: req.user ? meJson(req.user) : null });
+    const setupNeeded = requireLogin && store.countUsers() === 0;
+    res.json({ setupNeeded, setupCode: setupNeeded && Boolean(setupCode), signup: requireLogin && allowSignup, requireLogin, user: req.user ? meJson(req.user) : null });
   });
 
-  // First start: create the owner profile, which takes over any collection made before profiles.
+  // First start: create the owner profile, which takes over any collection made before profiles. On a
+  // public site, only with the setup code (printed by the setup script), so a stranger can't claim it.
   app.post('/api/auth/setup', async (req, res) => {
     if (!requireLogin || store.countUsers() > 0) throw new HttpError(409, 'The app is already set up: sign in instead');
+    if (setupCode && !sameSecret(String(req.body?.setup_code ?? ''), setupCode)) throw new HttpError(403, 'That setup code is wrong. It is shown by the setup script on the server.');
     const { username, display_name, password } = req.body ?? {};
     const problem = validateProfile({ username, display_name: display_name ?? username, password });
     if (problem) throw new HttpError(400, problem);
     const id = store.createUser({ username: username.trim(), display_name: String(display_name || username).trim(), password_hash: await hashPassword(password), is_owner: 1 });
     store.claimUnowned(id);
+    auth.startSession(res, id);
+    res.status(201).json({ user: meJson({ id }) });
+  });
+
+  // A public site: anyone can create an account (their own collection; not the owner).
+  const signups = []; // when accounts were made, for the limits below
+  app.post('/api/auth/register', async (req, res) => {
+    if (!requireLogin || !allowSignup) throw new HttpError(403, 'New accounts are not open here. Ask the owner for a profile.');
+    const hour = Date.now() - 60 * 60 * 1000;
+    while (signups.length && signups[0].at < hour) signups.shift();
+    if (signups.filter((s) => s.ip === req.ip).length >= 5 || signups.length >= 60) {
+      throw new HttpError(429, 'Too many new accounts just now. Try again in an hour.');
+    }
+    const { username, display_name, password } = req.body ?? {};
+    const problem = validateProfile({ username, display_name: display_name ?? username, password });
+    if (problem) throw new HttpError(400, problem);
+    if (store.countUsers() === 0) throw new HttpError(409, 'The owner hasn’t set the app up yet.');
+    if (store.getUserByName(username.trim())) throw new HttpError(409, 'That username is taken');
+    const id = store.createUser({ username: username.trim(), display_name: String(display_name || username).trim(), password_hash: await hashPassword(password) });
+    signups.push({ at: Date.now(), ip: req.ip });
     auth.startSession(res, id);
     res.status(201).json({ user: meJson({ id }) });
   });
@@ -723,6 +790,7 @@ export function createApp({
 
   // Batch create: multipart with `cards` (JSON array) and one image per card, referenced by `photoField`.
   app.post('/api/cards', upload.any(), async (req, res) => {
+    checkStorage(req, req.files ?? []);
     const files = filesByField(req);
     const input = parseList(req.body.cards, 'cards').map((c) => ({ ...cleanCard(c, req.user.id), user_id: req.user.id }));
     const tokens = input.map((c) => c.scan_token).filter(Boolean);
@@ -819,6 +887,7 @@ export function createApp({
 
   // Uses the day-old cache unless `force=1`; refuses to spend past the daily budget.
   app.post('/api/cards/:id/pricetracker/refresh', async (req, res) => {
+    countLookup(req);
     res.json(await tracker.refresh(findCard(req.params.id, req), { force: req.query.force === '1' }));
   });
 
@@ -870,6 +939,7 @@ export function createApp({
   // Fetch the last 90 days of sold listings from eBay's official API (needs EBAY_CLIENT_ID/SECRET).
   app.post('/api/cards/:id/ebay/refresh', async (req, res) => {
     const card = findCard(req.params.id, req);
+    countLookup(req);
     if (!ebay.configured) throw new HttpError(400, 'The eBay API is not set up. Paste listings from eBay instead, or see the README to connect it.');
     let sales;
     try {
@@ -901,6 +971,7 @@ export function createApp({
   app.post('/api/cards/:id/photo', upload.single('photo'), (req, res) => {
     const existing = findCard(req.params.id, req);
     if (!req.file) throw new HttpError(400, 'Attach an image as "photo"');
+    checkStorage(req, [req.file]);
     const photo_path = saveUpload(req.file, 'cards');
     store.updateCard(existing.id, { photo_path });
     removeFile(existing.photo_path);
@@ -958,6 +1029,7 @@ export function createApp({
   });
 
   app.post('/api/packs', upload.any(), (req, res) => {
+    checkStorage(req, req.files ?? []);
     const files = filesByField(req);
     const input = parseList(req.body.packs, 'packs').map(cleanPack);
     const ids = insertWithPhotos(input, files, 'packs', (pack) => store.insertPack({ ...pack, user_id: req.user.id }));

@@ -42,6 +42,7 @@ export const api = {
   authState: () => request('GET', '/api/auth/state'),
   setup: (body) => request('POST', '/api/auth/setup', body),
   login: (body) => request('POST', '/api/auth/login', body),
+  register: (body) => request('POST', '/api/auth/register', body),
   logout: () => request('POST', '/api/auth/logout'),
   updateMe: (body) => request('PATCH', '/api/auth/me', body),
   users: () => request('GET', '/api/users'),
