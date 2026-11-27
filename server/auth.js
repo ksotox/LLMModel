@@ -40,6 +40,17 @@ export const publicUser = (u) => u && ({
   settings: (() => { try { return JSON.parse(u.settings || '{}'); } catch { return {}; } })(),
 });
 
+/**
+ * A visitor's address for per-visitor limits, or null when there is none to go by: a request from this
+ * machine itself (behind a proxy that doesn't pass the visitor's address on, every visitor looks like
+ * 127.0.0.1, and limiting that one address would lock everyone out together).
+ */
+export function visitorKey(ip) {
+  const a = String(ip ?? '').trim();
+  if (!a || a === '::1' || /^(::ffff:)?127\./.test(a)) return null;
+  return a;
+}
+
 export function validateProfile({ username, display_name, password }, { needPassword = true } = {}) {
   const name = String(username ?? '').trim();
   if (!/^[\p{L}\p{N}_.-]{3,32}$/u.test(name)) return 'Usernames are 3–32 letters, numbers, dots, dashes or underscores.';
@@ -83,7 +94,8 @@ export function createAuth(store, { secureCookie = false } = {}) {
     },
 
     async login(username, password, address) {
-      const keys = [`u:${String(username).toLowerCase()}`, `a:${address}`];
+      const visitor = visitorKey(address);
+      const keys = [`u:${String(username).toLowerCase()}`, ...(visitor ? [`a:${visitor}`] : [])];
       if (keys.some(tooMany)) return { error: 'Too many attempts. Wait a few minutes and try again.', status: 429 };
       const user = store.getUserByName(String(username ?? '').trim());
       // Hash something even for unknown names, so timing doesn't reveal which usernames exist.

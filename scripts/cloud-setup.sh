@@ -21,6 +21,12 @@
 # Tailscale (it is still the easiest way to reach the server yourself).
 #
 #   curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | CLOUDFLARE_TUNNEL_TOKEN=eyJ... POKEDEX_DOMAIN=pokedex.example.com bash
+#
+# A free public address with no domain: POKEDEX_PUBLIC=1 opens the Tailscale address to everyone
+# (Tailscale Funnel: https://pokedex.<your-tailnet>.ts.net, with its own HTTPS certificate), with the same
+# open sign-up and setup code:
+#
+#   curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | POKEDEX_PUBLIC=1 bash
 set -euo pipefail
 
 REPO=ksotox/LLMModel
@@ -41,6 +47,10 @@ command -v sudo >/dev/null || fail "sudo is needed."
 TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
 DOMAIN="${POKEDEX_DOMAIN:-}"
 TAILSCALE="${POKEDEX_TAILSCALE:-1}"
+FUNNEL="${POKEDEX_PUBLIC:-0}" # 1: the Tailscale address is public (Tailscale Funnel)
+PUBLIC=0
+if [ -n "$TOKEN" ] || [ "$FUNNEL" = 1 ]; then PUBLIC=1; fi
+if [ "$FUNNEL" = 1 ] && [ "$TAILSCALE" = 0 ]; then fail "POKEDEX_PUBLIC=1 uses Tailscale: leave out POKEDEX_TAILSCALE=0."; fi
 # A line NAME=value in the server's settings file, replaced or added.
 set_env() {
   if grep -q "^$1=" "$INSTALL_DIR/pokedex.env"; then sed -i "s|^$1=.*|$1=$2|" "$INSTALL_DIR/pokedex.env"; else echo "$1=$2" >> "$INSTALL_DIR/pokedex.env"; fi
@@ -79,7 +89,7 @@ if [ ! -f "$INSTALL_DIR/pokedex.env" ]; then
 EOF
 fi
 chmod 600 "$INSTALL_DIR/pokedex.env"
-if [ -n "$TOKEN" ]; then
+if [ "$PUBLIC" = 1 ]; then
   # A public website: anyone can make an account; the owner profile needs this setup code.
   set_env ALLOW_SIGNUP "$([ "${POKEDEX_SIGNUP:-1}" = 0 ] && echo 0 || echo 1)"
   grep -q '^SETUP_CODE=' "$INSTALL_DIR/pokedex.env" || set_env SETUP_CODE "$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
@@ -127,7 +137,14 @@ if [ "$TAILSCALE" != 0 ]; then
 
   step "5/5 Your Pokédex's HTTPS address"
   echo "If Tailscale asks you to enable HTTPS for your network, open the link it shows and turn it on."
-  sudo tailscale serve --bg "$PORT"
+  if [ "$FUNNEL" = 1 ]; then
+    # Public: Tailscale Funnel puts the same address on the internet (free; no domain, no open ports).
+    echo "If Tailscale asks you to enable Funnel, open the link it shows and turn it on; this then carries on."
+    sudo tailscale serve reset >/dev/null 2>&1 || true
+    sudo tailscale funnel --bg "$PORT"
+  else
+    sudo tailscale serve --bg "$PORT"
+  fi
   DNS="$(tailscale status --json | node -e 'let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => console.log(JSON.parse(s).Self.DNSName.replace(/\.$/, "")))')"
 fi
 
@@ -149,6 +166,22 @@ if [ -n "$TOKEN" ]; then
 fi
 
 [ "$TAILSCALE" != 0 ] || { echo "Done."; exit 0; }
+if [ "$FUNNEL" = 1 ]; then
+  CODE="$(sed -n 's/^SETUP_CODE=//p' "$INSTALL_DIR/pokedex.env")"
+  printf '\n\033[1;32mDone.\033[0m Your Pokédex is public at:  \033[1mhttps://%s\033[0m\n' "$DNS"
+  printf 'Open it and create the owner profile with this setup code:  \033[1m%s\033[0m\n' "$CODE"
+  cat <<EOF
+
+Anyone can open that address and choose "Create an account" (their own collection). To close sign-up:
+set ALLOW_SIGNUP=0 in $INSTALL_DIR/pokedex.env, then: sudo systemctl restart pokedex
+To make the address private again: sudo tailscale funnel reset && sudo tailscale serve --bg $PORT
+
+Useful:  sudo systemctl status pokedex   |   tail -f $INSTALL_DIR/launcher.log
+         Settings (e.g. your PokemonPriceTracker key): $INSTALL_DIR/pokedex.env
+         Nightly backups: $APP_DIR.backups/
+EOF
+  exit 0
+fi
 printf '\n\033[1;32mDone.\033[0m Your Pokédex is at:  \033[1mhttps://%s\033[0m\n' "$DNS"
 cat <<EOF
 

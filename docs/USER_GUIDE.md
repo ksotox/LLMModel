@@ -545,6 +545,26 @@ What the server does by itself:
 
 Use one place for your cards: the cloud server and the app on your PC are two separate collections.
 
+### A free public address, no domain (anyone can sign up)
+The cheapest way to put the app online for everyone: **$0**, on your free always-on server (Oracle Cloud "Always Free" works well). Tailscale **Funnel** opens the server's own Tailscale address, such as `https://pokedex.tail1234.ts.net`, to the whole internet with a real HTTPS certificate. You don't need a domain, and the server opens no ports.
+
+1. **Make the server, if you haven't yet.** On Oracle Cloud: **Compute → Instances → Create instance**, image **Canonical Ubuntu 24.04**, shape **VM.Standard.A1.Flex** (Always Free; for example 2 OCPUs and 12 GB). Keep the SSH key it offers.
+2. **Connect** with **Cloud Shell** (the >_ button at the top of the Oracle console) or SSH as `ubuntu`.
+3. **Run:**
+   ```
+   curl -fsSL https://raw.githubusercontent.com/ksotox/LLMModel/main/scripts/cloud-setup.sh | POKEDEX_PUBLIC=1 bash
+   ```
+   - When a Tailscale link appears, open it and sign in (a free account).
+   - If it asks you to turn on **HTTPS** or **Funnel** for your network, open the link it shows, turn it on, and the script carries on.
+4. At the end it prints your **public address** and a **setup code**. Open the address and create your owner profile with that code.
+5. Anyone else uses **Create an account**. The same fair-use limits apply (500 MB of photos and 25 live price lookups a day per account), as described in the next section.
+
+Good to know:
+- The address is long and can't be changed to your own name; a Cloudflare domain (next section) can.
+- Funnel is meant for personal sites: fine for you and your friends, not for heavy traffic.
+- **Oracle can reclaim a free machine that sits nearly idle for a week.** Upgrading the account to **Pay As You Go** stops that, and stays $0 within the free limits.
+- To make the address private again: `sudo tailscale funnel reset && sudo tailscale serve --bg 3000`.
+
 ### Your own website (anyone can sign up)
 A public address such as `https://pokedex.example.com`, open to anyone, with your PC off. Visitors make their own accounts (each gets their own collection, Sanctuary and battles); your collection stays yours. It runs on the same always-on server, with a **Cloudflare tunnel** in front: Cloudflare gives it HTTPS and keeps the server itself closed to the internet.
 
