@@ -995,3 +995,27 @@ check the real services with `npm run check:live`.
 - The renderer can't be timed on a real graphics card here: the ⚙ Performance readout (Phase 57) shows the CPU and
   GPU share on the owner's PC.
 
+## Phase 59: A sky drop, a power dive, hands that hold on, and no stiff arms
+- The owner asked for a way to fly down from the sky (both a sky drop and a mount power dive), hands that
+  touch the paraglider's handles and the Pokémon they ride, and no Pokémon with stiff arms.
+- **Sky drop** (`player.js` `SKY`, `startSkyDrop`, `stepSkydive`; G, or Y on a gamepad):
+  - up 300 m over where you are, then a freefall at up to 50 m/s belly down (72 m/s head down with the dive key);
+  - W tracks forward, A/D turn, S spreads out;
+  - Space opens the paraglider, and it opens by itself 45 m up;
+  - the trainer lies belly to the wind (`rig.js` `skydive`, turned about the hips), and the camera looks down.
+- **Power dive** (`stepFlyer`): holding dive on a flying Pokémon builds into a steep dive (up to 30 m/s down,
+  60% faster), and the descent is held to what the height allows, so it pulls up by itself.
+- **Hands:**
+  - `rigDriver` has two-bone arm IK (`reachArm`): the hand on its target, the elbow turned down and out. Rigs
+    without hand bones (autoRig's Ash, Iris, May) use a point fixed in the forearm's frame.
+  - The paraglider has brake lines and handles (`paraglider.js` `HANDLES`); the inside handle comes down in a turn.
+  - Riding: the seat and both hand holds are found once on the Pokémon's back (a ray down onto its body).
+  - The built-in figure's arms now hinge at the shoulder and point at what they hold.
+- **No stiff arms:**
+  - `creature/armSwing.js`: on a Pokémon moved by its own clips, arms the clips leave still (turning less than
+    0.12 rad) sway standing and swing walking. It never adds up when a clip doesn't set them; the Sanctuary now
+    runs it after the mixer.
+  - Procedural arms sway more, not mirrored, and swing up with each hop.
+- Tests: `tests/sky.test.js` covers the freefall, the power dive, the poses, IK within 1 cm (with and without hand
+  bones) and the arm overlay. The e2e does a sky drop.
+
