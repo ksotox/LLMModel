@@ -8,7 +8,9 @@
 import { clear, h } from '../ui.js';
 import { joystick, readGamepad } from '../battle/controls.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
-import { createFrameMeter } from '../battle/frameMeter.js';
+import { createFrameMeter, createGpuTimer } from '../battle/frameMeter.js';
+import { actionFor, held, keyLabel, loadSettings, mouseTurn } from '../game/settings.js';
+import { createSettingsMenu } from '../game/settingsMenu.js';
 import { createEffects } from '../battle/postfx.js';
 import { createAmbience } from '../ambience.js';
 import { addLook, approach, createLook, ease, stepLook } from './look.js';
@@ -78,16 +80,17 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   const touch = matchMedia('(pointer: coarse)').matches;
   const quality = h('select', { 'aria-label': 'Graphics quality' }, ['high', 'standard', 'basic'].map((q) => h('option', { value: q }, q[0].toUpperCase() + q.slice(1))));
   const sound = h('button.btn.small', { type: 'button' });
+  const topBar = h('div.sanc-top');
+  const help = h('p.sanc-help');
   el.append(plates, prompt,
     h('h1.sanc-title', `The Reef · ${residents.length} Water Pokémon`),
-    h('div.sanc-top',
+    clear(topBar,
       h('label.btn.small', h('span', 'Graphics '), quality),
       sound,
       h('button.btn.small', { type: 'button', onclick: () => ui.openTrainerModal() }, '👤 Trainer'),
       h('button.btn.small', { type: 'button', onclick: toMeadow }, '⬆ Surface'),
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/'; } }, '✕ Leave')),
-    h('p.sanc-help', touch ? 'Drag the stick to swim · Up / Down buttons · tap a Pokémon’s name to meet it'
-      : 'WASD swim · Space or E up, Ctrl or Q down · Shift fast · drag to look (double-click: mouse look) · F meet · M sound'));
+    help);
   if (!residents.length) el.append(h('p.sanc-note', 'Water-type Pokémon live here. Add one to your collection and it will swim in the Reef.'));
   clear(root, el);
   document.body.classList.add('sanctuary-mode');
@@ -105,8 +108,22 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   setLevel(level);
   quality.value = level;
   quality.addEventListener('change', () => { setLevel(quality.value); saveQuality(level); perf.settle(); resize(); });
-  const perf = createPerf(renderer, pixelTop, effects);
+  // The ⚙ settings (game/settings.js), shared with the meadow.
+  let settings = loadSettings();
+  const perf = createPerf(renderer, pixelTop, effects, { dynamic: () => settings.video.renderScale === 'auto' });
   const meter = createFrameMeter(el); // F3: frame times
+  const gpuTimer = createGpuTimer(renderer);
+  const applySettings = (s) => {
+    settings = s;
+    meter.apply(s.overlay);
+    if (s.video.renderScale !== 'auto') renderer.setPixelRatio(pixelTop() * s.video.renderScale);
+    const k = (a) => keyLabel(s.bindings[a]?.[0]);
+    help.textContent = touch ? 'Drag the stick to swim · Up / Down buttons · tap a Pokémon’s name to meet it'
+      : `${k('forward')}${k('left')}${k('back')}${k('right')} swim · ${k('jump')} up, ${k('dive')} down · ${k('sprint')} fast · ${s.mouse.look === 'lock' ? 'mouse to look (Esc frees it)' : 'drag to look'} · ${k('meet')} meet · ${k('mute')} sound · ${k('settings')} ⚙`;
+  };
+  const menu = createSettingsMenu(el, { onChange: (s) => applySettings(s), quality: { get: () => level, set: (q) => { quality.value = q; setLevel(q); saveQuality(level); perf.settle(); resize(); applySettings(settings); } } });
+  topBar.prepend(menu.button);
+  applySettings(settings);
   const loadTimer = setTimeout(clearLoad, 12000);
   const resize = () => {
     const w = Math.max(1, el.clientWidth);
@@ -220,7 +237,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
       else if (action === 'battle') toBattle(c.card);
     },
   });
-  const paused = () => ui.isOpen() || !cardModal.hidden;
+  const paused = () => ui.isOpen() || !cardModal.hidden || menu.isOpen();
 
   // Input: keyboard, mouse (drag or pointer lock), touch, gamepad.
   const keys = new Set();
@@ -233,19 +250,29 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     if (e.type === 'keydown') {
       if (e.code === 'Escape') { ui.closeRadial(); cardModal.hidden = true; return; }
       if (paused()) return;
-      if (e.code === 'KeyF' && !e.repeat) interact();
-      if (e.code === 'KeyM' && !e.repeat) { ambience.toggleMute(); showSound(); }
-      if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      const action = actionFor(e.code, settings.bindings);
+      if (action === 'settings' && !e.repeat) { e.preventDefault(); menu.open(); return; }
+      if (settings.mouse.look === 'lock' && !locked() && !touch) lockPointer();
+      if (action === 'meet' && !e.repeat) interact();
+      if (action === 'mute' && !e.repeat) { ambience.toggleMute(); showSound(); }
+      if (action && ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'dive', 'interact'].includes(action)) e.preventDefault();
       keys.add(e.code);
     } else keys.delete(e.code);
   };
   const locked = () => document.pointerLockElement === renderer.domElement;
+  const lockPointer = () => { try { renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); } catch { /* not now */ } };
   let drag = null;
-  const onDown = (e) => { if (!locked()) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; renderer.domElement.setPointerCapture(e.pointerId); } };
+  const onDown = (e) => {
+    if (locked()) return;
+    if (settings.mouse.look === 'lock' && e.pointerType === 'mouse' && !paused()) { lockPointer(); return; }
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    renderer.domElement.setPointerCapture(e.pointerId);
+  };
   const onMove = (e) => {
-    if (locked()) { addLook(look, -e.movementX * 0.0025, e.movementY * 0.002); return; }
+    if (locked()) { const turn = mouseTurn(e.movementX, e.movementY, settings.mouse); addLook(look, turn.yaw, turn.pitch); return; }
     if (!drag || e.pointerId !== drag.id) return;
-    addLook(look, -(e.clientX - drag.x) * 0.005, (e.clientY - drag.y) * 0.004);
+    const turn = mouseTurn(e.clientX - drag.x, e.clientY - drag.y, settings.mouse, 2);
+    addLook(look, turn.yaw, turn.pitch);
     drag.x = e.clientX;
     drag.y = e.clientY;
   };
@@ -260,7 +287,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   renderer.domElement.addEventListener('pointerup', onUp);
   renderer.domElement.addEventListener('pointercancel', onUp);
   renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
-  renderer.domElement.addEventListener('dblclick', () => { if (!touch) renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); });
+  renderer.domElement.addEventListener('dblclick', () => { if (!touch) lockPointer(); });
   prompt.addEventListener('click', interact);
   const stick = { x: 0, y: 0, up: 0 };
   if (touch) {
@@ -301,10 +328,14 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   const turnMix = (a, b, k) => a + ((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * k;
   let lift = 0; // the camera's eased push up off the reef floor (or down from the surface)
   let shownPrompt = null;
+  let cpuMs = null;
   renderer.setAnimationLoop((now) => {
-    meter.frame(now - last);
+    if (settings.video.frameLimit && now - last < 1000 / settings.video.frameLimit - 1) return;
+    const cpuStart = performance.now();
+    meter.frame(now - last, { cpu: cpuMs, gpu: gpuTimer });
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    if (paused() && locked()) document.exitPointerLock?.();
     const t = now / 1000;
     perf.frame(dt * 1000);
     readPad(dt);
@@ -314,17 +345,17 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
       acc -= STEP;
       prevS.x = swimmer.x; prevS.y = swimmer.y; prevS.z = swimmer.z; prevS.facing = swimmer.facing;
       for (const c of creatures) { c.px = c.x; c.py = c.y; c.pz = c.z; c.pf = c.facing; c.ph = c.hop; }
-      const is = (...codes) => codes.some((c) => keys.has(c));
-      const f = paused() ? 0 : (is('KeyW', 'ArrowUp') ? 1 : 0) - (is('KeyS', 'ArrowDown') ? 1 : 0) + stick.y + pad.y;
-      const r = paused() ? 0 : (is('KeyD', 'ArrowRight') ? 1 : 0) - (is('KeyA', 'ArrowLeft') ? 1 : 0) + stick.x + pad.x;
-      const up = paused() ? 0 : (is('Space', 'KeyE') ? 1 : 0) - (is('ControlLeft', 'ControlRight', 'KeyQ') ? 1 : 0) + stick.up + pad.up;
+      const is = (action) => held(action, keys, settings.bindings);
+      const f = paused() ? 0 : (is('forward') ? 1 : 0) - (is('back') ? 1 : 0) + stick.y + pad.y;
+      const r = paused() ? 0 : (is('right') ? 1 : 0) - (is('left') ? 1 : 0) + stick.x + pad.x;
+      const up = paused() ? 0 : (is('jump') || is('interact') ? 1 : 0) - (is('dive') || keys.has('KeyQ') ? 1 : 0) + stick.up + pad.up;
       const fx = -Math.sin(look.yaw);
       const fz = -Math.cos(look.yaw);
-      stepSwimmer(swimmer, { x: fx * f - fz * r, z: fz * f + fx * r, up, fast: !paused() && (is('ShiftLeft', 'ShiftRight') || pad.fast) }, STEP, world);
+      stepSwimmer(swimmer, { x: fx * f - fz * r, z: fz * f + fx * r, up, fast: !paused() && (is('sprint') || pad.fast) }, STEP, world);
       for (const c of creatures) stepDrifter(c, STEP, swimmer, rand, { heightAt: reef.heightAt, top: REEF.top, blocked });
     }
     // Holding up at the surface for a moment takes you back to the meadow's lake.
-    surfaced = swimmer.atSurface && swimmer.vy >= 0 && (keys.has('Space') || keys.has('KeyE') || stick.up > 0 || pad.up > 0) ? surfaced + dt : 0;
+    surfaced = swimmer.atSurface && swimmer.vy >= 0 && (held('jump', keys, settings.bindings) || held('interact', keys, settings.bindings) || stick.up > 0 || pad.up > 0) ? surfaced + dt : 0;
     if (surfaced > 0.6) { toMeadow(); return; }
 
     const alpha = acc / STEP;
@@ -388,7 +419,10 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     ui.updateStamina(swimmer.stamina, swimmer.exhausted);
     ambience.update({ speed: swimmer.moving, depth: 1 - swimmer.y / REEF.top });
     reef.update(t, camera, swimmer);
+    if (meter.timingGpu) gpuTimer.begin();
     effects.render(scene, camera);
+    if (meter.timingGpu) gpuTimer.end();
+    cpuMs = performance.now() - cpuStart;
   });
 
   leave = () => {
@@ -411,6 +445,8 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
     models.dispose();
     scene.traverse((o) => { o.geometry?.dispose?.(); for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); } });
     meter.dispose();
+    gpuTimer.dispose();
+    menu.dispose();
     renderer.dispose();
   };
   window.addEventListener('hashchange', leave);

@@ -631,6 +631,9 @@ try {
   await page.evaluate(() => localStorage.removeItem('pokedex.battleArena'));
 
   step('Sanctuary: walk your trainer among your Pokémon; follow, pet, card, and off to a battle');
+  // The camera follows the mouse once you press a key (⚙ → Mouse); the clicks below need the cursor, so
+  // drag-to-look until the settings check further down tries mouse look itself.
+  await page.evaluate(() => localStorage.setItem('pokedex.gameSettings', JSON.stringify({ mouse: { look: 'drag' } })));
   await page.getByRole('link', { name: 'Sanctuary' }).click();
   await page.locator('.sanc canvas').waitFor({ timeout: 90000 }).catch(async (err) => {
     // Say why: the page's own message and the browser's errors.
@@ -663,6 +666,39 @@ try {
   }
   await page.getByRole('button', { name: 'Done' }).click();
   assert.equal(await sanc(() => localStorage.getItem('pokedex.trainer')), 'ace');
+  // ⚙ Settings: rebind a key, turn on the FPS · CPU · GPU readout, try mouse look, and back.
+  {
+    const saved = () => sanc(() => JSON.parse(localStorage.getItem('pokedex.gameSettings')));
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('dialog', { name: 'Settings' }).waitFor();
+    await page.getByRole('button', { name: 'Sound on/off: main key' }).click();
+    await page.keyboard.press('KeyN');
+    assert.deepEqual((await saved()).bindings.mute, ['KeyN'], 'the new key is saved');
+    await page.getByRole('button', { name: 'Reset keys' }).click();
+    assert.deepEqual((await saved()).bindings.mute, ['KeyM']);
+    await page.getByRole('tab', { name: 'Performance' }).click();
+    await page.getByLabel('Frames a second').check();
+    await page.getByLabel('CPU time per frame').check();
+    await page.getByLabel('GPU time per frame').check();
+    await page.locator('.frame-meter', { hasText: /fps[\s\S]*CPU[\s\S]*GPU/ }).waitFor({ timeout: 10000 });
+    await shot('36a-sanctuary-settings');
+    await page.getByRole('tab', { name: 'Mouse' }).click();
+    await page.getByLabel('Looking around').selectOption('lock');
+    await page.getByRole('button', { name: 'Done' }).click();
+    assert.equal((await saved()).mouse.look, 'lock');
+    await page.keyboard.press('KeyW'); // the first key takes the mouse (where the browser allows it)
+    await page.waitForFunction(() => document.pointerLockElement?.classList.contains('sanc-canvas'), null, { timeout: 3000 }).catch(() => {});
+    await sanc(() => document.exitPointerLock?.());
+    await page.keyboard.press('KeyP');
+    await page.getByRole('dialog', { name: 'Settings' }).waitFor();
+    await page.getByRole('tab', { name: 'Mouse' }).click();
+    await page.getByLabel('Looking around').selectOption('drag');
+    await page.getByRole('tab', { name: 'Performance' }).click();
+    for (const name of ['Frames a second', 'CPU time per frame', 'GPU time per frame']) await page.getByLabel(name).uncheck();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog', { name: 'Settings' }).waitFor({ state: 'hidden' });
+    assert.ok(await page.locator('.frame-meter').isHidden(), 'the readout is off again');
+  }
   // High graphics: occlusion, bloom and mirror water draw without WebGL errors; then back again.
   const level = await page.getByLabel('Graphics quality').inputValue();
   await page.getByLabel('Graphics quality').selectOption('high');
@@ -699,6 +735,8 @@ try {
   const who = await sanc(() => {
     const { player, creatures } = document.querySelector('.sanc').sanctuary;
     const c = creatures.find((x) => x.card.name === 'Voltorb') ?? creatures[0];
+    // (Another card of the same Pokémon lives in the same habitat: step it aside, so E meets this one.)
+    for (const o of creatures) if (o !== c && Math.hypot(o.x - c.x, o.z - c.z) < 6) { o.x = c.x - 12; o.z = c.z + 12; }
     player.x = c.x + 1.2; player.z = c.z; player.vx = 0; player.vz = 0;
     return c.card.name;
   });

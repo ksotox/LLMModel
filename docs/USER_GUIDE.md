@@ -408,7 +408,7 @@ Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
 - **Who is there:** one of each different Pokémon in your collection. Each lives where its card's type belongs: Water at the lake shore, Grass in the woods, Fire on the warm rocks, Lightning on the open plain, Psychic at the old ruins, Fighting and Metal on the stony ridge, Darkness, Dragon and Fairy in the shady hollow, and Colorless on the meadow round the plaza.
 - **How they look:** the nearest ones (up to 24) are shown as 3D models, walking and idling with their own animations where the model has them (otherwise they hop, waddle and breathe); the others stand as their cards until you come close.
 - **The habitats** each have scenery of their own, and a sign: a grove with ferns and logs, warm red rocks round a fire pit, tall grass on the plain, old ruins and a stone ring, a stony ridge with a cliff, a shady hollow of dark pines with glowing mushrooms and fireflies, and a sandy lake shore with palms, a boat and a pier. You walk round trees, rocks and ruins.
-- **Moving:** WASD (or the arrows) to walk, **Shift** to sprint, **Space** to jump. Hold **Space** while falling to open your glider. Drag the view to look round (or double-click for mouse look; **Esc** lets go), and use the mouse wheel to zoom. **1–8** take you straight to a habitat. On a phone, use the joystick and the **Jump** and **Sprint** buttons.
+- **Moving:** WASD (or the arrows) to walk, **Shift** to sprint, **Space** to jump. Hold **Space** while falling to open your glider. The camera follows your mouse once you press a key or click (**Esc** gives the cursor back); you can switch to left-click and drag in ⚙ Settings. The mouse wheel zooms. **1–8** take you straight to a habitat. On a phone, use the joystick and the **Jump** and **Sprint** buttons.
 - **Gamepad:** left stick walk, right stick look, **A** jump (hold to glide), **B** or **RT** sprint, **X** meet a Pokémon, **Start** trainer, **Select** next habitat. On the wheel, the D-pad picks (up Follow, right Pet, down Card, left Battle) and **B** closes it.
 - **Ski lift and paraglider:** the lift's station is at the plaza's east edge, past the warm rocks. Press **E** there to ride a chair up the mountain (and **E** at the top to ride down). On the way up, **Space** jumps off into the paraglider; at the top, walk off the summit's edge and hold **Space**. Anywhere 6 m or more above the ground, holding **Space** while falling opens it. Flying it: **W** faster, **S** slower (sinking less), **A/D** turn; it sinks slowly, rises over the warm rocks and lands by itself. It goes anywhere within the mountains, and it doesn't use stamina.
 - **Riding a flying Pokémon:** walk up to one (Pidgeot, Charizard, any Pokémon that flies), press **E** and choose **🪽 Ride**. It grows to carry you. **Space** takes off and climbs, **Ctrl** or **C** dives, **W** speeds up, **S** slows to a hover, **A/D** turn, and **Shift** boosts. Fly it round the map and up the mountain. Slow down near the ground and it lands; **E** gets off. Up high, **E** jumps off into the paraglider, and your Pokémon flies home. On a phone: the joystick steers, **Jump** climbs and **Dive** dives. Gamepad: **A** climbs, **LT** dives, **RT** boosts.
@@ -421,12 +421,28 @@ Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
   - **Battle:** opens PokéBattles with that Pokémon already chosen.
 - **Trainer:** **👤 Trainer** changes your trainer's colours (three to choose from). Your choice is remembered.
 - **Graphics:** the same High, Standard and Basic settings as PokéBattles.
+- **⚙ Settings** (top right, or **P**):
+  - **Controls:** change any key. Click the key next to an action, then press the new one (**Esc** cancels). A key does one thing, so taking it for one action takes it off another. **Reset keys** puts them back.
+  - **Mouse:** follow the mouse (the default) or left-click and drag to look; sensitivity; invert up and down.
+  - **Graphics:**
+    - quality;
+    - resolution: Auto lowers it a little by itself to keep the game smooth, or pick a fixed one;
+    - grass and view distance;
+    - shadows and extra effects (High only);
+    - a frame limit (a steady 60 can feel smoother than an uneven 100).
+  - **Performance:** a readout in the bottom-left corner. It shows:
+    - frames a second and the slowest frames;
+    - the CPU's time per frame;
+    - the graphics card's (GPU) time per frame.
+
+    The CPU and GPU lines each show their share of the frame. If the GPU's share is near 100%, lower the resolution or the grass; if the CPU's is, lower the quality. **F3** shows or hides it all. Some browsers can't time the GPU; the readout says so.
+  - Settings are remembered on this device.
 - Without 3D graphics, the page lists your Pokémon by habitat instead, each with a **Battle** button.
 - **Sound:** wind, birdsong and the lake's water, made live by the app (no sound files). It starts with your first click or key; **M** or the 🔊 button turns it off (remembered).
 
 **The Reef (underwater):** swim to the middle of the lake and press **E** to dive, or use **🌊 Reef**.
 - Your **Water-type** Pokémon live here, among kelp forests with light shafts pouring down from the surface, rippling light on the sand, a sunken ship, a stone whale tail, rock arches and floating boulders, a purple grotto of coral and sponges, manta rays, fish schools and bubbles.
-- **Swimming:** WASD, **Space** or **E** up, **Ctrl** or **Q** down, **Shift** to swim fast (it uses stamina). You glide along rocks and the wreck instead of passing through. **F** meets a Pokémon (the same wheel as on land). Gamepad: A up, B down, RT fast, X meet.
+- **Swimming:** WASD, **Space** or **E** up, **Ctrl**, **C** or **Q** down, **Shift** to swim fast (it uses stamina). Your ⚙ key settings apply here too. You glide along rocks and the wreck instead of passing through. **F** meets a Pokémon (the same wheel as on land). Gamepad: A up, B down, RT fast, X meet.
 - **Back up:** hold up at the surface, or press **⬆ Surface**: you come up in the lake.
 - Its sound (a deep rumble, a slow drone, bubbles, chimes and distant whale calls) is after the open-source project Abyssal Garden.
 

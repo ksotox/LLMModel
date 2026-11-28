@@ -1294,7 +1294,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     }),
   } : null;
   if (follow) disposables.push(follow.ground.tex);
-  grass = grassField(95000, { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, follow, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
+  // (Room for the Ultra grass setting.)
+  grass = grassField(Math.round(95000 * 1.5), { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, follow, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
   scene.add(grass.mesh);
   flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
@@ -1323,13 +1324,16 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
 
   let current = null;
   let pixelTop = 1; // the level's own resolution (perf.js may draw fewer pixels when frames are slow)
+  // The player's own choices (⚙ settings): grass density (× the level's), shadows, High's extra passes,
+  // and a fixed share of the resolution (null: dynamic).
+  const options = { grass: 1, shadows: true, effects: true, scale: null };
   const setQuality = (q) => {
     current = ['high', 'standard', 'basic'].includes(q) ? q : 'standard';
     const high = current === 'high';
     const basic = current === 'basic';
-    pixelTop = basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5);
+    pixelTop = (basic ? 0.75 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5)) * (options.scale ?? 1);
     renderer.setPixelRatio(pixelTop);
-    effects.setLevel(current);
+    effects.setLevel(options.effects ? current : high ? 'standard' : current);
     sky.uniforms.uClouds.value = basic ? 0 : 1;
     if (mistBanks) mistBanks.visible = !basic;
     scene.environment = basic ? null : skyEnv.texture;
@@ -1338,8 +1342,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     contacts.mesh.visible = !basic;
     stadium?.setQuality(current);
     weatherFx?.setQuality(current);
-    renderer.shadowMap.enabled = !basic;
-    sun.castShadow = !basic;
+    renderer.shadowMap.enabled = !basic && options.shadows;
+    sun.castShadow = !basic && options.shadows;
     sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
     sun.shadow.radius = high ? 4 : 2;
     sun.shadow.map?.dispose();
@@ -1361,7 +1365,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     if (!grass) return; // a stadium: no meadow to thin out
     grass.mesh.visible = !basic;
     // The reference's desktop / phone counts; a field that follows you is spread evenly, so it keeps more.
-    grass.mesh.geometry.instanceCount = Math.min(grass.max, high ? 95000 : grass.follow ? 55000 : 28000);
+    grass.mesh.geometry.instanceCount = Math.min(grass.max, Math.round((high ? 95000 : grass.follow ? 55000 : 28000) * options.grass));
     air.points.visible = !basic;
     air.points.geometry.setDrawRange(0, high ? 600 : 250);
     flowers.count = high ? 3000 : basic ? 0 : 1000;
@@ -1373,6 +1377,11 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     trees.traverse((o) => { if (o.isMesh) o.castShadow = high; });
   };
   setQuality(quality);
+  /** The player's settings ({ grass, shadows, effects, scale }): applied at once (the level is redone). */
+  const setOptions = (next) => {
+    Object.assign(options, next);
+    setQuality(current);
+  };
   let last = null;
   const frustum = new THREE.Frustum();
   const projView = new THREE.Matrix4();
@@ -1383,6 +1392,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const shadowDir = sun.position.clone().normalize();
   return {
     sun,
+    setOptions,
     /** Keep the sharp shadows round (x, y, z), moving the shadow camera in whole texels (no shimmer). */
     followSun(x, y, z) {
       const texel = (sun.shadow.camera.right - sun.shadow.camera.left) / sun.shadow.mapSize.x;
