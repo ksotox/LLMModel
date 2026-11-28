@@ -28,7 +28,14 @@ export const MOVE = {
  * Ctrl or C dives, Shift boosts. It keeps clear of the land and the lake, lands when slow near the
  * ground (then it walks), and takes off again with Space. `ceiling`: metres above the meadow.
  */
-export const FLY = { slow: 2.5, cruise: 11, fast: 17, boost: 1.35, climb: 6.5, dive: 10, turn: 1.5, clearance: 1.4, ceiling: 140, walk: 3.2, airRadius: 300 };
+export const FLY = { slow: 2.5, cruise: 11, fast: 17, boost: 1.35, climb: 6.5, dive: 10, powerDive: 30, diveBoost: 0.6, turn: 1.5, clearance: 1.4, ceiling: 140, walk: 3.2, airRadius: 300 };
+
+/**
+ * The sky drop (G): up to `height` metres over the land, then a freefall. Belly down it falls at up to
+ * `belly` m/s; W tracks forward (up to `track`), A/D turn, S spreads out (slower), the dive key goes
+ * head down (up to `head`). Space opens the paraglider; it opens by itself `open` metres up.
+ */
+export const SKY = { height: 300, ceiling: 380, belly: 50, head: 72, spread: 38, track: 16, turn: 1.6, open: 45, gravity: 9.8, headPull: 0.7, drag: 0.6 };
 
 export const PARA = { drop: 6, speed: 9, fast: 12, slow: 6.2, sink: 1.1, fastSink: 2.1, slowSink: 0.75, turn: 0.95, airRadius: 300 };
 
@@ -95,6 +102,7 @@ export function stepPlayer(p, input, dt, ground) {
       return stepMantle(p, dt, ground);
     }
   }
+  if (p.mode === 'skydive') return stepSkydive(p, input, dt, ground);
   if (p.mode === 'paraglide' && !swimming && !onGround) return stepParaglide(p, input, dt, ground);
   if (swimming) p.mode = 'swim';
   else if (onGround) p.mode = 'walk';
@@ -185,6 +193,56 @@ export function stepPlayer(p, input, dt, ground) {
   return p;
 }
 
+/** Start a sky drop from where `p` is (see SKY): high over the land, falling. Changes and returns `p`. Pure. */
+export function startSkyDrop(p, ground) {
+  const floor = ground.heightAt(p.x, p.z);
+  Object.assign(p, {
+    y: Math.min(SKY.ceiling, Math.max(floor, ground.waterAt?.(p.x, p.z) ?? floor) + SKY.height),
+    vy: 0, vx: Math.sin(p.facing) * 4, vz: Math.cos(p.facing) * 4,
+    mode: 'skydive', bank: 0, dive: 0, mantle: null, coyote: 0, buffer: 0,
+  });
+  return p;
+}
+
+/** One step of the freefall (see SKY). input: { steer { f, r }, jumpHeld (open the wing), down (head down) }. Pure. */
+export function stepSkydive(p, input, dt, ground) {
+  const steer = input.steer ?? { f: 0, r: 0 };
+  const f = Math.max(-1, Math.min(1, steer.f ?? 0));
+  const turn = Math.max(-1, Math.min(1, steer.r ?? 0));
+  p.mode = 'skydive';
+  // Head down (the dive key) or spread out (S): eased, so the body turns over smoothly.
+  p.dive = (p.dive ?? 0) + ((input.down ? 1 : f < 0 ? -1 : 0) - (p.dive ?? 0)) * clamp01(dt * 2);
+  p.bank = (p.bank ?? 0) + (turn - (p.bank ?? 0)) * clamp01(dt * 3);
+  p.facing -= p.bank * SKY.turn * dt;
+  const terminal = p.dive >= 0 ? SKY.belly + (SKY.head - SKY.belly) * p.dive : SKY.belly + (SKY.spread - SKY.belly) * -p.dive;
+  // Gravity, with air drag growing as the speed nears the terminal one (it is reached, never passed).
+  p.vy -= SKY.gravity * (1 + SKY.headPull * Math.max(0, p.dive)) * dt; // (head down: streamlined, gaining speed fast)
+  if (-p.vy > terminal) p.vy += (-terminal - p.vy) * clamp01(dt * 1.5);
+  // Tracking: W moves you forward over the land (less when head down: that's for falling fast).
+  const along = Math.max(0, f) * SKY.track * (1 - Math.max(0, p.dive) * 0.5);
+  const k = clamp01(dt * SKY.drag);
+  p.vx += (Math.sin(p.facing) * along - p.vx) * k;
+  p.vz += (Math.cos(p.facing) * along - p.vz) * k;
+  let nx = p.x + p.vx * dt;
+  let nz = p.z + p.vz * dt;
+  const radius = ground.airRadius ?? PARA.airRadius;
+  const r = Math.hypot(nx, nz);
+  if (r > radius) { nx *= radius / r; nz *= radius / r; }
+  p.x = nx;
+  p.z = nz;
+  p.y += p.vy * dt;
+  p.moving = Math.hypot(p.vx, p.vz);
+  const floor = supportAt(ground, p.x, p.z, p.y);
+  const water = ground.waterAt?.(p.x, p.z) ?? null;
+  const above = p.y - Math.max(floor, water ?? floor);
+  // Space opens the wing (high enough to fly it); low down it opens by itself.
+  if ((input.jumpHeld && above > PARA.drop) || above < SKY.open) {
+    Object.assign(p, { mode: 'paraglide', bank: 0, dive: 0, vy: Math.max(p.vy, -6) });
+    return p;
+  }
+  return p;
+}
+
 /** One step of the paraglider (see PARA). Pure. */
 export function stepParaglide(p, input, dt, ground) {
   const steer = input.steer ?? { f: 0, r: 0 };
@@ -246,8 +304,14 @@ export function stepFlyer(p, input, dt, ground) {
   if (p.air) {
     speed = FLY.slow + (FLY.fast - FLY.slow) * p.throttle;
     if (input.sprint) speed *= FLY.boost;
-    const vyWant = (input.jumpHeld ? FLY.climb : 0) - (input.down ? FLY.dive : 0);
-    p.vy += (vyWant - p.vy) * clamp01(dt * 2.5);
+    // Holding the dive key builds into a power dive: wings folded, plunging steeply and gaining speed.
+    // Near the ground it pulls up by itself (the descent is held to what the height left allows).
+    p.dive = (p.dive ?? 0) + ((input.down ? 1 : 0) - (p.dive ?? 0)) * clamp01(dt * (input.down ? 0.8 : 2));
+    speed *= 1 + FLY.diveBoost * p.dive;
+    const room = p.y - floorAt(p.x, p.z) - FLY.clearance;
+    const descent = input.down ? FLY.dive + (FLY.powerDive - FLY.dive) * p.dive : 0;
+    const vyWant = Math.max((input.jumpHeld ? FLY.climb : 0) - descent, -Math.max(1.5, room * 1.1));
+    p.vy += (vyWant - p.vy) * clamp01(dt * (p.dive > 0.3 ? 4 : 2.5));
   } else {
     speed = Math.max(0, f) * FLY.walk; // on the ground it walks (W forward)
     p.vy = 0;

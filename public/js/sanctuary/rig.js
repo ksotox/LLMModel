@@ -21,12 +21,14 @@ const PARTS = {
   shoulder: ['{s}shoulder', '{s}clavicle', 'shoulder{s}', 'clavicle{s}'],
   arm: ['{s}arm', '{s}arma', '{s}upperarm', 'upperarm{s}', 'arm{s}'],
   forearm: ['{s}forearm', '{s}lowerarm', '{s}elbow', 'forearm{s}', 'lowerarm{s}'],
+  hand: ['{s}hand', '{s}wrist', 'hand{s}', 'wrist{s}'],
 };
 const SIDES = { L: ['l', 'left'], R: ['r', 'right'] };
 
 /**
  * Map rig parts to bone names: { hips, spine, chest, neck, head, thighL, thighR, kneeL, kneeR, footL,
- * footR, shoulderL, shoulderR, armL, armR, forearmL, forearmR } (each a name from `names`, or absent).
+ * footR, shoulderL, shoulderR, armL, armR, forearmL, forearmR, handL, handR } (each a name from `names`, or
+ * absent).
  */
 export function findRig(names) {
   const byNorm = new Map();
@@ -61,6 +63,7 @@ export function trainerState(p, prev = null) {
   if (p.mode === 'glide') return 'glide';
   if (p.mode === 'lift') return 'sit';
   if (p.mode === 'paraglide') return 'paraglide';
+  if (p.mode === 'skydive') return 'skydive';
   if (p.mode === 'ride') return 'ride';
   if (p.mode === 'fall') return p.vy > 0.5 ? 'jump' : 'fall';
   const speed = p.moving ?? 0;
@@ -129,6 +132,15 @@ export function gait(state, phase, speed = 1, t = 0, bank = 0) {
         lean: 0.35 + Math.abs(into) * 0.1, thighL: 1.15, thighR: 1.15, kneeL: 1.5, kneeR: 1.5,
         armL: 0.95 - into * 0.15, armR: 0.95 + into * 0.15, armOutL: 0.25, armOutR: 0.25, forearmL: 0.7, forearmR: 0.7,
         head: -0.15,
+      });
+      break;
+    }
+    case 'skydive': { // freefall, belly to the wind: arms spread and bent, knees bent; head down (bank: −1…1)
+      const flutter = Math.sin(t * 9) * 0.04; // the wind shaking the limbs
+      Object.assign(pose, {
+        lean: 0.1, thighL: -0.2 + flutter, thighR: -0.2 - flutter, kneeL: 1.0, kneeR: 1.0,
+        armOutL: 1.35 + bank * 0.25 + flutter, armOutR: 1.35 - bank * 0.25 - flutter, armL: -0.35, armR: -0.35,
+        forearmL: 0.9, forearmR: 0.9, head: -0.5,
       });
       break;
     }

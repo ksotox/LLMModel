@@ -6,6 +6,8 @@ const SPAN = 7.2; // tip to tip along the arc
 const CHORD = 2.1; // leading to trailing edge
 const RISE = 5.4; // harness to wing
 const CELLS = 22;
+/** The brake handles: either side of the pilot's head (the harness is the origin; +X is the pilot's left). */
+export const HANDLES = { x: 0.3, y: 0.72, z: 0.06, pull: 0.38 };
 
 /** The canopy's surface: an arc of cells with an airfoil's camber, coloured cell by cell. */
 function canopyGeometry(THREE, colours) {
@@ -49,8 +51,10 @@ function canopyGeometry(THREE, colours) {
 }
 
 /**
- * A paraglider wing (`colours`: the two fabric colours). Returns { group, update(dt, { open, bank, t,
- * speed }), dispose() }: `open` true while flying (it inflates, or collapses when false), `bank` −1…1.
+ * A paraglider wing (`colours`: the two fabric colours). Returns { group, handles: [left, right], update(dt,
+ * { open, bank, t, speed }), dispose() }: `open` true while flying (it inflates, or collapses when false),
+ * `bank` −1…1 (the inside brake handle comes down in a turn). `handles`: the two brake handles (meshes)
+ * for the pilot's hands to hold.
  */
 export function buildParaglider(THREE, { colours = [0xf97316, 0xfde047] } = {}) {
   const group = new THREE.Group();
@@ -82,10 +86,34 @@ export function buildParaglider(THREE, { colours = [0xf97316, 0xfde047] } = {}) 
   const lines = new THREE.LineSegments(lineGeo, lineMat);
   group.add(lines);
 
+  // The brakes: a line from each wing tip's trailing edge down to a handle (toggle) in the pilot's hand.
+  const handleGeo = new THREE.CylinderGeometry(0.028, 0.028, 0.13, 8);
+  handleGeo.rotateZ(Math.PI / 2);
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6 });
+  const handles = [1, -1].map((side) => {
+    const m = new THREE.Mesh(handleGeo, handleMat);
+    m.position.set(side * HANDLES.x, HANDLES.y, HANDLES.z);
+    m.castShadow = true;
+    group.add(m);
+    return m;
+  });
+  const tips = [1, -1].map((side) => {
+    const k = (side > 0 ? CELLS * 2 - 3 : 3) * along + 6; // near the tip, on the trailing edge
+    return new THREE.Vector3(pos.getX(k), pos.getY(k), pos.getZ(k));
+  });
+  const brakePos = new Float32Array(12);
+  const brakeGeo = new THREE.BufferGeometry();
+  brakeGeo.setAttribute('position', new THREE.BufferAttribute(brakePos, 3));
+  const brakes = new THREE.LineSegments(brakeGeo, lineMat);
+  brakes.frustumCulled = false;
+  group.add(brakes);
+  const tip = new THREE.Vector3();
+
   let inflate = 0;
   let roll = 0;
   return {
     group,
+    handles,
     update(dt, { open = false, bank = 0, t = 0, speed = 0 } = {}) {
       inflate += ((open ? 1 : 0) - inflate) * Math.min(1, dt * (open ? 2.2 : 4));
       group.visible = inflate > 0.02;
@@ -99,6 +127,16 @@ export function buildParaglider(THREE, { colours = [0xf97316, 0xfde047] } = {}) 
       group.rotation.z = -roll;
       wingHolder.rotation.x = -0.06 - (speed - 9) * 0.01 + Math.sin(t * 1.3) * 0.015;
       wing.position.y = Math.sin(t * 2.1) * 0.04;
+      // The inside brake pulled down in a turn (bank > 0 is a right turn: the right handle, at −X).
+      handles[0].position.y = HANDLES.y - Math.max(0, -bank) * HANDLES.pull;
+      handles[1].position.y = HANDLES.y - Math.max(0, bank) * HANDLES.pull;
+      wingHolder.updateMatrix();
+      wing.updateMatrix();
+      handles.forEach((h, i) => {
+        tip.copy(tips[i]).applyMatrix4(wing.matrix).applyMatrix4(wingHolder.matrix);
+        brakePos.set([tip.x, tip.y, tip.z, h.position.x, h.position.y + 0.04, h.position.z], i * 6);
+      });
+      brakeGeo.attributes.position.needsUpdate = true;
     },
     dispose() {
       group.parent?.remove(group);
@@ -106,6 +144,9 @@ export function buildParaglider(THREE, { colours = [0xf97316, 0xfde047] } = {}) 
       fabric.dispose();
       lineGeo.dispose();
       lineMat.dispose();
+      brakeGeo.dispose();
+      handleGeo.dispose();
+      handleMat.dispose();
     },
   };
 }

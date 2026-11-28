@@ -134,10 +134,12 @@ export function creaturePose(plan, phase, { move = 0, t = 0, air = false, effort
   const s = Math.sin(phase);
   const c = Math.cos(phase);
   const breathe = Math.sin(t * 1.8) * 0.012;
-  // Standing still, arms hang with the elbows a little bent and sway with the breathing.
-  const sway = Math.sin(t * 1.1) * 0.07;
-  const p = { lift: 0, pitch: 0, roll: 0, squash: breathe, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0.04 + sway, armR: 0.04 - sway,
-    forearmL: 0.25 + Math.max(0, sway) * 0.8, forearmR: 0.25 + Math.max(0, -sway) * 0.8, wing: 0, wingAmp: 0, wingFold: 0,
+  // Standing still, arms hang with the elbows a little bent and sway with the breathing (each in its own
+  // time, never stiff and never in lockstep).
+  const sway = Math.sin(t * 1.1) * 0.11;
+  const swayR = Math.sin(t * 1.1 + 2.2) * 0.11;
+  const p = { lift: 0, pitch: 0, roll: 0, squash: breathe, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0.05 + sway, armR: 0.05 + swayR,
+    forearmL: 0.25 + Math.max(0, sway) * 0.8, forearmR: 0.25 + Math.max(0, swayR) * 0.8, wing: 0, wingAmp: 0, wingFold: 0,
     tail: Math.sin(t * 1.3) * 0.12, wave: phase, waveAmp: 0, head: Math.sin(t * 0.45) * 0.15 };
   const m = clamp(move, 0, 1);
   switch (plan.mode) {
@@ -187,7 +189,8 @@ export function creaturePose(plan, phase, { move = 0, t = 0, air = false, effort
       Object.assign(p, { lift: s * 0.06, roll: Math.sin(t * 0.9) * 0.06, pitch: m * 0.15, armL: 0.25 + s * 0.15, armR: 0.25 + s * 0.15, forearmL: 0.4 + s * 0.1, forearmR: 0.4 + s * 0.1 });
       break;
     case 'hop':
-      if (m > 0.02 || air) Object.assign(p, { lift: Math.abs(s) * 0.35, squash: Math.abs(s) < 0.25 ? -0.12 * (1 - Math.abs(s) * 4) : 0.06 * Math.abs(s), pitch: m * 0.1 });
+      if (m > 0.02 || air) Object.assign(p, { lift: Math.abs(s) * 0.35, squash: Math.abs(s) < 0.25 ? -0.12 * (1 - Math.abs(s) * 4) : 0.06 * Math.abs(s), pitch: m * 0.1,
+        armL: 0.2 + Math.abs(s) * 0.7, armR: 0.2 + Math.abs(s) * 0.7, forearmL: 0.3 + Math.abs(s) * 0.4, forearmR: 0.3 + Math.abs(s) * 0.4 }); // arms up with each hop
       break;
     default:
   }

@@ -727,6 +727,15 @@ try {
   assert.equal(await sanc(() => document.querySelector('.sanc').sanctuary.lift.ride), null, 'off the chair');
   await sanc(() => { const s = document.querySelector('.sanc').sanctuary; s.player.y -= 3; }); // (most of the way down)
   await page.waitForFunction(() => ['walk', 'swim'].includes(document.querySelector('.sanc').sanctuary.player.mode), null, { timeout: 120000 });
+  // G: a sky drop. High over the land in freefall; Space opens the paraglider.
+  await page.keyboard.press('KeyG');
+  await page.waitForFunction(() => document.querySelector('.sanc').sanctuary.player.mode === 'skydive', null, { timeout: 30000 });
+  assert.ok(await sanc(() => document.querySelector('.sanc').sanctuary.player.y > 200), 'high in the sky');
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('.sanc').sanctuary.player.mode === 'paraglide', null, { timeout: 60000 });
+  await page.keyboard.up('Space');
+  await sanc(() => { const p = document.querySelector('.sanc').sanctuary.player; p.y = 3; }); // (most of the way down)
+  await page.waitForFunction(() => ['walk', 'swim'].includes(document.querySelector('.sanc').sanctuary.player.mode), null, { timeout: 120000 });
   // Keys 1–8 travel to a habitat (2: the woods).
   await page.keyboard.press('Digit2');
   await page.locator('.sanc-toast', { hasText: 'Woods' }).waitFor();

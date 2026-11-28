@@ -83,15 +83,15 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
 - Japanese cards: `TcgClient({ lang: 'ja' })`, ids `ja:SV2a-100`; no pull chance, no dataset/tcgcsv/PPT fallbacks.
 - **Scan deck** (`#/scan`, `scan/`): perceptual hash, review before save, `scan_token` per copy; HTTPS via
   `POKEDEX_TLS_*`. 30C = TCGdex `30th` + `30th-c` (Classic: original numbers, matched by name). Close-ups: review only.
-- Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
-  thresholds are synthetic-tested only: tune with real tilt photos.
+- Variant suggestion (`printings.js`, `foil.js`): never auto-applied unless certain; tilt thresholds synthetic-tested only.
 - Set rarities are English-only; a missing value costs a price lookup per card.
 - **PokéBattles** (`js/battle/`): `engine` and `realtime` are pure. Real-time has dodge jumps, air dashes, cast
   cues and Fire rushes. `scene`, `world`, `stadiums`, `weatherFx`, `arenas` and `surface` render the game.
   `server/battle.js` serves card rules. `server/models3d.js` caches GLBs under `data/models3d`.
   Models may be committed (owner, 2026-11-26); built-in trainers: `public/assets/trainers`.
 - **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): meadow (`buildWorld` `sanctuary`); `player.js`, `zoo.js` pure; `sanctuaryUI.js`;
-  `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js`; ride flyers (`stepFlyer`). ⚙ `game/settings.js` (pure) +
+  `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js` (brake `HANDLES`); ride flyers (`stepFlyer`, power dive); sky drop
+  (`stepSkydive`); hands: `rigDriver` IK (`reachArm`); `creature/armSwing.js`. ⚙ `game/settings.js` (pure) +
   `settingsMenu.js` (`pokedex.gameSettings`): keys (`actionFor`/`held`), mouse look (lock on 1st key/click; drag opt.),
   `world.setOptions`, FPS·CPU·GPU readout (`createGpuTimer`). e2e uses drag look before clicks.
 - `battle/perf.js`: dynamic res. (Auto only; ≥5%, ≤1 change/4 s), crash-safe start; drops `postfx.js` first. `warmUp`,
@@ -106,8 +106,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). The launcher starts it if set up.
 - Open gaps: `docs/ROADMAP.md`; design: `docs/GAME_ARCHITECTURE.md`.
-- Pull-rate tables: Scarlet & Violet and Mega Evolution eras only.
-- Forgotten owner password: no reset flow (delete `users`/`sessions` rows to rerun setup).
+- Pull-rate tables: SV and Mega Evolution eras only.
+- Forgotten owner password: no reset (delete `users`/`sessions` rows to rerun setup).
 
 ## Conventions
 - Plain, friendly UI text. The README is written for a non-developer.
