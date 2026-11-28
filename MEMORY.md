@@ -94,7 +94,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js`; ride flyers (`stepFlyer`). ⚙ `game/settings.js` (pure) +
   `settingsMenu.js` (`pokedex.gameSettings`): keys (`actionFor`/`held`), mouse look (lock on 1st key/click; drag opt.),
   `world.setOptions`, FPS·CPU·GPU readout (`createGpuTimer`). e2e uses drag look before clicks.
-- `battle/perf.js`: dynamic res. (only on Auto), crash-safe start; drops `postfx.js` first. `warmUp`. High/Std: `hdScenery.js`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+- `battle/perf.js`: dynamic res. (Auto only; ≥5%, ≤1 change/4 s), crash-safe start; drops `postfx.js` first. `warmUp`,
+  `precompile` (hidden too), `shaderChecks` (off for players). Sanctuary grass: `meshGroundTexture` + far ring. `hdScenery.js`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,

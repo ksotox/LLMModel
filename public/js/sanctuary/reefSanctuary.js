@@ -73,7 +73,7 @@ export async function renderReef(root) {
   }
 }
 
-function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { createModelLoader, loadModel, pickClips, warmUp }, { preferredQuality, saveQuality }]) {
+function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { createModelLoader, loadModel, pickClips, precompile, shaderChecks, warmUp }, { preferredQuality, saveQuality }]) {
   const el = h('div.sanc.reef');
   const plates = h('div.sanc-plates');
   const prompt = h('button.sanc-prompt', { type: 'button', hidden: true });
@@ -97,6 +97,7 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  shaderChecks(renderer);
   el.prepend(renderer.domElement);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 600);
@@ -329,11 +330,14 @@ function start(root, residents, [THREE, { buildReef, blockedBy, REEF }, { create
   let lift = 0; // the camera's eased push up off the reef floor (or down from the surface)
   let shownPrompt = null;
   let cpuMs = null;
+  precompile(renderer, scene, camera); // every shader now, so nothing stalls when it first appears
   renderer.setAnimationLoop((now) => {
     if (settings.video.frameLimit && now - last < 1000 / settings.video.frameLimit - 1) return;
     const cpuStart = performance.now();
     meter.frame(now - last, { cpu: cpuMs, gpu: gpuTimer });
-    const dt = Math.min(0.1, (now - last) / 1000);
+    // (Never below 0: the browser's frame time can be a moment before the clock read at setup, and a
+    // step backwards would push everything drawn between steps far off.)
+    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
     if (paused() && locked()) document.exitPointerLock?.();
     const t = now / 1000;
