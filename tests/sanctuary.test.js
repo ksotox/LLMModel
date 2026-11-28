@@ -311,21 +311,26 @@ describe('Sanctuary: smooth looking, and keeping 3D pages smooth', () => {
     assert.equal(drops, 1, 'still slow once settled: the passes go');
   });
 
-  test('more pixels come back only after 3 easy seconds in a row (no see-saw)', async () => {
+  test('the resolution settles: more pixels after 5 easy seconds, one change per 4 seconds at most', async () => {
     const { createPerf } = await import('../public/js/battle/perf.js');
     let ratio = 1.5;
     const changes = [];
     const perf = createPerf({ getPixelRatio: () => ratio, setPixelRatio(r) { ratio = r; changes.push(r); } }, () => 2);
     const second = (ms) => { for (let i = 0; i < Math.round(1000 / ms); i++) perf.frame(ms); };
     second(16); second(16); // settling (2 s)
-    second(10); second(10);
-    assert.equal(changes.length, 0, 'two easy seconds: not yet');
+    for (let i = 0; i < 4; i++) second(10);
+    assert.equal(changes.length, 0, 'four easy seconds: not yet');
     second(10);
-    assert.equal(changes.length, 1, 'the third: a little more resolution');
+    assert.equal(changes.length, 1, 'the fifth: a little more resolution');
     assert.ok(ratio > 1.5);
-    second(30);
-    assert.equal(changes.length, 2, 'a slow second lowers it at once');
+    let waited = 0;
+    while (changes.length === 1 && waited < 10) { second(30); waited++; }
+    assert.ok(waited >= 4, `no second change within 4 seconds of the last (each is a hitch): ${waited}`);
+    assert.equal(changes.length, 2, 'still slow after that: lower');
     assert.ok(ratio < changes[0]);
+    const after = changes.length;
+    for (let i = 0; i < 8; i++) second(17.5); // a hair over the target: not worth a resize
+    assert.equal(changes.length, after, 'no change of under 5%');
   });
 
   test('warming a model up: each of its textures once, then its shaders', async () => {

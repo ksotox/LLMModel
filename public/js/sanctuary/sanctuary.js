@@ -26,6 +26,7 @@ import { bodyPlan, sizedSpecies } from '../creature/body.js';
 import { bringToLife } from '../creature/life.js';
 
 const MAX_MODELS = 24; // full 3D models at once; the rest stand as their cards
+const AIRBORNE = new Set(['glide', 'paraglide', 'lift', 'fall', 'ride']); // no model loads in these (any hitch shows)
 const MODEL_RANGE = 30;
 const PLATE_RANGE = 14;
 const WORLD_RADIUS = 78;
@@ -109,7 +110,7 @@ export async function renderSanctuary(root) {
 }
 
 function start3d(root, cards, world3d) {
-  const [THREE, worldKit, { createModelLoader, loadModel, pickClips, warmUp }, stadiumKit, surfaceKit] = world3d;
+  const [THREE, worldKit, { createModelLoader, loadModel, pickClips, precompile, shaderChecks, warmUp }, stadiumKit, surfaceKit] = world3d;
   const { buildWorld, preferredQuality, saveQuality, terrainHeight, LAKE } = worldKit;
 
   // ---- the page ----
@@ -136,6 +137,7 @@ function start3d(root, cards, world3d) {
   // ---- the world ----
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  shaderChecks(renderer);
   renderer.domElement.className = 'sanc-canvas';
   el.prepend(renderer.domElement);
   const scene = new THREE.Scene();
@@ -151,7 +153,7 @@ function start3d(root, cards, world3d) {
   const gpuTimer = createGpuTimer(renderer);
   const loadTimer = setTimeout(clearLoad, 12000);
   quality.value = world.quality;
-  const setLevel = (q) => { quality.value = q; world.setQuality(q); saveQuality(world.quality); perf.settle(); resize(); };
+  const setLevel = (q) => { quality.value = q; world.setQuality(q); saveQuality(world.quality); perf.settle(); resize(); precompile(renderer, scene, camera); };
   quality.addEventListener('change', () => setLevel(quality.value));
   const applySettings = (s) => {
     settings = s;
@@ -559,6 +561,9 @@ function start3d(root, cards, world3d) {
   let acc = 0;
   const STEP = 1 / 60;
   const v = new THREE.Vector3();
+  const view = new THREE.Frustum();
+  const viewMatrix = new THREE.Matrix4();
+  const viewSphere = new THREE.Sphere();
   const prevP = { x: player.x, y: player.y, z: player.z, facing: player.facing };
   let trainerAnim = 'idle';
   const P = { x: player.x, y: player.y, z: player.z, facing: player.facing }; // the trainer as drawn (between steps)
@@ -571,13 +576,18 @@ function start3d(root, cards, world3d) {
   const pusherPool = Array.from({ length: 6 }, () => ({}));
   let shownPrompt = null;
   let cpuMs = null; // the page's own work last frame (the ⚙ performance readout)
+  // Every shader now, the paraglider's, the glider's and the lift's too, so nothing stalls when it first
+  // appears (the browser compiles them in the background while the page settles).
+  precompile(renderer, scene, camera);
   renderer.setAnimationLoop((now) => {
     // A frame limit (⚙ Graphics): skip screen refreshes until it's time (1 ms early, so 60 on a 60 Hz
     // screen doesn't drop to 30).
     if (settings.video.frameLimit && now - last < 1000 / settings.video.frameLimit - 1) return;
     const cpuStart = performance.now();
     meter.frame(now - last, { cpu: cpuMs, gpu: gpuTimer });
-    const dt = Math.min(0.1, (now - last) / 1000);
+    // (Never below 0: the browser's frame time can be a moment before the clock read at setup, and a
+    // step backwards would push everything drawn between steps far off.)
+    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
     // A dialog open: the cursor comes back (the wheel, a card, the settings take clicks).
     if (paused() && locked()) document.exitPointerLock?.();
@@ -693,9 +703,13 @@ function start3d(root, cards, world3d) {
     const oz = Math.cos(look.yaw) * cp * reachOut;
     // Pulled in when a tree, rock or ruin stands between the trainer and the camera: the boom comes in
     // fast and goes back out slowly, so passing trees never make the view jump in and out.
+    // (Only what stands as high as the camera: flying over the woods, the trees below are not in the way.)
     let want = 1;
     for (let k = 0.2; k <= 1; k += 0.05) {
-      if (solidAt(plan, P.x + ox * k, P.z + oz * k, 0.2)) { want = Math.max(0.25, k - 0.12); break; }
+      const x = P.x + ox * k;
+      const z = P.z + oz * k;
+      if (P.y + 1.5 + rideTop + oy * k - ground.heightAt(x, z) > 9) continue;
+      if (solidAt(plan, x, z, 0.2)) { want = Math.max(0.25, k - 0.12); break; }
     }
     boom = approach(boom, want, dt, 20, 3);
     v.set(P.x + ox * boom, P.y + 1.5 + rideTop + oy * boom, P.z + oz * boom);
@@ -708,6 +722,10 @@ function start3d(root, cards, world3d) {
     // The creatures, their models (the nearest few) and their nameplates.
     const W = el.clientWidth;
     const H = el.clientHeight;
+    // What the camera sees: a Pokémon out of view isn't animated (it carries on when it comes back).
+    camera.updateMatrixWorld();
+    view.setFromProjectionMatrix(viewMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const seen = (c, d) => d < 6 || view.intersectsSphere(viewSphere.set(viewSphere.center.set(c.rx, c.ry + (c.model?.height ?? 1) * 0.5, c.rz), Math.max(1.5, (c.model?.height ?? 1) * 0.9, c.plan.radius * 1.5)));
     for (const c of creatures) {
       // Distance to its body: a big Pokémon is seen (and loaded) from further away.
       const d = Math.max(0, Math.hypot(c.rx - P.x, c.rz - P.z) - c.plan.radius);
@@ -736,8 +754,9 @@ function start3d(root, cards, world3d) {
       const stand = c.model ? 0 : Math.sin(c.hop) * 0.22;
       c.group.position.set(c.rx, c.ry + stand + happy + (c.dropLift ?? 0), c.rz);
       c.group.rotation.y = c.model ? c.rf : Math.atan2(camera.position.x - c.rx, camera.position.z - c.rz); // a card faces you
-      if (c.anim && d < 40) c.anim.update(dt, { speed: c.speed, air: c.air });
-      if (c.mixer && d < 30) {
+      const visible = (c.anim && d < 40) || (c.mixer && d < 30) ? seen(c, d) : false;
+      if (c.anim && d < 40 && visible) c.anim.update(dt, { speed: c.speed, air: c.air });
+      if (c.mixer && d < 30 && visible) {
         if (!(c.extraUntil > now)) {
           const want = (c.speed > 0.3 && c.actions.walk) || c.actions.idle || c.actions.walk;
           if (want !== c.playing) {
@@ -770,9 +789,9 @@ function start3d(root, cards, world3d) {
       else if (Math.hypot(player.x - liftStops.down.x, player.z - liftStops.down.z) < 3.5) atLift = 'down';
     }
     // Models load in the background from the start, nearest first and one at a time, in the browser's
-    // idle time, so they're ready before you get there; none starts while you sprint or fly (a model's
-    // setup still takes the page a moment).
-    if (!loading && !queued && loaded < MAX_MODELS && !(player.moving > 6 || player.mode === 'glide')) {
+    // idle time, so they're ready before you get there; none starts while you sprint, ride, glide or fly
+    // (reading a model still takes the page a moment, and in the air any hitch shows).
+    if (!loading && !queued && loaded < MAX_MODELS && !(player.moving > 6 || player.air || mount || AIRBORNE.has(player.mode))) {
       let pick = null;
       let best = Infinity;
       for (const c of creatures) {
@@ -851,5 +870,5 @@ function start3d(root, cards, world3d) {
   };
   window.addEventListener('hashchange', leave);
   // For the walkthrough test: where things are.
-  el.sanctuary = { player, creatures, plan, look, travel, effects: world.effects, lift: { line: lift.line, stops: liftStops, start: startLift, get ride() { return ride; } }, riding: { start: startRide, end: endRide, get mount() { return mount; } } };
+  el.sanctuary = { player, creatures, plan, look, travel, camera, effects: world.effects, lift: { line: lift.line, stops: liftStops, start: startLift, get ride() { return ride; } }, riding: { start: startRide, end: endRide, get mount() { return mount; } } };
 }

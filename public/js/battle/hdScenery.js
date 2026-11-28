@@ -44,8 +44,22 @@ function groundPatch(shader, maps, tint) {
     varying vec4 vLayers;
     varying vec3 vHdPos;
     varying vec3 vHdNor;
+    // Value noise (for breaking up the photo textures' repeats and painting meadow patches).
+    float hdHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float hdNoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hdHash(i), hdHash(i + vec2(1.0, 0.0)), f.x), mix(hdHash(i + vec2(0.0, 1.0)), hdHash(i + 1.0), f.x), f.y);
+    }
+    // A texture near and far: far out, two large samples (one turned and shifted) blended by a slow noise,
+    // so no repeat shows from up high.
     vec3 hdTwo(sampler2D t, vec2 p, float tile, float far) {
-      return mix(texture2D(t, p / tile).rgb, texture2D(t, p / (tile * 6.0)).rgb, far);
+      vec3 near = texture2D(t, p / tile).rgb;
+      if (far < 0.01) return near;
+      vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p / (tile * 4.3) + vec2(0.37, 0.71);
+      float pick = smoothstep(0.3, 0.7, hdNoise(p / 37.0));
+      vec3 big = mix(texture2D(t, p / (tile * 6.0)).rgb, texture2D(t, q).rgb, pick);
+      return mix(near, big, far);
     }
     vec3 hdRock(vec2 xz, vec3 n, float far) { // triplanar, so cliffs aren't stretched
       vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
@@ -59,6 +73,10 @@ function groundPatch(shader, maps, tint) {
         vec2 gp = vHdPos.xz;
         vec3 col = hdTwo(tGC, gp, ${f(T.grass)}, far);
         col = mix(col, diffuseColor.rgb * 1.7, 0.6); // the meadow's own green, so the photo's bare soil doesn't show
+        // Meadow patches: lusher and drier stretches, and clumps, as a real field looks from a distance.
+        float patchA = hdNoise(gp / 23.0) * 0.6 + hdNoise(gp / 7.0) * 0.4;
+        float clump = hdNoise(gp * 0.9);
+        col *= mix(vec3(0.82, 0.9, 0.78), vec3(1.1, 1.06, 0.88), patchA) * mix(0.88, 1.06, clump);
         col = mix(col, hdTwo(tSC, gp, ${f(T.soil)}, far), vLayers.x);
         col = mix(col, hdTwo(tAC, gp, ${f(T.sand)}, far), vLayers.y);
         col = mix(col, hdRock(gp, normalize(vHdNor), far), vLayers.z);

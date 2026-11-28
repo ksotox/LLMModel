@@ -11,7 +11,7 @@
 // engine's events one after another.
 
 import * as THREE from 'three';
-import { breathing, createModelLoader, loadModel, pickClips, warmUp } from './modelLoader.js';
+import { breathing, createModelLoader, loadModel, pickClips, shaderChecks, warmUp } from './modelLoader.js';
 import { createFrameMeter } from './frameMeter.js';
 import { createMoveFx } from './moveFx.js';
 import { bringToLife } from '../creature/life.js';
@@ -184,6 +184,7 @@ export class BattleStage {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    shaderChecks(this.renderer);
     this.renderer.domElement.className = 'stage-canvas';
     this.overlay = document.createElement('div');
     this.overlay.className = 'stage-overlay';

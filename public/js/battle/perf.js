@@ -54,10 +54,11 @@ export function createPerf(renderer, top, effects = null, { dynamic = () => true
   const settling = [];
   let targets = null;
   let roomy = 0; // seconds in a row with room for more pixels
+  let calm = 4; // seconds since the resolution last changed (the first judgement may act at once)
   return {
     get targets() { return targets; },
     /** A new graphics level: let it settle (shaders compile in its first frames) before judging it. */
-    settle(ms = 2000) { sum = 0; n = 0; wait = ms; roomy = 0; },
+    settle(ms = 2000) { sum = 0; n = 0; wait = ms; roomy = 0; calm = 4; },
     frame(dtMs) {
       if (dtMs > 250) return; // a hidden tab or a pause: not a measure
       sum += dtMs;
@@ -78,13 +79,16 @@ export function createPerf(renderer, top, effects = null, { dynamic = () => true
       if (!dynamic()) return;
       const now = renderer.getPixelRatio();
       const { ratio: next, drop } = perfStep(average, now, top(), Boolean(effects?.on), targets);
-      // Each change resizes the drawing buffers (a hitch of its own), so more pixels come back only
-      // after 3 easy seconds in a row: the resolution doesn't see-saw from second to second.
-      roomy = next > now + 0.01 ? roomy + 1 : 0;
-      if (drop) effects.drop();
-      else if (next < now - 0.01 || (next > now + 0.01 && roomy >= 3)) {
+      // Each change resizes the drawing buffers (a hitch of its own), so: no change of less than 5%, none
+      // within 4 seconds of the last, and more pixels come back only after 5 easy seconds in a row. The
+      // resolution settles instead of see-sawing (each see-saw is a visible stutter).
+      roomy = next > now * 1.05 ? roomy + 1 : 0;
+      calm++;
+      if (drop) { effects.drop(); calm = 0; }
+      else if (calm >= 4 && (next < now * 0.95 || (next > now * 1.05 && roomy >= 5))) {
         renderer.setPixelRatio(next);
         roomy = 0;
+        calm = 0;
       }
     },
   };

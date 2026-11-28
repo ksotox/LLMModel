@@ -963,3 +963,35 @@ check the real services with `npm run check:live`.
   - rebinds a key, turns the readout on and tries mouse look;
   - steps a second card of the same Pokémon aside before meeting one (two Voltorbs stood together, and E met the
     other).
+
+## Phase 58: Smoother frames, and grass over the whole meadow
+- The owner's video showed repeated frames (the game falling behind the screen), a one-frame camera jump, and grass
+  only round the middle of the map.
+- **Stalls removed:**
+  - three.js's shader error check made the browser wait for each new shader. It is now off for players
+    (`shaderChecks`) and stays on in tests and with `?debug`.
+  - `precompile` compiles every shader at the start, including those of hidden things (paraglider, glider, lift),
+    so nothing compiles when it first appears.
+  - The lake mirror is drawn every frame, not every other one: alternating heavy and light frames judder.
+- **Resolution changes settle (`perf.js`):** a change needs at least 5% difference, at most one comes every
+  4 seconds, and more pixels come back only after 5 easy seconds. Each change resizes the buffers, and a see-saw
+  shows as a stutter.
+- **Less main-thread work:**
+  - Pokémon out of view aren't animated;
+  - no model loads while riding, gliding, paragliding or on the lift;
+  - `world.setOptions` redoes the level only when a graphics choice changes (a key rebind no longer recompiles
+    everything).
+- **Camera:**
+  - A frame time below zero could happen on the first frame (the browser's frame time can come a moment before the
+    setup's clock reading). That pushed everything drawn between steps far off after a teleport. It is now clamped
+    at 0 in the Sanctuary and the Reef.
+  - The camera no longer pulls in for trees far below it when flying.
+- **Grass everywhere it is green:**
+  - The grass reads the ground from the terrain mesh itself (`meshGroundTexture`, no extra load time). It grows
+    over the whole land, but not in water, on sand, on the plaza, or on rock and snow.
+  - A second ring of bigger, simpler blades (22–86 m, lighter roots so no dark specks) carries it to the distance.
+  - The HD ground breaks up the photo texture's repeats (a second rotated sample chosen by noise) and paints
+    lusher and drier meadow patches, so the land reads as a field from the air too.
+- The renderer can't be timed on a real graphics card here: the ⚙ Performance readout (Phase 57) shows the CPU and
+  GPU share on the owner's PC.
+

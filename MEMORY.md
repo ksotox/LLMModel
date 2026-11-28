@@ -52,8 +52,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   exception: Profile → Scanner tests saves a photo to `data/scan-bench/` on Save (`server/scanLabels.js`).
 - **Never overwrite what the user typed** with automatic readings. Auto-match only when the name agrees.
 - **Pull chance and prices are estimates.** Say so in the UI.
-- **Prices are shown in USD only** (owner's choice): TCGplayer via TCGdex → tcgcsv → Cardmarket EUR converted
-  (`server/fx.js`). Images: TCGdex → dataset → TCGplayer product image via tcgcsv (`fallbackImages`).
+- **Prices in USD only** (owner): TCGplayer via TCGdex → tcgcsv → Cardmarket EUR converted (`server/fx.js`).
+  Images: TCGdex → dataset → TCGplayer via tcgcsv (`fallbackImages`).
 - **Unlinked cards are linked automatically** by `refreshCardMarket` (Update prices, opening a card,
   hourly job) via `identifyCard`, only at `confidence === 'high'`. A linked card missing its image is retried too.
 - **PokemonPriceTracker budget:** ≤ `POKEMONPRICETRACKER_DAILY_CREDITS` (100) a day; about 3 credits
@@ -94,7 +94,8 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js`; ride flyers (`stepFlyer`). ⚙ `game/settings.js` (pure) +
   `settingsMenu.js` (`pokedex.gameSettings`): keys (`actionFor`/`held`), mouse look (lock on 1st key/click; drag opt.),
   `world.setOptions`, FPS·CPU·GPU readout (`createGpuTimer`). e2e uses drag look before clicks.
-- `battle/perf.js`: dynamic res. (only on Auto), crash-safe start; drops `postfx.js` first. `warmUp`. High/Std: `hdScenery.js`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+- `battle/perf.js`: dynamic res. (Auto only; ≥5%, ≤1 change/4 s), crash-safe start; drops `postfx.js` first. `warmUp`,
+  `precompile` (hidden too), `shaderChecks` (off for players). Sanctuary grass: `meshGroundTexture` + far ring. `hdScenery.js`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,
@@ -105,7 +106,6 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   not professional grading."; no probabilities, accuracy claims or "worth grading" advice. Back centering needs
   `third_party/viridian/data/refs/card_back.jpg` (not shipped). The launcher starts it if set up.
 - Open gaps: `docs/ROADMAP.md`; design: `docs/GAME_ARCHITECTURE.md`.
-- Owner to run `npm run check:live` and set `POKEMONPRICETRACKER_API_KEY`.
 - Pull-rate tables: Scarlet & Violet and Mega Evolution eras only.
 - Forgotten owner password: no reset flow (delete `users`/`sessions` rows to rerun setup).
 

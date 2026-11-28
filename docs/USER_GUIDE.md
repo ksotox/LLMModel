@@ -427,7 +427,7 @@ Open **Sanctuary** in the top bar to walk among your own Pokémon in the meadow.
   - **Graphics:**
     - quality;
     - resolution: Auto lowers it a little by itself to keep the game smooth, or pick a fixed one;
-    - grass and view distance;
+    - grass (it grows across the whole meadow; lower it if the GPU line is near 100%) and view distance;
     - shadows and extra effects (High only);
     - a frame limit (a steady 60 can feel smoother than an uneven 100).
   - **Performance:** a readout in the bottom-left corner. It shows:

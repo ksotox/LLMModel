@@ -107,6 +107,34 @@ export async function warmUp(renderer, object, camera, scene) {
 }
 
 /**
+ * Compile the shaders of everything under `root` now, the hidden parts too (three.js compiles only what
+ * is visible, so a paraglider, a glider or a lift chair that appears later would stall that frame while
+ * its shaders compile). The hidden parts are shown for the call only. Returns the materials compiled.
+ */
+export function precompile(renderer, root, camera, scene = root) {
+  const hidden = [];
+  root.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  try {
+    return renderer.compile(root, camera, scene);
+  } catch {
+    return null; // they compile when first drawn instead
+  } finally {
+    for (const o of hidden) o.visible = false;
+  }
+}
+
+/**
+ * Checking each shader for errors makes the browser wait for its compile to finish (a stall per new
+ * shader, which the parallel compiling would otherwise hide). Players don't need the report; the tests
+ * (and "?debug" in the address) keep it.
+ */
+export function shaderChecks(renderer) {
+  let debug = false;
+  try { debug = Boolean(navigator.webdriver) || /[?&]debug\b/.test(location.search + location.hash); } catch { /* no browser */ }
+  renderer.debug.checkShaderErrors = debug;
+}
+
+/**
  * A model's idle, walk and "extra" (a happy or attack move) animations, picked by their names;
  * any can be null. With one clip only, it is the idle.
  */

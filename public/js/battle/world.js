@@ -702,25 +702,33 @@ function mist(dark, tex, view) {
 // ---- grass that sways in the wind ----
 
 /**
- * The ground under the grass, baked into a texture the grass reads in its shader: red is the height,
- * green whether grass grows there (0–1). It covers the square `half` either side of the middle at
- * `step` metres a texel.
+ * The ground under the grass, baked into a texture the grass reads in its shader (red: the height, green:
+ * whether grass grows there, 0–1), read from the ground mesh itself (a square PlaneGeometry laid flat,
+ * its heights already worked out): one texel per vertex over the whole land, so the grass can grow anywhere it is drawn and
+ * stands exactly on the ground you see. Grass grows where `allow(x, z, y)` says, and not on the rock,
+ * snow or sand painted there (the `aLayers` attribute, hdScenery.js).
  */
-function groundTexture({ half, step = 0.5, allow }) {
-  const res = Math.round((half * 2) / step) + 1;
+function meshGroundTexture(geo, size, segments, allow) {
+  const res = segments + 1;
+  const step = size / segments;
   const data = new Float32Array(res * res * 4);
-  for (let j = 0; j < res; j++) {
-    for (let i = 0; i < res; i++) {
-      const x = -half + i * step;
-      const z = -half + j * step;
-      const o = (j * res + i) * 4;
-      data[o] = terrainHeight(x, z);
-      data[o + 1] = allow(x, z, data[o]);
-    }
+  const pos = geo.attributes.position;
+  const layers = geo.attributes.aLayers;
+  for (let v = 0; v < pos.count; v++) {
+    const x = pos.getX(v);
+    const z = pos.getZ(v);
+    const y = pos.getY(v) + 0.03; // (the mesh is laid 3 cm low)
+    const i = Math.round((x + size / 2) / step);
+    const j = Math.round((z + size / 2) / step);
+    if (i < 0 || j < 0 || i >= res || j >= res) continue;
+    const bare = layers ? Math.max(layers.getZ(v), layers.getW(v), layers.getY(v)) : 0; // rock, snow, sand
+    const o = (j * res + i) * 4;
+    data[o] = y;
+    data[o + 1] = allow(x, z, y) * (1 - smooth(0.25, 0.7, bare));
   }
   const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.FloatType);
   tex.needsUpdate = true;
-  return { tex, box: new THREE.Vector4(-half, -half, half * 2, res) };
+  return { tex, box: new THREE.Vector4(-size / 2, -size / 2, size, res) };
 }
 
 const PUSHERS = 6; // things that bend the grass aside as they pass (the trainer, creatures nearby)
@@ -735,7 +743,8 @@ const PUSHERS = 6; // things that bend the grass aside as they pass (the trainer
  * `pushers` bend it aside. Otherwise they spread around the field.
  */
 function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7, avoid = null, follow = null }) {
-  const blade = new THREE.PlaneGeometry(1, 1, 1, 5);
+  // (A far ring, follow.ring = [from, to] metres, has bigger blades of fewer segments: tiny far away.)
+  const blade = new THREE.PlaneGeometry(1, 1, 1, follow?.segments ?? 5);
   blade.translate(0, 0.5, 0);
   const geo = new THREE.InstancedBufferGeometry();
   geo.setIndex(blade.index);
@@ -751,8 +760,9 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
       const x = (r() - 0.5) * follow.tile;
       const z = (r() - 0.5) * follow.tile;
       const patch = fbm(x * 0.2 + 30, z * 0.2, 3);
+      const [sh, sw] = follow.scale ?? [1, 1];
       offsets.set([x, 0, z], n * 3);
-      params.set([(0.2 + r() * 0.3) * (0.75 + patch * 0.55), 0.04 + r() * 0.035, r() * Math.PI * 2, r()], n * 4);
+      params.set([(0.2 + r() * 0.3) * (0.75 + patch * 0.55) * sh, (0.04 + r() * 0.035) * sw, r() * Math.PI * 2, r()], n * 4);
     }
   }
   for (let tries = 0; !follow && n < count && tries < count * 14; tries++) {
@@ -791,6 +801,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
       uTint: { value: dark ? new THREE.Color(0.66, 0.62, 0.72) : new THREE.Color(1, 1, 1) },
       uCentre: { value: new THREE.Vector2() },
       uTile: { value: follow?.tile ?? 0 },
+      uRing: { value: new THREE.Vector2(...(follow?.ring ?? [0, 0])) },
       uGround: { value: follow?.ground.tex ?? null },
       uGroundBox: { value: follow?.ground.box ?? new THREE.Vector4() },
       uPush: { value: Array.from({ length: PUSHERS }, () => new THREE.Vector4(0, 0, 0, 0)) },
@@ -798,7 +809,7 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
     defines: follow ? { FOLLOW: 1 } : {},
     vertexShader: `
       attribute vec3 iOffset; attribute vec4 iParams; uniform float uTime;
-      uniform vec2 uCentre; uniform float uTile; uniform sampler2D uGround; uniform vec4 uGroundBox;
+      uniform vec2 uCentre; uniform float uTile; uniform vec2 uRing; uniform sampler2D uGround; uniform vec4 uGroundBox;
       uniform vec4 uPush[${PUSHERS}];
       varying float vH, vVar, vGust; varying vec3 vW, vNh;
       #include <common>
@@ -827,7 +838,11 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
           vec2 rel = mod(iOffset.xz - uCentre + uTile * 0.5, uTile) - uTile * 0.5;
           vec2 xz = uCentre + rel;
           vec2 g = ground(xz);
-          float fade = 1.0 - smoothstep(uTile * 0.36, uTile * 0.5, length(rel));
+          float r = length(rel);
+          // The near field thins out from 20 m; a far ring fades in there and out at its own edge.
+          float fade = uRing.y > 0.0
+            ? smoothstep(uRing.x - 6.0, uRing.x + 3.0, r) * (1.0 - smoothstep(uRing.y * 0.72, uRing.y, r))
+            : 1.0 - smoothstep(uTile * 0.36, uTile * 0.5, r);
           hgt *= fade * smoothstep(0.15, 0.6, g.y);
           wid *= step(0.001, hgt);
           base = vec3(xz.x, g.x - 0.03, xz.y);
@@ -860,13 +875,15 @@ function grassField(count, { inner, outer, dark, view, sunDir, colors, seed = 7,
         #include <fog_vertex>
       }`,
     fragmentShader: `
-      uniform vec3 uSun, uSunCol, uSky, uTint;
+      uniform vec3 uSun, uSunCol, uSky, uTint; uniform vec2 uRing;
       varying float vH, vVar, vGust; varying vec3 vW, vNh;
       #include <common>
       #include <fog_pars_fragment>
       void main() {
         vec3 tip = mix(vec3(0.4, 0.64, 0.18), vec3(0.62, 0.66, 0.26), smoothstep(0.7, 1.0, vVar));
-        vec3 col = mix(vec3(0.13, 0.24, 0.07), tip, smoothstep(0.0, 1.0, vH));
+        // (Far blades, a pixel or two wide, show their average colour: lighter roots, no dark specks.)
+        vec3 root = uRing.y > 0.0 ? vec3(0.25, 0.38, 0.12) : vec3(0.13, 0.24, 0.07);
+        vec3 col = mix(root, tip, smoothstep(0.0, 1.0, vH));
         col *= 0.85 + vVar * 0.3;
         vec3 V = normalize(cameraPosition - vW);
         vec3 Nh = dot(vNh, V) < 0.0 ? -vNh : vNh;
@@ -1150,6 +1167,7 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const bigSurfaces = [];
   const dotTex = track(dotTexture());
   let grass = null;
+  let grassFar = null; // the Sanctuary's far ring of grass
   let flowers = null;
   let air = null;
   let woods = null;
@@ -1283,20 +1301,27 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   // (In the Sanctuary, no grass on the lake shore's sand.)
   // In the Sanctuary the grass goes wherever you walk (a field that follows the camera, on the ground
   // baked below: not in the water, on the shore's sand or the plaza, giving way to rock up the slopes).
+  // It grows over the whole land, wherever it is green: not in the water, on the shore's sand or the
+  // plaza, nor on rock and snow up the mountains (read from the ground mesh, so no extra work to load).
   const follow = mode === 'sanctuary' ? {
     tile: 56,
-    ground: groundTexture({
-      half: 90,
-      allow: (x, z, y) => {
-        if (y < LAKE.level + 0.2 || lakeDistance(x, z) < SHORE_SAND || Math.hypot(x, z) < fieldR + 0.8) return 0;
-        return 1 - smooth(14, 22, y);
-      },
+    ground: meshGroundTexture(groundGeo, 800, segments, (x, z, y) => {
+      if (y < LAKE.level + 0.2 || lakeDistance(x, z) < SHORE_SAND || Math.hypot(x, z) < fieldR + 0.8) return 0;
+      return 1 - smooth(26, 40, y);
     }),
   } : null;
   if (follow) disposables.push(follow.ground.tex);
   // (Room for the Ultra grass setting.)
   grass = grassField(Math.round(95000 * 1.5), { inner: fieldR + 0.6, outer: 60, dark, view, sunDir, colors, follow, avoid: mode === 'sanctuary' ? (x, z) => lakeDistance(x, z) < SHORE_SAND : null });
   scene.add(grass.mesh);
+  disposables.push(grass.mesh.geometry, grass.mesh.material);
+  // Beyond it, out to about 85 m, a ring of bigger, simpler blades (the far ground is painted grass), so
+  // the meadow is grass as far as you can make out blades, from the ground or the air.
+  if (follow) {
+    grassFar = grassField(Math.round(110000 * 1.5), { inner: 0, outer: 0, dark, view, sunDir, colors, seed: 19, follow: { ...follow, tile: 180, ring: [22, 86], scale: [1.5, 2.6], segments: 2 } });
+    scene.add(grassFar.mesh);
+    disposables.push(grassFar.mesh.geometry, grassFar.mesh.material);
+  }
   flowers = flowerField(3000, { inner: fieldR + 0.8, outer: fieldR + 22, dark });
   scene.add(flowers);
   air = pollen(600, { dark, tex: dotTex, view });
@@ -1366,6 +1391,10 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     grass.mesh.visible = !basic;
     // The reference's desktop / phone counts; a field that follows you is spread evenly, so it keeps more.
     grass.mesh.geometry.instanceCount = Math.min(grass.max, Math.round((high ? 95000 : grass.follow ? 55000 : 28000) * options.grass));
+    if (grassFar) {
+      grassFar.mesh.visible = !basic;
+      grassFar.mesh.geometry.instanceCount = Math.min(grassFar.max, Math.round((high ? 110000 : 50000) * options.grass));
+    }
     air.points.visible = !basic;
     air.points.geometry.setDrawRange(0, high ? 600 : 250);
     flowers.count = high ? 3000 : basic ? 0 : 1000;
@@ -1379,6 +1408,8 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   setQuality(quality);
   /** The player's settings ({ grass, shadows, effects, scale }): applied at once (the level is redone). */
   const setOptions = (next) => {
+    // (Redoing the level recompiles every material: only when a graphics choice actually changed.)
+    if (Object.keys(next).every((k) => options[k] === next[k])) return;
     Object.assign(options, next);
     setQuality(current);
   };
@@ -1386,8 +1417,6 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
   const frustum = new THREE.Frustum();
   const projView = new THREE.Matrix4();
   const sphere = new THREE.Sphere();
-  let mirrorFrame = 0;
-  let mirrorDrawn = false;
 
   const shadowDir = sun.position.clone().normalize();
   return {
@@ -1429,6 +1458,10 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
       if (!grass) return;
       grass.uniforms.uTime.value = seconds;
       if (grass.follow) grass.uniforms.uCentre.value.set(camera.position.x, camera.position.z);
+      if (grassFar) {
+        grassFar.uniforms.uTime.value = seconds;
+        grassFar.uniforms.uCentre.value.set(camera.position.x, camera.position.z);
+      }
       water.uniforms.uTime.value = seconds;
       if (air.points.visible) air.update(seconds, dt);
     },
@@ -1436,15 +1469,15 @@ export function buildWorld({ scene, renderer, camera, dark = false, mode = 'batt
     render() {
       const mirrored = water?.mesh ?? stadium?.water;
       mirror.on = effects.on && Boolean(mirrored);
-      // The mirror is a whole extra render of the scene: only when the water is on screen, and every other
-      // frame (a reflection a frame old doesn't show).
+      // The mirror is a whole extra render of the scene (at half resolution, without the grass): only when
+      // the water is on screen. Every frame, not every other one: frames of uneven cost judder even when
+      // the average is fast.
       if (mirrored && mirror.on) {
         frustum.setFromProjectionMatrix(projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         mirrored.geometry.boundingSphere ?? mirrored.geometry.computeBoundingSphere();
         sphere.copy(mirrored.geometry.boundingSphere).applyMatrix4(mirrored.matrixWorld);
-        if (frustum.intersectsSphere(sphere) && (mirrorFrame++ % 2 === 0 || !mirrorDrawn)) {
-          mirror.render(scene, camera, mirrored, grass ? [grass.mesh, air.points] : []);
-          mirrorDrawn = true;
+        if (frustum.intersectsSphere(sphere)) {
+          mirror.render(scene, camera, mirrored, grass ? [grass.mesh, air.points, ...(grassFar ? [grassFar.mesh] : [])] : []);
         }
       }
       effects.render(scene, camera);
