@@ -934,3 +934,32 @@ The cloud sandbox could reach only GitHub (including raw files) and the npm regi
 PokemonPriceTracker, tcgcsv.com and Scrydex were blocked, so those integrations are tested
 against local mocks (`tests/helpers/mock-sources.js`) built from their docs and source code. The owner can
 check the real services with `npm run check:live`.
+
+## Phase 57: A settings menu: keys, mouse look, graphics and an FPS · CPU · GPU readout
+- The owner sent a video of the Sanctuary stuttering. Among other things, they asked for:
+  - a settings icon and menu with key bindings and graphics settings;
+  - a toggle for FPS, CPU and GPU use;
+  - the camera to follow the mouse without clicking, with left-click and drag as a setting.
+  The rest of the request follows in the next phases.
+- `public/js/game/settings.js` (pure, tested), saved in this browser (`pokedex.gameSettings`):
+  - the actions and their default keys;
+  - `normalizeSettings`: old or broken settings fall back to the defaults;
+  - `bindKey`: a key belongs to one action at a time, two keys at most;
+  - `actionFor`/`held`, `keyLabel`;
+  - `mouseTurn`: sensitivity, invert Y.
+- `settingsMenu.js`: the ⚙ button (or **P**) in the Sanctuary and the Reef opens four tabs:
+  - Controls: click a key, press the new one;
+  - Mouse: follow the mouse, or left-click and drag; sensitivity; invert;
+  - Graphics: quality, resolution (auto or fixed), grass, view distance, shadows, extra effects, frame limit;
+  - Performance: the FPS, CPU and GPU lines.
+- Mouse look by default: the first key press or click locks the pointer to the view (a browser allows it only
+  then). **Esc** frees it, and any dialog gives the cursor back.
+- `frameMeter.js`: the readout adds the page's CPU time per frame. Where the browser can time the GPU
+  (`EXT_disjoint_timer_query_webgl2`, on most desktop GPUs, NVIDIA included), it adds the GPU's time too. Each shows
+  as a share of the frame.
+- `perf.js` changes the resolution by itself only on "Auto". `world.setOptions` applies grass, shadows, effects and
+  resolution.
+- The e2e now:
+  - rebinds a key, turns the readout on and tries mouse look;
+  - steps a second card of the same Pokémon aside before meeting one (two Voltorbs stood together, and E met the
+    other).

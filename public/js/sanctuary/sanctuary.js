@@ -13,7 +13,9 @@ import { addLook, approach, createLook, ease, stepLook } from './look.js';
 import { buildSkiLift, LIFT_SPEED, seatAt } from './skiLift.js';
 import { buildParaglider } from './paraglider.js';
 import { clearLoad, createPerf, markLoad } from '../battle/perf.js';
-import { createFrameMeter } from '../battle/frameMeter.js';
+import { createFrameMeter, createGpuTimer } from '../battle/frameMeter.js';
+import { actionFor, GRASS_DENSITY, held, keyLabel, loadSettings, mouseTurn, VIEW_DISTANCE } from '../game/settings.js';
+import { createSettingsMenu } from '../game/settingsMenu.js';
 import { createAmbience } from '../ambience.js';
 import { initSanctuaryUI, savedTrainer, savedTrainerModel } from './sanctuaryUI.js';
 import { trainerState } from './rig.js';
@@ -117,15 +119,17 @@ function start3d(root, cards, world3d) {
   const touch = matchMedia('(pointer: coarse)').matches;
   const sound = h('button.btn.small', { type: 'button' });
   const quality = h('select', { 'aria-label': 'Graphics quality' }, ['high', 'standard', 'basic'].map((q) => h('option', { value: q }, q[0].toUpperCase() + q.slice(1))));
+  const help = h('p.sanc-help');
+  const topBar = h('div.sanc-top');
   el.append(plates, prompt,
     h('h1.sanc-title', `Sanctuary · ${new Set(cards.map((c) => c.name)).size} Pokémon`),
-    h('div.sanc-top',
+    clear(topBar,
       h('label.btn.small', h('span', 'Graphics '), quality),
       sound,
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/sanctuary/reef'; } }, '🌊 Reef'),
       h('button.btn.small', { type: 'button', onclick: () => ui.openTrainerModal() }, '👤 Trainer'),
       h('button.btn.small', { type: 'button', onclick: () => { location.hash = '#/'; } }, '✕ Leave')),
-    h('p.sanc-help', touch ? 'Drag to move or look · hold Jump toward the basalt ledge to climb · tap a Pokémon’s name to interact' : 'WASD walk · Shift sprint · Space jump, hold to climb or glide · drag to look · E interact · 1–8 travel'));
+    help);
   clear(root, el);
   document.body.classList.add('sanctuary-mode');
 
@@ -140,11 +144,30 @@ function start3d(root, cards, world3d) {
   const dark = document.documentElement.dataset.theme === 'dark'
     || (document.documentElement.dataset.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   const world = buildWorld({ scene, renderer, camera, dark, mode: 'sanctuary', quality: markLoad(preferredQuality(renderer)) });
-  const perf = createPerf(renderer, () => world.pixelTop, world.effects);
+  // The ⚙ settings (game/settings.js): key bindings, the mouse, graphics and the performance readout.
+  let settings = loadSettings();
+  const perf = createPerf(renderer, () => world.pixelTop, world.effects, { dynamic: () => settings.video.renderScale === 'auto' });
   const meter = createFrameMeter(el); // F3: frame times
+  const gpuTimer = createGpuTimer(renderer);
   const loadTimer = setTimeout(clearLoad, 12000);
   quality.value = world.quality;
-  quality.addEventListener('change', () => { world.setQuality(quality.value); saveQuality(world.quality); perf.settle(); resize(); });
+  const setLevel = (q) => { quality.value = q; world.setQuality(q); saveQuality(world.quality); perf.settle(); resize(); };
+  quality.addEventListener('change', () => setLevel(quality.value));
+  const applySettings = (s) => {
+    settings = s;
+    world.setOptions({ grass: GRASS_DENSITY[s.video.grass], shadows: s.video.shadows, effects: s.video.effects, scale: s.video.renderScale === 'auto' ? null : s.video.renderScale });
+    camera.far = VIEW_DISTANCE[s.video.viewDistance].far;
+    camera.updateProjectionMatrix();
+    meter.apply(s.overlay);
+    perf.settle();
+    const k = (a) => keyLabel(s.bindings[a]?.[0]);
+    help.textContent = touch
+      ? 'Drag to move or look · hold Jump toward the basalt ledge to climb · tap a Pokémon’s name to interact'
+      : `${k('forward')}${k('left')}${k('back')}${k('right')} move · ${k('sprint')} sprint · ${k('jump')} jump, hold to climb or glide · ${s.mouse.look === 'lock' ? 'mouse to look (Esc frees it)' : 'drag to look'} · ${k('interact')} interact · 1–8 travel · ${k('settings')} ⚙`;
+  };
+  const menu = createSettingsMenu(el, { onChange: (s) => applySettings(s), quality: { get: () => world.quality, set: setLevel } });
+  topBar.prepend(menu.button);
+  applySettings(settings);
   const inWater = (x, z) => terrainHeight(x, z) < LAKE.level - 0.15;
   const ground = {
     heightAt: (x, z) => terrainHeight(x, z),
@@ -317,7 +340,7 @@ function start3d(root, cards, world3d) {
       else if (action === 'ride') startRide(c);
     },
   });
-  const paused = () => ui.isOpen() || !cardModal.hidden;
+  const paused = () => ui.isOpen() || !cardModal.hidden || menu.isOpen();
 
   // ---- input ----
   const keys = new Set();
@@ -407,28 +430,41 @@ function start3d(root, cards, world3d) {
     if (e.type === 'keydown') {
       if (e.code === 'Escape') { ui.closeRadial(); cardModal.hidden = true; return; }
       if (paused()) return;
-      if (e.code === 'Space' && !keys.has('Space')) jumpPressed = true;
-      if (e.code === 'KeyE' && !e.repeat) interact();
+      const action = actionFor(e.code, settings.bindings);
+      if (action === 'settings' && !e.repeat) { e.preventDefault(); menu.open(); return; }
+      // The mouse takes the camera on the first key press (a browser allows it only on a key or a click).
+      if (settings.mouse.look === 'lock' && !locked() && !touch) lockPointer();
+      if (action === 'jump' && !held('jump', keys, settings.bindings)) jumpPressed = true;
+      if (action === 'interact' && !e.repeat) interact();
       if (/^Digit[1-8]$/.test(e.code) && !e.repeat) travel(Number(e.code.slice(5)) - 1);
-      if (e.code === 'KeyM' && !e.repeat) { ambience.toggleMute(); showSound(); }
-      if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (action === 'mute' && !e.repeat) { ambience.toggleMute(); showSound(); }
+      if (action && ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'dive'].includes(action)) e.preventDefault();
       keys.add(e.code);
     } else {
       keys.delete(e.code);
     }
   };
   let drag = null;
-  // A mouse: a double-click locks the pointer to the view (Esc lets go); otherwise drag to look.
+  // The mouse: by default it turns the camera as soon as you press a key or click (the pointer is locked
+  // to the view; Esc lets go). The ⚙ setting "left-click and drag" turns it with a drag instead (and a
+  // double-click still locks it).
   const locked = () => document.pointerLockElement === renderer.domElement;
-  const onDown = (e) => { if (e.target === renderer.domElement && !locked()) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; renderer.domElement.setPointerCapture(e.pointerId); } };
+  const lockPointer = () => { try { renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); } catch { /* not now */ } };
+  const onDown = (e) => {
+    if (e.target !== renderer.domElement || locked()) return;
+    if (settings.mouse.look === 'lock' && e.pointerType === 'mouse' && !paused()) { lockPointer(); return; }
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    renderer.domElement.setPointerCapture(e.pointerId);
+  };
   const onMove = (e) => {
-    if (locked()) { addLook(look, -e.movementX * 0.0025, e.movementY * 0.002); return; }
+    if (locked()) { const turn = mouseTurn(e.movementX, e.movementY, settings.mouse); addLook(look, turn.yaw, turn.pitch); return; }
     if (!drag || e.pointerId !== drag.id) return;
-    addLook(look, -(e.clientX - drag.x) * 0.005, (e.clientY - drag.y) * 0.004);
+    const turn = mouseTurn(e.clientX - drag.x, e.clientY - drag.y, settings.mouse, 2);
+    addLook(look, turn.yaw, turn.pitch);
     drag.x = e.clientX;
     drag.y = e.clientY;
   };
-  const onDouble = () => { if (!touch) renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); };
+  const onDouble = () => { if (!touch) lockPointer(); };
   renderer.domElement.addEventListener('dblclick', onDouble);
   // Keys 1–8 (or the gamepad's Select): go straight to a habitat, beside its sign.
   const stops = HABITATS.map((hab) => {
@@ -534,10 +570,17 @@ function start3d(root, cards, world3d) {
   const pushers = [];
   const pusherPool = Array.from({ length: 6 }, () => ({}));
   let shownPrompt = null;
+  let cpuMs = null; // the page's own work last frame (the ⚙ performance readout)
   renderer.setAnimationLoop((now) => {
-    meter.frame(now - last);
+    // A frame limit (⚙ Graphics): skip screen refreshes until it's time (1 ms early, so 60 on a 60 Hz
+    // screen doesn't drop to 30).
+    if (settings.video.frameLimit && now - last < 1000 / settings.video.frameLimit - 1) return;
+    const cpuStart = performance.now();
+    meter.frame(now - last, { cpu: cpuMs, gpu: gpuTimer });
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    // A dialog open: the cursor comes back (the wheel, a card, the settings take clicks).
+    if (paused() && locked()) document.exitPointerLock?.();
     const t = now / 1000;
     sway.value = t;
     perf.frame(dt * 1000);
@@ -551,9 +594,9 @@ function start3d(root, cards, world3d) {
       // Where everything was before this step, to draw in between steps (below).
       prevP.x = player.x; prevP.y = player.y; prevP.z = player.z; prevP.facing = player.facing;
       for (const c of creatures) { c.px = c.x; c.py = c.y; c.pz = c.z; c.pf = c.facing; }
-      const is = (...codes) => codes.some((c) => keys.has(c));
-      const f = paused() ? 0 : (is('KeyW', 'ArrowUp') ? 1 : 0) - (is('KeyS', 'ArrowDown') ? 1 : 0) + stick.y + pad.y;
-      const r = paused() ? 0 : (is('KeyD', 'ArrowRight') ? 1 : 0) - (is('KeyA', 'ArrowLeft') ? 1 : 0) + stick.x + pad.x;
+      const is = (action) => held(action, keys, settings.bindings);
+      const f = paused() ? 0 : (is('forward') ? 1 : 0) - (is('back') ? 1 : 0) + stick.y + pad.y;
+      const r = paused() ? 0 : (is('right') ? 1 : 0) - (is('left') ? 1 : 0) + stick.x + pad.x;
       // Forward is away from the camera.
       const fx = -Math.sin(yaw);
       const fz = -Math.cos(yaw);
@@ -561,16 +604,16 @@ function start3d(root, cards, world3d) {
       else if (player.mode === 'ride' && mount) {
         stepFlyer(player, {
           steer: { f: Math.max(-1, Math.min(1, f)), r: Math.max(-1, Math.min(1, r)) },
-          jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
-          down: !paused() && (is('ControlLeft', 'ControlRight', 'KeyC') || diveTouch || pad.down),
-          sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
+          jumpHeld: !paused() && (is('jump') || jumpHeldTouch || pad.jumpHeld),
+          down: !paused() && (is('dive') || diveTouch || pad.down),
+          sprint: !paused() && (is('sprint') || sprintToggle || pad.sprint),
         }, STEP, ground);
         Object.assign(mount.c, { x: player.x, y: player.y, z: player.z, facing: player.facing });
       } else {
         stepPlayer(player, {
           x: fx * f - fz * r, z: fz * f + fx * r,
-          sprint: !paused() && (is('ShiftLeft', 'ShiftRight') || sprintToggle || pad.sprint),
-          jump: jumpPressed && !paused(), jumpHeld: !paused() && (is('Space') || jumpHeldTouch || pad.jumpHeld),
+          sprint: !paused() && (is('sprint') || sprintToggle || pad.sprint),
+          jump: jumpPressed && !paused(), jumpHeld: !paused() && (is('jump') || jumpHeldTouch || pad.jumpHeld),
           steer: { f: Math.max(-1, Math.min(1, f)), r: Math.max(-1, Math.min(1, r)) },
         }, STEP, ground);
       }
@@ -632,7 +675,7 @@ function start3d(root, cards, world3d) {
       rideTop = seatAtMount.y - P.y;
     }
     // High up, the haze thins so the view opens out.
-    if (scene.fog) scene.fog.density = fogBase * (1 - 0.6 * Math.min(1, Math.max(0, (P.y - 8) / 40)));
+    if (scene.fog) scene.fog.density = fogBase * VIEW_DISTANCE[settings.video.viewDistance].fog * (1 - 0.6 * Math.min(1, Math.max(0, (P.y - 8) / 40)));
     world.followSun(P.x, P.y, P.z); // the sharp shadows stay round the trainer
 
     // The camera orbits behind the trainer, and stays above the ground. In the air (the lift, the
@@ -773,7 +816,10 @@ function start3d(root, cards, world3d) {
     if (el.dataset.near !== nearName) el.dataset.near = nearName;
     habitats.update(t);
     world.update(t);
+    if (meter.timingGpu) gpuTimer.begin();
     world.render();
+    if (meter.timingGpu) gpuTimer.end();
+    cpuMs = performance.now() - cpuStart;
   });
 
   leave = () => {
@@ -799,6 +845,8 @@ function start3d(root, cards, world3d) {
       for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); }
     });
     meter.dispose();
+    gpuTimer.dispose();
+    menu.dispose();
     renderer.dispose();
   };
   window.addEventListener('hashchange', leave);

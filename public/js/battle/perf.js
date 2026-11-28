@@ -47,7 +47,7 @@ export function perfStep(frameMs, ratio, top, effects = false, options = {}) {
  * Watches the frame times and adjusts `renderer`'s pixel ratio. `top()`: the level's own ratio now;
  * `effects`: the High passes ({ on, drop() }, from postfx.js createEffects), if the page has them.
  */
-export function createPerf(renderer, top, effects = null) {
+export function createPerf(renderer, top, effects = null, { dynamic = () => true } = {}) {
   let sum = 0;
   let n = 0;
   let wait = 2000; // let the page settle first (and learn the screen's refresh rate meanwhile)
@@ -74,6 +74,8 @@ export function createPerf(renderer, top, effects = null) {
       sum = 0;
       n = 0;
       wait = 1000;
+      // (A resolution chosen in the settings stays put: then neither pixels nor passes are traded.)
+      if (!dynamic()) return;
       const now = renderer.getPixelRatio();
       const { ratio: next, drop } = perfStep(average, now, top(), Boolean(effects?.on), targets);
       // Each change resizes the drawing buffers (a hitch of its own), so more pixels come back only

@@ -71,11 +71,9 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   left in `.previous` goes to `<app>.rescued-data-*`.
 - Mutating `/api` requests from other sites are refused (Origin/Sec-Fetch-Site check in `server/app.js`).
 - `node:sqlite` is experimental: npm scripts pass `--disable-warning=ExperimentalWarning`.
-- PokemonPriceTracker layouts vary; `normalizeCard` deep-searches (unverified live).
-- The sandbox reaches only GitHub and npm: the owner checks live sources (`npm run check:live`).
 - PRs target `main` (CodeRabbit skips PRs to other branches).
 
-## Current state (2026-11-23)
+## Current state (2026-11-28)
 - `main` has PRs #1–#34. **Plan: `docs/ROADMAP.md`** (M0–M2 done: detection 93%, reading 81%).
 - **Real sizes** (Phase 46): `server/species.js` + `speciesData.json` (PokéAPI, `scripts/species-build.mjs`);
   `js/creature/body.js` (pure: mode, pace, gaits, `displayHeight` sizes) + `life.js` (`autoRig`, `animate`, blink, flames).
@@ -87,14 +85,16 @@ runs it on Windows with PowerShell and is not a developer. Give them copy-paste 
   `POKEDEX_TLS_*`. 30C = TCGdex `30th` + `30th-c` (Classic: original numbers, matched by name). Close-ups: review only.
 - Variant suggestion (`server/printings.js`, `public/js/foil.js`): never auto-applied unless certain. Tilt
   thresholds are synthetic-tested only: tune with real tilt photos.
-- Set rarities are English-only (dataset, else TCGdex filters); missing value costs a price lookup per card.
+- Set rarities are English-only; a missing value costs a price lookup per card.
 - **PokéBattles** (`js/battle/`): `engine` and `realtime` are pure. Real-time has dodge jumps, air dashes, cast
   cues and Fire rushes. `scene`, `world`, `stadiums`, `weatherFx`, `arenas` and `surface` render the game.
   `server/battle.js` serves card rules. `server/models3d.js` caches GLBs under `data/models3d`.
   Models may be committed (owner, 2026-11-26); built-in trainers: `public/assets/trainers`.
-- **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): the meadow (`buildWorld` mode `sanctuary`); `player.js`, `zoo.js` pure;
-  owner's `sanctuaryUI.js`; `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js`; ride flyers (`stepFlyer`); Battle → `pokedex.battleKeep`.
-- `battle/perf.js`: dynamic res. (refresh rate, slow to raise), crash-safe start; drops `postfx.js` first. `warmUp` models; F3 frame meter. High/Std: `hdScenery.js`, `realisticMaterial`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
+- **Sanctuary** (`#/sanctuary`, `js/sanctuary/`): meadow (`buildWorld` `sanctuary`); `player.js`, `zoo.js` pure; `sanctuaryUI.js`;
+  `habitats.js`; `look.js`; `skiLift.js`+`paraglider.js`; ride flyers (`stepFlyer`). ⚙ `game/settings.js` (pure) +
+  `settingsMenu.js` (`pokedex.gameSettings`): keys (`actionFor`/`held`), mouse look (lock on 1st key/click; drag opt.),
+  `world.setOptions`, FPS·CPU·GPU readout (`createGpuTimer`). e2e uses drag look before clicks.
+- `battle/perf.js`: dynamic res. (only on Auto), crash-safe start; drops `postfx.js` first. `warmUp`. High/Std: `hdScenery.js`. Trainers: Ash/Iris/May built in (default Ash), own .glb in data/; in battles too; `moveFx.js`. **Reef** (`reef/reef.js`, after Abyssal Garden, MIT): Sanctuary
   `#/sanctuary/reef` (`reefSanctuary.js`, `stepSwimmer`), battle arena `reef`, caustics; `ambience.js` sound.
 - **3D Pop-out** (gallery): `pokemon-popout.js` (owner's package, 4 prepared scenes) + `popoutRender.js` (model
   drawn once per form/id, data/popout). A copy's **diorama** wins: `server/cardDioramas.js` (27 in `assets/card-effects`,

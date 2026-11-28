@@ -62,3 +62,24 @@ body.sanctuary-mode { overflow: hidden; }
 .trainer-remove { background: rgb(255 255 255 / 0.08); color: #fff; border: 0; border-radius: 10px; width: 34px; cursor: pointer; font-size: 1.1rem; }
 .trainer-hint, .trainer-note { font-size: 0.72rem; opacity: 0.8; margin: 8px 0; }
 .trainer-note:empty { display: none; }
+
+/* The ⚙ settings menu (game/settingsMenu.js). */
+.settings-modal .settings-card { width: min(620px, 94vw); max-height: 86vh; overflow: auto; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.settings-body { display: grid; gap: 8px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgb(255 255 255 / 0.08); }
+.settings-label { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.settings-row > :last-child { flex: none; }
+.settings-row input[type="checkbox"] { width: 20px; height: 20px; }
+.settings-label small { opacity: 0.65; font-size: 0.75rem; }
+.settings-row select { max-width: 55%; flex: 0 1 auto; color: #111; background: #fff; }
+.settings-row select option { color: #111; background: #fff; }
+.settings-range { display: flex; align-items: center; gap: 8px; }
+.settings-note { margin: 0 0 4px; opacity: 0.75; font-size: 0.85rem; }
+.settings-binds { display: grid; gap: 4px; }
+.settings-bind { display: grid; grid-template-columns: 1fr 7.5rem 7.5rem; align-items: center; gap: 6px; }
+.settings-bind .keycap { font-family: ui-monospace, monospace; }
+.settings-bind .keycap.capturing { outline: 2px solid #6ee7b7; }
+.settings-gear { font-size: 1rem; line-height: 1; }
+@media (max-width: 560px) { .settings-bind { grid-template-columns: 1fr 5.5rem 5.5rem; font-size: 0.85rem; } }
